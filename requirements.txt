@@ -4,4 +4,3 @@ PyTorch
 numpy
 h5py
 scipy
-git+https://github.com/noahgolmant/pytorch-hessian-eigenthings.git@master#egg=hessian-eigenthings
