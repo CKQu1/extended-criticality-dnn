@@ -5,6 +5,8 @@ Github repository for the paper *Self-organised edge-of-chaos in heavy-tailed de
 
 ![Alt text](readme_figs/phasetransition_schematic1024_1.jpg?raw=true "Phase transition schematic diagram")
 
+[[https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/phasetransition_schematic1024_1.jpg|width=100px]]
+
 ## Requirements
 ****
 
