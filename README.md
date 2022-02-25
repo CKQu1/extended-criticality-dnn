@@ -69,7 +69,7 @@ To plot the circular manifold projected on the top 3 principal components (PC):
 `python geometry_analysis/great_circle_proy.py`
 
 <p align="center">
-<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/fc10_mnist_tanh_grid_testacc_early_6501024_1.jpg" width="650">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/proj3d_alpha%3D100.jpg" width="650">
 </p>
 
 ## Citation
