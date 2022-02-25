@@ -3,7 +3,7 @@
 
 Github repository for the paper *Self-organised edge-of-chaos in heavy-tailed deep neural networks*, currently submitted and under revision.
 
-![[phasetransition_schematic1024_1.jpg]]
+![[readme_figs/phasetransition_schematic1024_1.jpg]]
 
 
 ## Requirements
@@ -56,7 +56,7 @@ After training, the accuracies can be extracted and the plot can also be simulta
 `python tranasition_plot_functions/grid_accuracy.py/`
 
 
-![[fc10_mnist_tanh_grid_testacc_early_6501024_1.jpg]]
+![[readme_figs/fc10_mnist_tanh_grid_testacc_early_6501024_1.jpg]]
 
 ### Geometry analysis
 
@@ -66,7 +66,7 @@ To plot the circular manifold projected on the top 3 principal components (PC):
 
 `python geometry_analysis/great_circle_proy.py`
 
-![[proj3d_alpha=100.jpg]]
+![[readme_figs/proj3d_alpha=100.jpg]]
 
 
 ## Citation
