@@ -3,7 +3,7 @@
 
 Github repository for the paper *Self-organised edge-of-chaos in heavy-tailed deep neural networks*, currently submitted and under revision.
 
-![Alt text](readme_figs/phasetransition_schematic1024_1.jpg | width=50?raw=true "Phase transition schematic diagram")
+![Alt text](readme_figs/phasetransition_schematic1024_1.jpg?raw=true "Phase transition schematic diagram")
 
 ## Requirements
 ****
