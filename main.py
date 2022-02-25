@@ -757,7 +757,7 @@ if __name__ == '__main__':
                         )
 
     if args.stable_inter == 'y' or (args.stable_epoch == 'y' and args.stable_inter =='n'):
-        # w_stable_params
+        # w_stable_params, order for sigmas and deltas is switched accidentally
         sio.savemat('/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/trained_nets/' + model + '/W_stable_params_' + str(1) + '-' + 
                             str(epoch) + '.mat', 
                             mdict={'alphas':stable_params_last[0:wm_total,:], 'betas': stable_params_last[wm_total:wm_total*2,:], 'sigmas': stable_params_last[wm_total*2:wm_total*3,:], 'deltas': stable_params_last[wm_total*3:wm_total*4,:],
