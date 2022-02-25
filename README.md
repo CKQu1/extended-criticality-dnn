@@ -1,5 +1,4 @@
 # Github Repository for the paper
-****
 
 Github repository for the paper *Self-organised edge-of-chaos in heavy-tailed deep neural networks*, currently submitted and under revision.
 
@@ -8,7 +7,6 @@ Github repository for the paper *Self-organised edge-of-chaos in heavy-tailed de
 </p>
   
 ## Requirements
-****
 
 To install requirements:
 
@@ -18,7 +16,6 @@ pip install -r requirements.txt
 
 
 ## Pretrained network analysis
-****
 
 We extract pretrained networks from Pytorch and iteratively fit the entries of each weight matrix (not including biases or batch-normalization layers) independently as a L\`{e}vy alpha stable and Gaussian distribution respetively via maximum likelihood.
 
@@ -36,7 +33,6 @@ We extract pretrained networks from Pytorch and iteratively fit the entries of e
 
 
 ## Network training
-****
 
 The main focus of theory is revolved around fully-connected neural networks, the following are examples of training, please see `main.py` for training options. For network types, please see `train_DNN_code/model_loader.py` for loading method and the module `train_DNN_code/models` for model options.
 
@@ -44,7 +40,6 @@ The main focus of theory is revolved around fully-connected neural networks, the
 
 
 ## Post-training analysis
-****
 
 ### Accuracy transition diagram
 
@@ -73,19 +68,16 @@ To plot the circular manifold projected on the top 3 principal components (PC):
 </p>
 
 ## Citation
-****
 
 
 
 
 ## References
-****
 
 Please refer to the manuscript.
 
 
 ## Code references
-****
 
 [1] Anomalous diffusion dynamics of SGD, https://github.com/ifgovh/Anomalous-diffusion-dynamics-of-SGD
 
