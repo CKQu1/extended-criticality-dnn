@@ -3,12 +3,10 @@
 
 Github repository for the paper *Self-organised edge-of-chaos in heavy-tailed deep neural networks*, currently submitted and under revision.
 
-![Alt text](readme_figs/phasetransition_schematic1024_1.jpg?raw=true "Phase transition schematic diagram")
-
-![[https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/phasetransition_schematic1024_1.jpg|width=100px]]
-
-<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/phasetransition_schematic1024_1.jpg" width="800">
-
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/phasetransition_schematic1024_1.jpg" width="650">
+</p>
+  
 ## Requirements
 ****
 
@@ -58,8 +56,9 @@ After training, the accuracies can be extracted and the plot can also be simulta
 
 `python tranasition_plot_functions/grid_accuracy.py/`
 
-
-![[readme_figs/fc10_mnist_tanh_grid_testacc_early_6501024_1.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/fc10_mnist_tanh_grid_testacc_early_6501024_1.jpg" width="650">
+</p>
 
 ### Geometry analysis
 
@@ -69,8 +68,9 @@ To plot the circular manifold projected on the top 3 principal components (PC):
 
 `python geometry_analysis/great_circle_proy.py`
 
-![[readme_figs/proj3d_alpha=100.jpg]]
-
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/proj3d_alpha=1001.jpg" width="650">
+</p>
 
 ## Citation
 ****
