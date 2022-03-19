@@ -61,7 +61,7 @@ A circule manifold is propagated through a network at different initialization s
 
 To plot the circular manifold projected on the top 3 principal components (PC):
 
-`python geometry_analysis/great_circle_proy.py`
+`python geometry_analysis/great_circle_proj.py`
 
 <p align="center">
 <img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/proj3d_alpha%3D100.jpg" width="650">
