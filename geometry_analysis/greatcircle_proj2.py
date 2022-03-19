@@ -104,6 +104,7 @@ def layer_pca(hidden_stacked, **kwargs):
 
 def gcircle_prop(N, L, N_thetas, alpha100, g100, *args):
     import torch
+    from nporch.theory import q_star
 # get the SEM of the manifold distances propagated through the DNN layers
     # Extract numeric arguments.
     N = int(N)
@@ -111,11 +112,15 @@ def gcircle_prop(N, L, N_thetas, alpha100, g100, *args):
     N_thetas = int(N_thetas)
     alpha = int(alpha100)/100.
     g = int(g100)/100.
+    # operate at fixed point
+    #q_fixed = q_star(alpha,g)
+    q_fixed = 1
+    #print(q_fixed)
     # Generate circular manifold.
     hs = np.zeros([N, N_thetas])
     thetas = np.linspace(0, 2*np.pi, N_thetas)
-    hs[0,:] = np.cos(thetas)
-    hs[1,:] = np.sin(thetas)
+    hs[0,:] = q_fixed * np.cos(thetas)
+    hs[1,:] = q_fixed * np.sin(thetas)
     hs_all = np.zeros([L + 1, N_thetas, N])  # distance SEMs, angular SEMs
     hs_all[0,:,:] = hs.T
     from scipy.stats import levy_stable
@@ -140,8 +145,10 @@ def submit(*args):
     pbs_array_data = [(alpha100, g100)
                       #for alpha100 in range(100, 201, 5)
                       #for g100 in range(5, 301, 5)
-                      for alpha100 in range(100, 201, 25)
-                      for g100 in [1, 100, 200]
+                      #for alpha100 in range(100, 201, 25)
+                      for alpha100 in [100,150,200]
+                      #for g100 in [25, 100, 300]
+                      for g100 in [300]
                       #for alpha100 in [100]
                       #for g100 in [1, 100]
                       ]
@@ -173,9 +180,10 @@ def submit_preplot(*args):
 #def submit_preplot(path):
     data_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
     # find the `alpha100`s and `g100`s of the files in the folder
-    pbs_array_data = set([tuple(re.findall('\d+', fname)[:2]) for fname in os.listdir(data_path)
-                      if all(s in fname for s in ('alpha', 'g', 'gcircles'))])
+    #pbs_array_data = set([tuple(re.findall('\d+', fname)[:2]) for fname in os.listdir(data_path)
+    #                  if all(s in fname for s in ('alpha', 'g', 'gcircles'))])
 
+    pbs_array_data = [(100,300), (150,300), (200,300)]
     print(pbs_array_data)
 
     from qsub import qsub
@@ -188,7 +196,9 @@ def submit_preplot(*args):
 def gcircle_plot(*args):
 
     #alpha100_ls, g100_ls = [200], [1]
-    alpha100_ls, g100_ls = [100,150,200], [1,100,200]
+    #alpha100_ls, g100_ls = [100,150,200], [1,100,200]
+    #alpha100_ls, g100_ls = [100,150,200], [25,100,200]
+    alpha100_ls, g100_ls = [100,150,200], [25,100,300]
 
     from time import time
     t0 = time()
@@ -204,7 +214,8 @@ def gcircle_plot(*args):
     from mpl_toolkits.axes_grid1.inset_locator import mark_inset
     from matplotlib.cm import coolwarm
     # colorbar
-    cm = cm.get_cmap('plasma')
+    #cm = cm.get_cmap('plasma')
+    cm = cm.get_cmap('twilight')
 
     tick_size = 18.5
     label_size = 18.5
@@ -229,13 +240,15 @@ def gcircle_plot(*args):
     linewidth = 0.8
 
     # Set up figure
-    rows = 3
+    #rows = 3
+    rows = 1
     cols = 3
 
-    layer_ii = [5,15,35]
-    #layer_ii = [1,10,30]
-    #layer_ii = [5,10,20]
-    #layer_ii = [0,20,40]
+    #layer_ii = [5,15,35]
+    #layer_ii = [35]
+    layer_ii = [30]
+    #layer_ii = [25]
+
     #assert max(layer_ii) <= L, "layer_ii incorrect"
 
     # Projection plot
@@ -244,9 +257,14 @@ def gcircle_plot(*args):
     #ls_all = [list(range(1))]
     #ls_all = [list(range(3,6))]
 
+    # thetas
+    N_thetas = 1000
+    thetas = np.linspace(0, 2*np.pi, N_thetas)
+
     vert_dists = [0.78, 0.5, 0.22]
     for ls in ls_all:
-        fig = plt.figure(figsize=(9.5,7.142))
+        #fig = plt.figure(figsize=(9.5,7.142))
+        fig = plt.figure(figsize=(9.5,7.142/3 + 0.75))
 
         """
         mins = []
@@ -266,7 +284,8 @@ def gcircle_plot(*args):
                 maxs.append(max(z))
         """
         #cmap_bd = [min(mins), max(maxs)]
-        cmap_bd = [-0.05,0.05]
+        #cmap_bd = [-0.05,0.05]
+        cmap_bd = [0, 2*np.pi]
 
         for f_ii in range(len(ls)):
             folder_ii = ls[f_ii]
@@ -278,27 +297,32 @@ def gcircle_plot(*args):
 
             for k in range(len(layer_ii)):
                 # figure index
-                fig_ii = 3*f_ii + k + 1
+                #fig_ii = 3*f_ii + k + 1
+                fig_ii = rows*f_ii + k + 1
                 print(fig_ii)
 
                 ax = fig.add_subplot(rows,cols,fig_ii,projection='3d')
                 #ax = fig.add_subplot(3,3,fig_ii)
                 ii = layer_ii[k]
                 total_var = sum(singular_values[ii,:])
+                print(f"Total variance {total_var}")
+                print(f"Top singular value: {singular_values[ii, 0]}")
 
+                # singular_values
+                #hs_proj[ii] = hs_proj[ii] * singular_values[ii, 0:3]
                 x, y ,z = hs_proj[ii, :, 0], hs_proj[ii, :, 1],hs_proj[ii, :, 2]
 
-                im = ax.scatter(x , y , z, c=z, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, cmap=cm)
-                ax.plot(x , y , z,color='k', zorder=0, linewidth=0.5, alpha=.4)
+                im = ax.scatter(x , y , z, c=thetas, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, cmap=cm)
+                #im = ax.scatter(x , y , z, c=z, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, cmap=cm)
+                # lines
+                #ax.plot(x , y , z,color='k', zorder=0, linewidth=0.25, alpha=.35)
                 ax.zaxis.set_rotate_label(False) 
 
-                if f_ii == 0:
-                    ax.set_title(f"Layer {ii}", loc='left', fontsize=label_size - 2)
+                ax.set_title(r"$D_w^{1/\alpha}$ = " + f"{m}", loc='left', fontsize=label_size - 3)
 
-                if fig_ii % 3 == 1:
-                    #ax.set_zlabel(rf"$\alpha, m$ = {alpha}, {m}", rotation=90)
-                    #ax.set_zlabel(r"$D_w^{1/\alpha}$" + f" = {m/100}", rotation=90, fontsize=label_size)
-                    fig.text(0.07, vert_dists[f_ii], r"$D_w^{1/\alpha}$" + f" = {m}", rotation=90, va='center', fontsize=label_size - 2)
+                if fig_ii == 2:
+                    #fig.text(0.07, vert_dists[f_ii], r"$D_w^{1/\alpha}$" + f" = {m}", rotation=90, va='center', fontsize=label_size - 2)
+                    fig.text(0.07, vert_dists[f_ii], "Layer {fname}".format(fname=layer_ii[k]), rotation=90, va='center', fontsize=label_size - 3)
 
                 #if fig_ii % 3 == 2:
                 #    #ax.set_zlabel(rf"$\alpha, m$ = {alpha}, {m}", rotation=90)
@@ -309,17 +333,21 @@ def gcircle_plot(*args):
 
                 # set lims
                 pmax = 0.05
+                #pmax = 0.06
                 ax.set_xlim(-pmax, pmax); ax.set_ylim(-pmax, pmax);
                 ax.set_zlim(-pmax, pmax);
 
-                if fig_ii != 1:
-                    ax.set_zticklabels([]);
+                # tick labels
+                #if fig_ii != 1:
+                #    ax.set_zticklabels([]);
                 ax.set_xticklabels([]); ax.set_yticklabels([])
+                ax.set_zticklabels([]);
 
                 # inset plot
                 borderpad = -.5
                 ins = inset_axes(ax, width="30%", height="30%", borderpad=borderpad)
                 ins.bar(list(range(1,6)),singular_values[ii, 0:5]/total_var, color='k')
+                print(singular_values[ii, 0:5]/total_var)
                 ins.axhline(y=0.5, color='k', linestyle='-', linewidth=0.5, alpha=0.3)
                 ins.set_yticks([0, 0.5, 1.0])
 
@@ -335,13 +363,15 @@ def gcircle_plot(*args):
 
         # colorbar
         fig.subplots_adjust(right=0.8)
-        cbar_ax = fig.add_axes([0.85, 0.15, 0.04, 0.7])
-        fig.colorbar(im, cax=cbar_ax)
+        cbar_ax = fig.add_axes([0.85, 0.20, 0.015, 0.75])
+        cbar_ticks = [0, np.pi, 2*np.pi]
+        cbar = fig.colorbar(im, cax=cbar_ax, ticks=cbar_ticks)
+        cbar.ax.set_yticklabels(['0', r'$\pi$', r'$2\pi$'])
 
         # suptitle as alpha
         fig.suptitle(rf"$\alpha$ = {alpha}", fontsize=label_size)
 
-        plt.savefig(f"{plot_path}/proj3d_alpha={alpha}.pdf", bbox_inches='tight')
+        plt.savefig(f"{plot_path}/proj3d_single_alpha={alpha}.pdf", bbox_inches='tight')
         print(f"alpha={alpha} done!")
         #plt.savefig(f"{plot_path}/proj3d_{alpha}.pdf")
         plt.clf()
