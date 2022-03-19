@@ -29,7 +29,7 @@ We extract pretrained networks from Pytorch and iteratively fit the entries of e
 
 3. Plot the results
 
-`python pretrained_workflow/pretrained_metaplot2.py`
+`python pretrained_workflow/pretrained_metaplot3.py`
 
 
 ## Network training
