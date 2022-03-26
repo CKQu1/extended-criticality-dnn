@@ -69,7 +69,20 @@ To plot the circular manifold projected on the top 3 principal components (PC):
 
 ## Citation
 
-
+@ARTICLE{2022arXiv220312967Q,
+       author = {{Qu}, Cheng Kevin and {Wardak}, Asem and {Gong}, Pulin},
+        title = "{Extended critical regimes of deep neural networks}",
+      journal = {arXiv e-prints},
+     keywords = {Computer Science - Machine Learning, Condensed Matter - Disordered Systems and Neural Networks, Condensed Matter - Statistical Mechanics, Computer Science - Artificial Intelligence, Statistics - Machine Learning},
+         year = 2022,
+        month = mar,
+          eid = {arXiv:2203.12967},
+        pages = {arXiv:2203.12967},
+archivePrefix = {arXiv},
+       eprint = {2203.12967},
+ primaryClass = {cs.LG},
+       adsurl = {https://arxiv.org/abs/2203.12967},
+}
 
 
 ## References
