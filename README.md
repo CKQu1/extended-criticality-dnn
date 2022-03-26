@@ -69,6 +69,7 @@ To plot the circular manifold projected on the top 3 principal components (PC):
 
 ## Citation
 
+```bibtex
 @ARTICLE{
   2022arXiv220312967Q,
   author = {{Qu}, Cheng Kevin and {Wardak}, Asem and {Gong}, Pulin},       
@@ -84,7 +85,7 @@ To plot the circular manifold projected on the top 3 principal components (PC):
   primaryClass = {cs.LG}, 
   adsurl = {https://arxiv.org/abs/2203.12967},       
 }
-
+```
 
 
 ## References
