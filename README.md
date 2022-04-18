@@ -1,6 +1,6 @@
 # Github Repository for the paper
 
-Github repository for the paper *Self-organised edge-of-chaos in heavy-tailed deep neural networks*, currently submitted and under revision.
+Github repository for the paper *Extended critical regimes of deep neural networks*, currently submitted and under revision.
 
 <p align="center">
 <img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/phasetransition_schematic1024_1.jpg" width="500">
