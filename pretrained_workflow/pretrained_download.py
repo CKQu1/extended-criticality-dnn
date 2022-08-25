@@ -97,8 +97,7 @@ def pretrained_store(n_model, *args):
         t_last = time.time()
         print(f"{model_name}: Ws of {i} stored in {t_last - t1} s!")      
     except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
-        print(f"({model_name},midx) not impleneted!")
-        not_implemented.append(model_name)
+        print(f"{model_name} not impleneted!")
 
 def submit(*args):
     from qsub import qsub
