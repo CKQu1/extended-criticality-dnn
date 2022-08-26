@@ -120,62 +120,62 @@ def get_pretrained_names_tf():
     return model_ls
       
 def pretrained_store_tf(n_model, *args):
-        t0 = time.time()
-  
-        model_ls = get_pretrained_names()
-        model_name = model_ls[int(n_model)]
-  
-        try:
-            model_precursor = kapp.__dict__[model_name]
-            #model = locals()["model_precursor"](pretrained=True)
-            model = locals()["model_precursor"]()
+    t0 = time.time()
 
-            t1 = time.time()
-            print(f"Loaded {model_name} in {t1 - t0} s")
+    model_ls = get_pretrained_names()
+    model_name = model_ls[int(n_model)]
 
-            # path for saving the weights
-            #main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
-            main_path = os.getcwd()
-            weight_path = f"{main_path}/weights_all_tf"
-            if not os.path.exists(main_path):
-                os.makedirs(main_path)
-            if not os.path.exists(weight_path):
-                os.makedirs(weight_path)
+    try:
+        model_precursor = kapp.__dict__[model_name]
+        #model = locals()["model_precursor"](pretrained=True)
+        model = locals()["model_precursor"]()
 
-            # create dataframe that stores the model_name
-            if not os.path.exists(f'{main_path}/net_names_all.csv'):
-                col_names = ["model_name"]
-                df_names = pd.DataFrame(columns=col_names)
-                df_names.loc[0] = model_name
-            else:
-                df_names = pd.read_csv(f'{main_path}/net_names_all.csv')
-                if model_name not in df_names.values:
-                    print(df_names.shape[0])
-                    df_names.loc[df_names.shape[0]] = model_name
-            # save renewed version
-            df_names.to_csv(f'{main_path}/net_names_all.csv', index=False)
+        t1 = time.time()
+        print(f"Loaded {model_name} in {t1 - t0} s")
 
-            i = 0
-            #for i in range(len(wmat_name_ls)):
-            wmat_idx = 0
-            names = []
-            for widx in range(len(model.trainable_variables)):
-                names.append(model.trainable_variables[widx].name)
-                if len(model.trainable_variables[widx]._shape) > 1:     
-                    weights = torch.from_numpy(model.trainable_variables[widx].numpy().flatten())
-                    torch.save(weights, f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}")
+        # path for saving the weights
+        #main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
+        main_path = os.getcwd()
+        weight_path = f"{main_path}/weights_all_tf"
+        if not os.path.exists(main_path):
+            os.makedirs(main_path)
+        if not os.path.exists(weight_path):
+            os.makedirs(weight_path)
 
-                    print(rf"W{i}: {wmat_idx}, dim: {model.trainable_variables[widx]._shape} done!")
-                    i += 1
-                wmat_idx += 1
+        # create dataframe that stores the model_name
+        if not os.path.exists(f'{main_path}/net_names_all.csv'):
+            col_names = ["model_name"]
+            df_names = pd.DataFrame(columns=col_names)
+            df_names.loc[0] = model_name
+        else:
+            df_names = pd.read_csv(f'{main_path}/net_names_all.csv')
+            if model_name not in df_names.values:
+                print(df_names.shape[0])
+                df_names.loc[df_names.shape[0]] = model_name
+        # save renewed version
+        df_names.to_csv(f'{main_path}/net_names_all.csv', index=False)
 
-            # clear some space
-            t_last = time.time()
-            print(f"{model_name}: Ws of {i} stored in {t_last - t1} s!")  
-            print("All weight names") 
-            print(names)       
-        except (NotImplementedError,ValueError):
-            print(f"({model_name},n_model) not impleneted!")
+        i = 0
+        #for i in range(len(wmat_name_ls)):
+        wmat_idx = 0
+        names = []
+        for widx in range(len(model.trainable_variables)):
+            names.append(model.trainable_variables[widx].name)
+            if len(model.trainable_variables[widx]._shape) > 1:     
+                weights = torch.from_numpy(model.trainable_variables[widx].numpy().flatten())
+                torch.save(weights, f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}")
+
+                print(rf"W{i}: {wmat_idx}, dim: {model.trainable_variables[widx]._shape} done!")
+                i += 1
+            wmat_idx += 1
+
+        # clear some space
+        t_last = time.time()
+        print(f"{model_name}: Ws of {i} stored in {t_last - t1} s!")  
+        print("All weight names") 
+        print(names)       
+    except (NotImplementedError,ValueError):
+        print(f"({model_name},n_model) not impleneted!")
       
 def submit(*args):
     from qsub import qsub
