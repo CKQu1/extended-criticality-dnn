@@ -77,6 +77,7 @@ def submit_preplot(path):
 # ----- plot -----
 
 def SEM_plot(path='', layer=None):
+    phase_path = f"/project/phys_DL/dnn_project"
     fnames = [fname for fname in os.listdir(path)
               if 'rep' not in fname and fname.endswith('txt')]
     xs = []
@@ -99,10 +100,10 @@ def SEM_plot(path='', layer=None):
         # phase boundaries
         boundaries = []
 #        boundaries.append(pd.read_csv(f"phasediagram/phasediagram_pow_1_line_1.csv", header=None))
-        boundaries.append(pd.read_csv(f"phasediagram/ordered.csv", header=None))
+        boundaries.append(pd.read_csv(f"{phase_path}/phasediagram/ordered.csv", header=None))
         for i in list(range(1,102,10)):
 #            boundaries.append(pd.read_csv(f"phasediagram/phasediagram_pow_{i}_line_2.csv", header=None))
-            boundaries.append(pd.read_csv(f"phasediagram/pow_{i}.csv", header=None))
+            boundaries.append(pd.read_csv(f"{phase_path}/phasediagram/pow_{i}.csv", header=None))
         bound1 = boundaries[0]
         #
         layers = list(map(int, layer.split(',')))
@@ -110,37 +111,44 @@ def SEM_plot(path='', layer=None):
         nrows = int(np.ceil(len(layers)/ncols))
         fig, axes = plt.subplots(nrows, ncols,
                                  constrained_layout=True,
-                                 sharex=True, sharey=True)
+                                 sharex=True, sharey=True,
+                                 figsize=(9.5,7.142))       
         for i, l in enumerate(layers):
             ax = axes.flat[i]
+            ax.tick_params(axis='both',labelsize=tick_size)     # tick label size
             # plot boundaries for each axs
             ax.plot(bound1.iloc[:,0], bound1.iloc[:,1], 'k')
             for j in range(1,len(boundaries)):
                 bd = boundaries[j]
                 ax.plot(bd.iloc[:,0], bd.iloc[:,1], 'k--')#'k-.')
             # plot labels
-            if not i%ncols: ax.set_ylabel(r'$D_w^{1/\alpha}$', fontsize=14)
-            if i >= (nrows-1)*ncols: ax.set_xlabel(r'$\alpha$', fontsize=14)
-            ax.text(-0.1 if not i%ncols else 0.05, 1.2, f'({string.ascii_lowercase[i]})', transform=ax.transAxes, fontsize=14, fontweight='bold', va='top', ha='right')
+            if not i%ncols: ax.set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
+            if i >= (nrows-1)*ncols: ax.set_xlabel(r'$\alpha$', fontsize=axis_size)
+            #ax.text(-0.1 if not i%ncols else 0.1, 1, f'({string.ascii_lowercase[i]})', transform=ax.transAxes, fontsize=label_size, va='top', ha='right')    # fontweight='bold'
+            ax.text(0.1, 1.1, f'({string.ascii_lowercase[i]})', transform=ax.transAxes, fontsize=label_size, va='top', ha='right')
             # convert cs to a grid, assuming alphas and gs are evenly spaced
             mesh = np.zeros([len(alphas100), len(gs100)])
             for j in range(len(xs)):
                 mesh[alphas100.index(xs[j]), gs100.index(ys[j])] = cs[j,l]
 #            im = ax.scatter(xs, ys, c=cs[:,l],
-            im = ax.imshow(mesh.T, interpolation='quadric', aspect='auto', origin='lower', extent=(min(alphas100), max(alphas100), min(gs100), max(gs100)),
-                        cmap=plt.cm.get_cmap('plasma'),
+            im = ax.imshow(mesh.T, interpolation=interp, aspect='auto', origin='lower', extent=(min(alphas100), max(alphas100), min(gs100), max(gs100)),
+                        cmap=plt.cm.get_cmap(cm_type),
                         vmin=0, vmax=1
                         )
-            ax.set_title(f'Layer {l}')
-        fig.colorbar(im, ax=axes, shrink=.6)
-        plt.show()
+            ax.set_title(f'Layer {l}', fontsize=label_size)
+        cbar = fig.colorbar(im, ax=axes, shrink=.6)
+        cbar.ax.tick_params(labelsize=tick_size)
+        #plt.show()
+        fig1_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms"
+        plt.savefig(f"{fig1_path}/random_dnn.pdf", bbox_inches='tight')
+        
         return
     # debugging
         # phase boundaries
     boundaries = []
-    boundaries.append(pd.read_csv(f"phasediagram/phasediagram_pow_1_line_1.csv", header=None))
+    boundaries.append(pd.read_csv(f"{phase_path}/phasediagram/phasediagram_pow_1_line_1.csv", header=None))
     for i in list(range(1,10,2)):
-        boundaries.append(pd.read_csv(f"phasediagram/phasediagram_pow_{i}_line_2.csv", header=None))
+        boundaries.append(pd.read_csv(f"{phase_path}/phasediagram/phasediagram_pow_{i}_line_2.csv", header=None))
     bound1 = boundaries[0]
     # fig
     plt.figure()
@@ -157,8 +165,9 @@ def SEM_plot(path='', layer=None):
         for i in range(len(xs)):
             mesh[alphas100.index(xs[i]), gs100.index(ys[i])] = cs[i,l]
 #        plt.scatter(xs, ys, c=cs[:,l],
-        plt.imshow(mesh.T, interpolation='quadric', aspect='auto', origin='lower', extent = [min(alphas100), max(alphas100), min(gs100), max(gs100)],
-                    cmap=plt.cm.get_cmap('plasma'),
+        plt.imshow(mesh.T, interpolation=interp, aspect='auto', origin='lower', extent = [0.25, max(alphas100), min(gs100), max(gs100)],
+                    #extent = [min(alphas100), max(alphas100), min(gs100), max(gs100)],
+                    cmap=plt.cm.get_cmap(cm_type),
                     vmin=0, vmax=1
                     )
         plt.colorbar()
