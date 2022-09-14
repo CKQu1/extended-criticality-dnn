@@ -146,9 +146,9 @@ def submit(*args):
                       #for alpha100 in range(100, 201, 5)
                       #for g100 in range(5, 301, 5)
                       #for alpha100 in range(100, 201, 25)
-                      for alpha100 in [100,150,200]
+                      for alpha100 in [150,200]
                       #for g100 in [25, 100, 300]
-                      for g100 in [300]
+                      for g100 in [100, 300]
                       #for alpha100 in [100]
                       #for g100 in [1, 100]
                       ]
@@ -180,10 +180,11 @@ def submit_preplot(*args):
 #def submit_preplot(path):
     data_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
     # find the `alpha100`s and `g100`s of the files in the folder
-    #pbs_array_data = set([tuple(re.findall('\d+', fname)[:2]) for fname in os.listdir(data_path)
-    #                  if all(s in fname for s in ('alpha', 'g', 'gcircles'))])
+    pbs_array_data = set([tuple(re.findall('\d+', fname)[:2]) for fname in os.listdir(data_path)
+                      if all(s in fname for s in ('alpha', 'g', 'gcircles'))])
 
-    pbs_array_data = [(100,300), (150,300), (200,300)]
+    #pbs_array_data = [(100,300), (150,300), (200,300)]
+    #pbs_array_data = [(100,300), (150,300), (200,300)]
     print(pbs_array_data)
 
     from qsub import qsub
@@ -193,12 +194,13 @@ def submit_preplot(*args):
 
 # ----- plot -----
 
-def gcircle_plot(*args):
+def gcircle_plot(*args, cbar_separate=True):
 
     #alpha100_ls, g100_ls = [200], [1]
     #alpha100_ls, g100_ls = [100,150,200], [1,100,200]
     #alpha100_ls, g100_ls = [100,150,200], [25,100,200]
-    alpha100_ls, g100_ls = [100,150,200], [25,100,300]
+    #alpha100_ls, g100_ls = [100,150,200], [25,100,300]
+    alpha100_ls, g100_ls = [100,150,200], [10,100,300]
 
     from time import time
     t0 = time()
@@ -216,6 +218,8 @@ def gcircle_plot(*args):
     # colorbar
     #cm = cm.get_cmap('plasma')
     cm = cm.get_cmap('twilight')
+    plt.rcParams["font.family"] = "serif"     # set plot font globally
+    #plt.rcParams["font.family"] = "Helvetica"
 
     tick_size = 18.5
     label_size = 18.5
@@ -312,13 +316,14 @@ def gcircle_plot(*args):
                 #hs_proj[ii] = hs_proj[ii] * singular_values[ii, 0:3]
                 x, y ,z = hs_proj[ii, :, 0], hs_proj[ii, :, 1],hs_proj[ii, :, 2]
 
-                im = ax.scatter(x , y , z, c=thetas, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, cmap=cm)
+                im = ax.scatter(x , y , z, c=thetas, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, alpha=1, cmap=cm)
                 #im = ax.scatter(x , y , z, c=z, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, cmap=cm)
                 # lines
-                #ax.plot(x , y , z,color='k', zorder=0, linewidth=0.25, alpha=.35)
+                if alpha != 2:
+                    ax.plot(x , y , z,color='k', zorder=0, linewidth=0.25, alpha=.35)
                 ax.zaxis.set_rotate_label(False) 
 
-                ax.set_title(r"$D_w^{1/\alpha}$ = " + f"{m}", loc='left', fontsize=label_size - 3)
+                #ax.set_title(r"$D_w^{1/\alpha}$ = " + f"{m}", loc='left', fontsize=label_size - 3)
 
                 if fig_ii == 2:
                     #fig.text(0.07, vert_dists[f_ii], r"$D_w^{1/\alpha}$" + f" = {m}", rotation=90, va='center', fontsize=label_size - 2)
@@ -361,21 +366,37 @@ def gcircle_plot(*args):
                 ins.set_xticks(list(range(1,6)))
                 ins.set_ylim(0,1)
 
-        # colorbar
-        fig.subplots_adjust(right=0.8)
-        cbar_ax = fig.add_axes([0.85, 0.20, 0.015, 0.75])
-        cbar_ticks = [0, np.pi, 2*np.pi]
-        cbar = fig.colorbar(im, cax=cbar_ax, ticks=cbar_ticks)
-        cbar.ax.set_yticklabels(['0', r'$\pi$', r'$2\pi$'])
+        # colorbar (in all plots)
+        if not cbar_separate:       
+            fig.subplots_adjust(right=0.8)
+            cbar_ax = fig.add_axes([0.85, 0.20, 0.015, 0.75])
+            cbar_ticks = [0, np.pi, 2*np.pi]
+            cbar = fig.colorbar(im, cax=cbar_ax, ticks=cbar_ticks)
+            cbar.ax.set_yticklabels(['0', r'$\pi$', r'$2\pi$'],labelsize=tick_size)
+        
 
         # suptitle as alpha
-        fig.suptitle(rf"$\alpha$ = {alpha}", fontsize=label_size)
+        #fig.suptitle(rf"$\alpha$ = {alpha}", fontsize=label_size)
 
         plt.savefig(f"{plot_path}/proj3d_single_alpha={alpha}.pdf", bbox_inches='tight')
         print(f"alpha={alpha} done!")
         #plt.savefig(f"{plot_path}/proj3d_{alpha}.pdf")
-        plt.clf()
+        #plt.clf()
+        plt.close()
         #quit()
+
+    # separate colorbar
+    if cbar_separate:    
+        #fig.subplots_adjust(right=0.8)
+        fig = plt.figure()
+        cbar_ax = fig.add_axes([0.85, 0.20, 0.03, 0.75])
+        cbar_ticks = [0, np.pi, 2*np.pi]
+        cbar = fig.colorbar(im, cax=cbar_ax, ticks=cbar_ticks)
+        cbar.ax.set_yticklabels(['0', r'$\pi$', r'$2\pi$'])
+        cbar.ax.tick_params(axis='y', labelsize=tick_size)
+        
+        plt.savefig(f"{plot_path}/proj3d_colorbar.pdf", bbox_inches='tight')   
+        
 
     print(f"{time() - t0} s!")
 
