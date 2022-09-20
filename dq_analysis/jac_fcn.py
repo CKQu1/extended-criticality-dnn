@@ -100,13 +100,13 @@ def submit(*args):
 
 # ----- preplot -----
 
-def jac_to_dq(alpha100, g100, input_idx, epoch, *args):
+def jac_to_dq(alpha100, g100, input_idx, epoch, post, reig, *args):
     import numpy as np    
     import torch
     from numpy import linalg as la
     from tqdm import tqdm
 
-    post, reig = 0, 1
+    #post, reig = 0, 1
     post = int(post)
     assert post == 1 or post == 0, "No such option!"
     reig = int(reig)    # whether to compute for right eigenvector or not
@@ -203,16 +203,24 @@ def jac_to_dq(alpha100, g100, input_idx, epoch, *args):
     np.savetxt(outpath, dq_stds)
 
 
-def submit_preplot(*args):
+def submit_preplot(*args,post=1,reig=0):
 #def submit_preplot(path):
 
-    data_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/jac_layerwise"
+    post = int(post)
+    assert post == 1 or post == 0, "No such option!"
+    reig = int(reig)    # whether to compute for right eigenvector or not
+    assert reig == 1 or reig == 0, "No such option!"
+    post_dict = {0:'pre', 1:'post'}
+
+    # change the path accordingly
+    #data_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/jac_layerwise"
+    data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
     # find the `alpha100`s and `g100`s of the files in the folder
     # dw_alpha{alpha100}_g{g100}_ipidx{input_idx}_epoch{epoch}
-    pbs_array_data = set([tuple(re.findall('\d+', fname)[:4]) for fname in os.listdir(data_path)
+    pbs_array_data = set([tuple(re.findall('\d+', fname)[:4]) + (int(post),int(reig)) for fname in os.listdir(data_path)
                       if all(s in fname for s in ('dw', 'alpha', 'g', 'ipidx', 'epoch'))])
 
-    pbs_array_data = set([tuple(re.findall('\d+', fname)[:4]) for fname in os.listdir(data_path) if all(s in fname for s in ('dw', 'alpha', 'g', 'ipidx', 'epoch'))])
+    #pbs_array_data = set([tuple(re.findall('\d+', fname)[:4]) for fname in os.listdir(data_path) if all(s in fname for s in ('dw', 'alpha', 'g', 'ipidx', 'epoch'))])
 
     # test
     #pbs_array_data = { ('100', '100', '0', '650'), ('200', '100', '0', '650') }
@@ -232,7 +240,11 @@ def submit_preplot(*args):
     from qsub import qsub
     qsub(f'python {sys.argv[0]} jac_to_dq', pbs_array_data, 
          path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/',
-         P='phys_DL')
+         #P='phys_DL'
+         P='dnn_maths'
+         #P='PDLAI'
+         #P='ddl'
+        )
 
 # ----- plot -----
 
