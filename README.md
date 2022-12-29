@@ -93,8 +93,16 @@ To plot the circular manifold projected on the top 3 principal components (PC):
 Please refer to the manuscript.
 
 
-## Code references
+## Github references
 
 [1] Anomalous diffusion dynamics of SGD, https://github.com/ifgovh/Anomalous-diffusion-dynamics-of-SGD
 
 [2] Exponential expressivity in deep neural networks through transient chaos, https://github.com/ganguli-lab/deepchaos
+
+[3] Neural representational geometry underlies few-shot concept learning, https://github.com/bsorsch/geometry-fewshot-learning
+
+## Gist references
+
+[1] https://gist.github.com/asemptote/3c9f901f1346dffb29d21742cb83c933 (original version of train_supervised.py)
+
+[2] https://gist.github.com/CKQu1/c62b1205ac4df74da95927d9b8b78879 (forked version of [1])
