@@ -34,7 +34,21 @@ We extract pretrained networks from Pytorch and iteratively fit the entries of e
 
 ## Network training
 
-The main focus of theory is revolved around fully-connected neural networks, the following are examples of training, please see `main.py` for training options. For network types, please see `train_DNN_code/model_loader.py` for loading method and the module `train_DNN_code/models` for model options.
+The following includes the updated and old scripts for network-training where all the necessary quantities associated in the manuscript are saved accordingly.
+
+### New version
+
+This updated training script is more concise and keeps log of all previously trained networks. To train heavy-tailed/Gaussian initialized multilayer perceptrons (MLPs):
+
+`python train_supervised.py train_ht_dnn mnist 100 100 sgd 1024 None None`
+
+To train heavy-tailed/Gaussian initialized convolution neural networks (CNNs):
+
+`python train_supervised.py train_ht_cnn cifar10 100 100 sgd alexnet fc_default`
+
+### Old version 
+
+The original main focus of theory is revolved around fully-connected neural networks/MLPs, the following are examples of training, please see `main.py` for training options. For network types, please see `train_DNN_code/model_loader.py` for loading method and the module `train_DNN_code/models` for model options.
 
 `python main.py  --model=fc5_mnist_tanh  --init_dict=stable  --init_alpha=1.5  --init_scale_multiplier=2  --save_epoch=50  --epochs=650  --lr=0.1  --batch_size=256  --dataset=mnist`
 
