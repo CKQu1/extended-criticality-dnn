@@ -117,6 +117,8 @@ Please refer to the manuscript.
 
 ## Gist references
 
-[1] https://gist.github.com/asemptote/3c9f901f1346dffb29d21742cb83c933 (original version of train_supervised.py)
+[1] https://gist.github.com/asemptote/fa5de1eb976aa9fcb9d6510265dff6f9 (qsub.py)
 
-[2] https://gist.github.com/CKQu1/c62b1205ac4df74da95927d9b8b78879 (forked version of [1])
+[2] https://gist.github.com/asemptote/3c9f901f1346dffb29d21742cb83c933 (original version of train_supervised.py)
+
+[3] https://gist.github.com/CKQu1/c62b1205ac4df74da95927d9b8b78879 (forked version of [2])
