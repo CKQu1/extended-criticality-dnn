@@ -189,7 +189,10 @@ def pretrained_store_tf(n_model, *args):
     try:
         model_precursor = kapp.__dict__[model_name]
         #model = locals()["model_precursor"](pretrained=True)
+        # random weights?
         model = locals()["model_precursor"]()
+        # pretrained weights on Imagenet
+        model = locals()["model_precursor"](weights='imagenet', include_top=True)
 
         t1 = time.time()
         print(f"Loaded {model_name} in {t1 - t0} s")
