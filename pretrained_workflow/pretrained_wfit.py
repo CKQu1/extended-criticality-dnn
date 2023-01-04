@@ -12,6 +12,8 @@ import torch
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
 
+from ast import literal_eval
+from os.path import join, isfile
 from scipy.stats import levy_stable
 from scipy.stats import anderson_ksamp, ks_2samp, shapiro, distributions, norm, entropy
 from matplotlib import pyplot as plt
@@ -36,12 +38,14 @@ def get_name(weight_name):
 def replace_name(weight_name,other):
     assert isinstance(other,str)
     ls = weight_name.split("_")
-    ls [-3] = other
+    ls[-3] = other
+    #ls += other
     return '_'.join(ls)
 
 # powerlaw fit
-def pretrained_plfit(n_weight, *args):
+def pretrained_plfit(weight_path, save_dir, n_weight, pytorch=True):
 
+    pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
     #global weights_all, thing, weights, plaw_fit, fits, compare_ls
 
     t0 = time.time()
@@ -52,7 +56,11 @@ def pretrained_plfit(n_weight, *args):
     col_names = ['layer','fit_size','alpha','xmin','xmax', "R_ln", "p_ln", "R_exp", "p_exp", "R_trun", "p_trun","stable_alpha", "w_size"]  
 
     # path for loading the weights
-    main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
+    main_path = "/project/PDLAI/project2_data/pretrained_workflow"
+
+    # old method
+    """
+    #main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
     weight_path = f"{main_path}/weights_all"
     weights_all = next(os.walk(f'{weight_path}'))[2]
     weights_all.sort()
@@ -62,6 +70,18 @@ def pretrained_plfit(n_weight, *args):
     model_name = get_name(weight_name)
 
     model_path = f"{main_path}/plfit_all/{model_name}"
+    """
+
+    # new method
+    df = pd.read_csv(join(main_path, "weight_info.csv")) if pytorch else pd.read_csv(join(main_path, "weight_info_tf.csv"))
+    weight_name = df.loc[n_weight,"weight_file"]
+    i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+    model_name = df.loc[n_weight,"model_name"]
+
+    print(f"{n_weight}: {weight_name}")
+
+    model_path = join(save_dir, model_name)
+
     if not os.path.exists(model_path):
         os.makedirs(model_path)
     print(f"{model_path} directory set up!")
@@ -175,8 +195,9 @@ def pretrained_plfit(n_weight, *args):
 # -----------------------------------------------------------------------
 
 # levy alpha stable fit
-def pretrained_stablefit(n_weight, *args):
+def pretrained_stablefit(weight_path, save_dir, n_weight, pytorch=False):
 
+    pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
     #global weights_all, thing, weights, plaw_fit, fits, compare_ls
 
     t0 = time.time()
@@ -188,9 +209,15 @@ def pretrained_stablefit(n_weight, *args):
                  'ad sig level stable','ks stat stable', 'ks pvalue stable', 'cst',                               # stable
                  'ad sig level normal','ks stat normal', 'ks pvalue normal', 'shap stat', 'shap pvalue']          # normal 
 
+    main_path = "/project/PDLAI/project2_data/pretrained_workflow"
+    #weight_path = join(main_path, "weights_all")
+
+    # old method
+
+    """
     # path for loading the weights
-    main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
-    weight_path = f"{main_path}/weights_all"
+    #main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
+    #weight_path = join(main_path, "weights_all")
     weights_all = next(os.walk(f'{weight_path}'))[2]
     weights_all.sort()
 
@@ -199,8 +226,17 @@ def pretrained_stablefit(n_weight, *args):
     i, wmat_idx = int(i), int(wmat_idx)
     print(f"{n_weight}: {weight_name}")
     model_name = get_name(weight_name)
+    """
 
-    model_path = f"{main_path}/stablefit_all/{model_name}"
+    # new method
+    df = pd.read_csv(join(main_path, "weight_info.csv")) if pytorch else pd.read_csv(join(main_path, "weight_info_tf.csv"))
+    weight_name = df.loc[n_weight,"weight_file"]
+    i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+    model_name = df.loc[n_weight,"model_name"]
+
+    print(f"{n_weight}: {weight_name}")
+
+    model_path = join(save_dir, model_name)
     if not os.path.exists(model_path):
         os.makedirs(model_path)
     print(f"{model_path} directory set up, fitting now!")
@@ -318,24 +354,65 @@ def pretrained_stablefit(n_weight, *args):
     print(f"{weight_name} done in {t_last - t0} s!") 
 
 def submit(*args):
-    
-    p = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow/weights_all"
-    #total_weights = len([weight_ii for weight_ii in os.walk(p)][1:])
-    total_weights = len(next(os.walk(f'{p}'))[2])
 
-    from qsub import qsub
-    pbs_array_data = [(f'{n_weight}', str(dummy))
-                      for n_weight in list(range(total_weights))
-                      #for n_weight in list(range(3))
-                      #for n_weight in [7, 54, 199, 440, 636]
-                      for dummy in [0]
-                      ]
+    #global df, model_name, weight_name, i, wmat_idx, main_path, stablefit_path, root_path
+    
+    #root_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow/weights_all"
+    main_path = "/project/PDLAI/project2_data/pretrained_workflow"
+
+    pytorch = False
+
+    if pytorch:
+        # --- Pytorch ---
+        root_path = join(main_path, "weights_all")
+        stablefit_path = join(main_path, "stablefit_all")
+        df = pd.read_csv(join(main_path, "weight_info.csv"))
+    else:
+        # ---TensorFlow ---
+        root_path = join(main_path, "weights_all_tf")
+        stablefit_path = join(main_path, "stablefit_all_tf")
+        df = pd.read_csv(join(main_path, "weight_info_tf.csv"))
+
+    print(stablefit_path)
+    #total_weights = len([weight_ii for weight_ii in os.walk(p)][1:])
+    weights_all = next(os.walk(root_path))[2]
+    weights_all.sort()
+    total_weights = len(weights_all)
+    
+    print(df.shape)
+    assert total_weights == df.shape[0]
+
+    from qsub import qsub, job_divider
+    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
+
+    pbs_array_data = []
+
+    for n_weight in list(range(total_weights)): 
+        model_name = df.loc[n_weight,"model_name"]
+        weight_name = df.loc[n_weight,"weight_file"]
+        i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+        plot_exist = isfile( join(stablefit_path,model_name, f"{replace_name(weight_name,'plot')}.pdf") )
+        stablefit_exist = isfile( join(stablefit_path,model_name, f"{replace_name(weight_name,'stablefit')}.csv") )
+        if not (plot_exist or stablefit_exist):
+            pbs_array_data.append( (root_path, stablefit_path, n_weight, pytorch) )
+
     #qsub(f'python geometry_preplot.py {" ".join(args)}', pbs_array_data, path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/metrics_postact/', P='phys_DL')
     #qsub(f'python pretrained_workflow/pretrained_wfit.py {" ".join(args)}', pbs_array_data, path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow', P='phys_DL', mem="3GB")
-    qsub(f'python pretrained_workflow/pretrained_wfit.py {" ".join(args)}', pbs_array_data, 
-         path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow', 
-         P='phys_DL', 
-         mem="3GB")
+
+    print(len(pbs_array_data))
+    
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+
+        qsub(f'python {sys.argv[0]} {" ".join(args)}', 
+             pbs_array_true, 
+             #path='/project/phys_DL/project2_data/pretrained_workflow',
+             path='/project/PDLAI/project2_data/pretrained_workflow',  
+             P=project_ls[pidx], 
+             mem="2GB")  
+    
 
 if __name__ == '__main__':
     import sys
