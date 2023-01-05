@@ -20,7 +20,7 @@ def pve_plot(net_type, init_alpha100, init_g100, root_path, fname, plot_type="sn
 
     assert plot_type == "snr" or plot_type == "err", "plot_type does not exist!"
 
-    if "PDLAI" in root_path:
+    if "trained_mlps" in root_path:
         matches = [net[0] for net in os.walk(root_path) if f"fc10_mnist_tanh_id_stable{init_alpha100}_{init_g100}_epoch650_" in net[0]]
     else:
         if "alexnets_nomomentum" in root_path:

@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import scipy.io as sio
+import sys
 
 import pandas as pd
 import seaborn as sns
@@ -24,7 +25,7 @@ plt.rcParams["font.family"] = "serif"     # set plot font globally
 fcn = "fc10"
 net_type = f"{fcn}_mnist_tanh"
 #net_type = f"{fcn}_mnist_tanh_2"
-path = join(root_path, "trained_mlps", "fcn_grid", f"{fcn}_grid")
+path = join(root_data, "trained_mlps", "fcn_grid", f"{fcn}_grid")
 #path = f"{root_path}/trained_mlps/fcn_grid/{fcn}_grid128"
 #net_ls = [net[0] for net in os.walk(path)]
 net_ls = [ f.path for f in os.scandir(path) if f.is_dir() and "epoch650" in f.path ]
@@ -38,7 +39,7 @@ epoch_last = 650
 # phase boundaries
 
 # new version
-bound1 = pd.read_csv(f"{root_path}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
+bound1 = pd.read_csv(f"{root_data}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
 boundaries = []
 bd_path = "/project/phys_DL/phasediagram"
 for i in range(1,92,10):
@@ -213,10 +214,10 @@ cbar.ax.tick_params(labelsize=tick_size)
 print(f"Good: {good}")
 
 plt.tight_layout()
-plt.show()
+#plt.show()
 
-fig1_path = join(root_path, "figure_ms")
-#plt.savefig(f"{fig1_path}/{net_type}_grid_snr_m={ms[midx]}_D={ks[kidx]}_{fn}_pve.pdf", bbox_inches='tight')
+fig1_path = join(root_data, "figure_ms")
+plt.savefig(f"{fig1_path}/{net_type}_grid_snr_m={ms[midx]}_D={ks[kidx]}_{fn}_pve.pdf", bbox_inches='tight')
 
 print("Figure 1")
 print("\n")

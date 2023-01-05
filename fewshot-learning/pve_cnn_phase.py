@@ -13,7 +13,7 @@ from path_names import root_data
 cm_type = 'CMRmap'
 interp = "quadric"
 # plot settings
-import pubplot.pubplot as ppt
+import pubplot as ppt
 plt.rc('font', **ppt.pub_font)
 plt.rcParams.update(ppt.plot_sizes(False))
 
@@ -23,7 +23,7 @@ axis_size = 16.5
 legend_size = 14
 linewidth = 0.8
 
-trained_path = "/project/dyson/dyson_dl/alexnets_nomomentum"
+trained_path = join(root_data, "trained_cnns", "alexnets_nomomentum")
 net_ls = [ f.path for f in os.scandir(trained_path) if f.is_dir() and "epochs=100" in f.path ]
 epoch_last = int(net_ls[0][net_ls[0].index("epochs=")+7:])
 print(trained_path)
@@ -160,12 +160,12 @@ for pidx in range(2):
     cbar.ax.tick_params(labelsize=tick_size)
 
 plt.tight_layout()
-plt.show()
+#plt.show()
 
 #net_type = "alexnet"
 net_type = model_info.loc[model_info.index[0],'net_type']
 dataname = model_info.loc[model_info.index[0],'name']
-#plt.savefig(f"root_data/figure_ms/{net_type}_{dataname}_{acc_type}_epoch={epoch}_grid_all.pdf", bbox_inches='tight')
+plt.savefig(f"{root_data}/figure_ms/{net_type}_{dataname}_{acc_type}_epoch={epoch}_grid_all.pdf", bbox_inches='tight')
 
 print(f"Loaded networks: {good}")
 print(f"Existing networks folders: {len(net_ls)}")
