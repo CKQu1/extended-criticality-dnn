@@ -4,6 +4,7 @@ import os
 import pandas as pd  
 import path_names
 import torch
+from os.path import join
 from time import time
 from torch.autograd import Variable
 from tqdm import tqdm
@@ -15,11 +16,12 @@ print(dev)
 
 # Record relevants attributes for trained neural networks -------------------------------------------------------
 
-def log_model(log_path, model_path, **kwargs):    
-    fi = f"{log_path}/net_log.csv"
+def log_model(log_path, model_path, file_name="net_log", local_log=True, **kwargs):    
+    fi = f"{log_path}/{file_name}.csv"
     df = pd.DataFrame(columns = kwargs)
     df.loc[0,:] = list(kwargs.values())
-    df.to_csv(f"{model_path}/log", index=False)
+    if local_log:
+        df.to_csv(f"{model_path}/log", index=False)
     if os.path.isfile(fi):
         df_og = pd.read_csv(fi)
         # outer join
@@ -43,8 +45,7 @@ def read_log():
 def save_weights(model, path):
     weights_all = np.array([]) # save all weights vectorized 
     for p in model.parameters():
-        weights_all = np.concatenate((weights_all, p.flatten().data.numpy()), axis=0)
-
+        weights_all = np.concatenate((weights_all, p.detach().cpu().numpy().flatten()), axis=0)
     #np.savetxt(f"{path}", weights_all, fmt='%f')
     # saveas .npy instead
     np.save(f"{path}", weights_all)
@@ -55,21 +56,33 @@ def get_weights(net):
     return [p.data for p in net.parameters()]
 
 import torchvision
+from torchvision import datasets
 
 def transform_cifar10(image):   # flattening cifar10
     return (torch.Tensor(image.getdata()).T.reshape(-1)/255)*2 - 1
 
-def set_data(name, rshape, **kwargs):
+def set_data(name, rshape: bool, **kwargs):
     import torchvision.transforms as transforms
 
-    if rshape:
-        transform=transform_cifar10
+    data_path = "data"
+    if rshape:        
         if name == 'mnist':
-            train_ds = torchvision.datasets.MNIST('mnist', download=True, transform=transform)
-            valid_ds = torchvision.datasets.MNIST('mnist', download=True, transform=transform, train=False)
+            transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,)),
+                                            transforms.Lambda(lambda x: torch.flatten(x))]
+                                            )
+            #transform = transform_cifar10
+            train_ds = datasets.MNIST(root=data_path, download=True, transform=transform)
+            valid_ds = datasets.MNIST(root=data_path, download=True, transform=transform, train=False)
+        elif name == "fashionmnist":
+            transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5,),(0.5,)), 
+                                            transforms.Lambda(lambda x: torch.flatten(x))]
+                                            )
+            train_ds = datasets.FashionMNIST(root=data_path, download=True, train=True, transform=transform)
+            valid_ds = datasets.FashionMNIST(root=data_path, download=True, train=False, transform=transform)
         elif name == 'cifar10':
-            train_ds = torchvision.datasets.CIFAR10('cifar10', download=True, transform=transform)
-            valid_ds = torchvision.datasets.CIFAR10('cifar10', download=True, transform=transform, train=False)
+            transform=transform_cifar10
+            train_ds = datasets.CIFAR10(root=data_path, download=True, transform=transform)
+            valid_ds = datasets.CIFAR10(root=data_path, download=True, transform=transform, train=False)
         else:
             raise NameError("name is not defined in function set_data")
 
@@ -77,6 +90,7 @@ def set_data(name, rshape, **kwargs):
         normalize = transforms.Normalize(mean=[x/255.0 for x in [125.3, 123.0, 113.9]],
                                          std=[x/255.0 for x in [63.0, 62.1, 66.7]])
 
+        
         transform_train = transforms.Compose([
             transforms.ToTensor(),
             normalize,
@@ -87,34 +101,73 @@ def set_data(name, rshape, **kwargs):
             normalize,
         ])
 
+        """
+        transform_train = transforms.Compose([transforms.Resize((70, 70)),
+                                               transforms.RandomCrop((64, 64)),
+                                               transforms.ToTensor(),
+                                               normalize,])
+
+        transform_test = transforms.Compose([transforms.Resize((70, 70)),
+                                              transforms.CenterCrop((64, 64)),
+                                              transforms.ToTensor(),
+                                              normalize,])
+        """
+
         if name == 'mnist':
             """
             train_ds = torchvision.datasets.MNIST('mnist', download=True, transform=transform_train)
             valid_ds = torchvision.datasets.MNIST('mnist', download=True, transform=transform_test, train=False)
             """
             normalize = transforms.Normalize((0.1307,), (0.3081,))
-            train_ds = torchvision.datasets.MNIST('mnist', train=True, download=True, transform=transforms.Compose([transforms.ToTensor(), normalize,]))
-            valid_ds = torchvision.datasets.MNIST('mnist', train=False, download=True, transform=transforms.Compose([transforms.ToTensor(), normalize,]))
+            train_ds = torchvision.datasets.MNIST(root=data_path, train=True, download=True, transform=transforms.Compose([transforms.ToTensor(), normalize,]))
+            valid_ds = torchvision.datasets.MNIST(root=data_path, train=False, download=True, transform=transforms.Compose([transforms.ToTensor(), normalize,]))
+
+        elif name == 'cifar100':
+            #mean and std of cifar100 dataset
+            CIFAR100_TRAIN_MEAN = (0.5070751592371323, 0.48654887331495095, 0.4409178433670343)
+            CIFAR100_TRAIN_STD = (0.2673342858792401, 0.2564384629170883, 0.27615047132568404)
+
+            #CIFAR100_TEST_MEAN = (0.5088964127604166, 0.48739301317401956, 0.44194221124387256)
+            #CIFAR100_TEST_STD = (0.2682515741720801, 0.2573637364478126, 0.2770957707973042)
+
+            transform_train = transforms.Compose([
+                #transforms.ToPILImage(),
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomRotation(15),
+                transforms.ToTensor(),
+                transforms.Normalize(CIFAR100_TRAIN_MEAN, CIFAR100_TRAIN_STD)
+            ])
+            #cifar100_training = CIFAR100Train(path, transform=transform_train)
+            train_ds = torchvision.datasets.CIFAR100(root=data_path, train=True, download=True, transform=transform_train)
+
+            transform_test = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(CIFAR100_TRAIN_MEAN, CIFAR100_TRAIN_STD)
+            ])
+            #cifar100_test = CIFAR100Test(path, transform=transform_test)
+            valid_ds = torchvision.datasets.CIFAR100(root=data_path, train=False, download=True, transform=transform_test)
+
 
         elif name == 'cifar10':
-            if "cifar_upsize" in kwargs and kwargs.get["cifar_upsize"] == True:     # for AlexNet (torch version)
+            if "cifar_upsize" in kwargs and kwargs.get("cifar_upsize") == True:     # for AlexNet (torch version)
                 upsize_cifar10 = transforms.Compose([
                     transforms.Resize(256),
                     transforms.CenterCrop(224),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 ])
-                train_ds = torchvision.datasets.CIFAR10('cifar10', download=True, transform=upsize_cifar10)
-                valid_ds = torchvision.datasets.CIFAR10('cifar10', download=True, transform=upsize_cifar10, train=False)
+                train_ds = torchvision.datasets.CIFAR10(root=join(data_path, "cifar10_upsize"), download=True, transform=upsize_cifar10)
+                valid_ds = torchvision.datasets.CIFAR10(root=join(data_path, "cifar10_upsize"), download=True, transform=upsize_cifar10, train=False)
             else:
-                train_ds = torchvision.datasets.CIFAR10('cifar10', download=True, transform=transform_train)
-                valid_ds = torchvision.datasets.CIFAR10('cifar10', download=True, transform=transform_test, train=False)
+                train_ds = torchvision.datasets.CIFAR10(root=data_path, download=True, transform=transform_train)
+                valid_ds = torchvision.datasets.CIFAR10(root=data_path, download=True, transform=transform_test, train=False)
 
         elif name == 'cifar10circ':
             normalize = transforms.Normalize(mean=[0.4914, 0.4822, 0.4465],
                                              std=[0.2023, 0.1994, 0.2010])
             
-            train_ds = torchvision.datasets.CIFAR10(root='cifar10', train=True, download=True,
+            train_ds = torchvision.datasets.CIFAR10(root=join(data_path,"cifar10_circ"), train=True, download=True,
                                                     transform=transforms.Compose([
                                                     transforms.RandomCrop(32, padding=4),
                                                     transforms.RandomHorizontalFlip(),
@@ -122,7 +175,7 @@ def set_data(name, rshape, **kwargs):
                                                     normalize,
                                                     ]))
             
-            valid_ds = torchvision.datasets.CIFAR10(root='cifar10', train=False, download=True,
+            valid_ds = torchvision.datasets.CIFAR10(root=join(data_path,"cifar10_circ"), train=False, download=True,
                                                     transform=transforms.Compose([
                                                     transforms.ToTensor(),
                                                     normalize,
@@ -168,12 +221,20 @@ class Lambda(nn.Module):
 # Extra quantities
 
 def IPR(vec,q):
-    vec = torch.abs(vec.detach().cpu())
-    ipr = torch.sum(vec**(2*q))/torch.sum(vec**2)**q
+    if isinstance(vec, torch.Tensor):
+        vec = torch.abs(vec.detach().cpu())
+        ipr = torch.sum(vec**(2*q))/torch.sum(vec**2)**q
+    else:
+        vec = np.abs(vec)
+        ipr = np.sum(vec**(2*q))/np.sum(vec**2)**q
+
     return ipr
 
 def compute_dq(vec,q):
-    return  (torch.log(IPR(vec,q))/np.log(len(vec)))/(1 - q)
+    if isinstance(vec, torch.Tensor):
+        return  (torch.log(IPR(vec,q))/np.log(len(vec)))/(1 - q)
+    else:
+        return  (np.log(IPR(vec,q))/np.log(len(vec)))/(1 - q)
 
 def layer_ipr(model,hidden_layer,lq_ls):
     arr = np.zeros([len(model.sequential),len(q_ls)])
@@ -231,10 +292,9 @@ def effective_dimension(model,hidden_layer,with_pc:bool,q_ls):    # hidden_layer
 
 # Training methods ----------------------------------------------------------------------------------------
 
-# loss
 def loss_batch(model, loss_func, xb, yb, opt=None, stats=True):
-    #xb = xb.to(dev)
-    #yb = yb.to(dev)
+    xb = xb.to(dev)
+    yb = yb.to(dev)
     model_xb = model(xb)
     loss = loss_func(model_xb, yb)
     if opt is not None:
@@ -254,7 +314,36 @@ def store_model(model, path ,save_type):
     elif save_type == 'numpy':
         save_weights(model, path)      # save as .npy (flattened)
     else:
-        raise TypeError("save_type does not exist!")     
+        raise TypeError("save_type does not exist!")  
+
+def get_eigs(W):
+    if W.shape[0] == W.shape[1]:
+        eigvals, _ = torch.eig(W)
+    else:   
+        # return as complex pair        
+        _, eigvals, _ = torch.svd(W)
+        eigvals = torch.stack( (eigvals, torch.zeros_like(eigvals)), 1)
+
+    return eigvals
+
+# save eigvals/singvals of weight matrices (should perhaps merge with stablefit_model)
+def store_model_eigvals(model, path):
+    Ws = get_weights(model)
+    wm_total = len(Ws)              # total number of weight matrices
+    for widx in range(wm_total):
+        if widx == 0:
+            eigvals_all = get_eigs(Ws[widx])
+        else:
+            eigvals_all = torch.cat((eigvals_all, get_eigs(Ws[widx])), 0)
+
+    # synchronize the GPU and ram to speed up cpu().numpy() conversion
+    # https://discuss.pytorch.org/t/convert-tensor-to-numpy-is-very-slow/122220
+    if dev.type != 'cpu':
+        torch.cuda.synchronize()
+
+    eigvals_all = eigvals_all.detach().cpu().numpy()
+    eigvals_all = eigvals_all[:,0] + eigvals_all[:,1] * 1j
+    np.save(f"{path}", eigvals_all)    
 
 # fit weight distribution for individually layers
 pconv = lambda alpha, beta, mu, sigma: (alpha, beta, mu - sigma * beta * np.tan(np.pi * alpha / 2.0), sigma)
@@ -262,35 +351,46 @@ def stablefit_model(model):
     Ws = get_weights(model)
     wm_total = len(Ws)              # total number of weight matrices
     stable_params = np.empty([wm_total, 4])
+
+    if dev.type != 'cpu':
+        torch.cuda.synchronize()
     for widx in range(wm_total):
-        stable_params[widx,:] = pconv(*levy_stable._fitstart(Ws[widx].flatten()))    
+        stable_params[widx,:] = pconv(*levy_stable._fitstart(Ws[widx].detach().cpu().numpy().flatten()))    
     return stable_params  
 
 def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0, 
-                save_type='torch', **kwargs):
+                save_type='numpy', **kwargs):
 
     """
-    Both `weight_save` and `stablefit_save` have 3 mods, 
+    Both `weight_save`, `stablefit_save`, `eigvals_save` have 3 mods, 
     - 0: save nothing
     - 1: save end of epoch
     - 2 save all steps
     """
+    assert save_type in ['numpy', 'torch'], "save_type does not exist!"
 
     start = time()
     model.train()
     save_epoch, save_step = kwargs.get('weight_save') == 1, kwargs.get('weight_save') == 2
     stablefit_epoch, stablefit_step = kwargs.get('stablefit_save') == 1, kwargs.get('stablefit_save') == 2
+    eigvals_epoch, eigvals_step = kwargs.get('eigvals_save') == 1, kwargs.get('eigvals_save') == 2
+
     params_step = np.zeros([len(train_dl),len(list(model.parameters())),4]) if stablefit_epoch else None
     for hidden_epoch in range(hidden_epochs):
         for batch_idx, (xb, yb) in enumerate(train_dl):
             loss_batch(model, loss_func, xb, yb, opt, stats=False)
             if save_step:    # needed if want to save all steps
                 store_model(model, f"{kwargs.get('epoch_path')}/weights_{batch_idx}", save_type)
+            if eigvals_step:
+                store_model_eigvals(model, f"{kwargs.get('epoch_path')}/eigvals_{batch_idx}")
             if stablefit_step:
                 params_step[batch_idx,:,:] = stablefit_model(model)
-    if save_epoch:    # save only the last step of each epoch
-        store_model(model, f"{kwargs.get('epoch_path')}", save_type)         
-    if stablefit_epoch:
+
+    if save_epoch and (not save_step):    # save only the last step of each epoch
+        store_model(model, f"{kwargs.get('epoch_path')}/weights", save_type)  
+    if eigvals_epoch and (not eigvals_step):
+        store_model_eigvals(model, f"{kwargs.get('epoch_path')}/eigvals")
+    if stablefit_epoch and (not stablefit_step):
         params_epoch = stablefit_model(model)
 
     losses, nums, corrects = zip(
@@ -299,46 +399,69 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
     train_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
     train_acc = np.sum(corrects) / np.sum(nums)
     model.eval()
-    
     with torch.no_grad():
         losses, nums, corrects = zip(
             *[loss_batch(model, loss_func, xb, yb) for xb, yb in valid_dl]
         )
     val_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
     val_acc = np.sum(corrects) / np.sum(nums)
+
+    # save levy alpha stable distribution (for MLP)
     if not (stablefit_epoch or stablefit_step):
         return (train_loss, train_acc, val_loss, val_acc, f'{time()-start:.2f}s')
     elif stablefit_epoch:
-        return (train_loss, train_acc, val_loss, val_acc, f'{time()-start:.2f}s'), stablefit_epoch
+        return (train_loss, train_acc, val_loss, val_acc, f'{time()-start:.2f}s'), params_epoch
     elif stablefit_step:
-        return (train_loss, train_acc, val_loss, val_acc, f'{time()-start:.2f}s'), stablefit_step
+        return (train_loss, train_acc, val_loss, val_acc, f'{time()-start:.2f}s'), params_step
+
+def get_optimizer(optimizer, model, **kwargs):
+    if optimizer == 'sgd':
+        opt = optim.SGD(model.parameters(), **kwargs)
+    elif optimizer == 'adam':
+        opt = optim.Adam(model.parameters(), **kwargs)
+    else:
+        raise ValueError("THIS OPTIMIZER DOES NOT EXIST!")
+    return opt
 
 from torch import optim
 import torch.nn.functional as F
 
-def train_ht_dnn(name, alpha100, g100, optimizer, bs, net_type = "fc", activation='tanh', hidden_structure=2, depth=10,  # network structure
-                 loss_func_name="cross_entropy", lr=0.001, num_workers=1, epochs=650,                                    # training setting
-                 save_epoch=50, weight_save=1, stablefit_save=0,                                                        # save data options
-                 with_ed=True, with_pc=True, with_ipr=False):                                                            # save extra data options
+# original setting
+"""
+(name, alpha100, g100, optimizer, bs, net_type = "fc", activation='tanh', hidden_structure=2, depth=10,  # network structure
+ loss_func_name="cross_entropy", lr=0.001, momentum=0.9, num_workers=1, epochs=650,                      # training setting
+ save_epoch=50, weight_save=1, stablefit_save=0,                                                        # save data options
+ with_ed=False, with_pc=False, with_ipr=False):
+"""
+
+# maybe write a network Wrapper to include differenet kinds of attributes like ED, IPR, etc
+
+def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, 
+                 net_type = "fc", activation='tanh', hidden_structure=2, depth=10,                                     # network structure
+                 loss_func_name="cross_entropy", lr=0.001, momentum=0, weight_decay=0, num_workers=1, epochs=650,                      # training setting
+                 save_epoch=50, weight_save=1, stablefit_save=1, eigvals_save=1,                                       # save data options
+                 with_ed=False, with_pc=False, with_ipr=False):
+                 #with_ed=True, with_pc=True, with_ipr=False):                                                            # save extra data options
+
+    #global train_ds, train_dl, model
 
     """
     Trains MLPs and saves weights along the steps of training, can add to save gradients, etc.
-    """
-    
+    """   
+
     from time import time; t0 = time()
     from NetPortal.models import ModelFactory
 
     alpha100, g100 = int(alpha100), int(g100)
-    alpha = int(alpha100)/100.
-    g = int(g100)/100.
-    bs = int(bs)
-    lr = float(lr)
+    alpha, g = int(alpha100)/100., int(g100)/100.
+    bs, lr = int(bs), float(lr)
     epochs = int(epochs)
     depth = int(depth)
     num_workers = int(num_workers)
 
     train_ds, valid_ds = set_data(name,True)
-    N = len(train_ds[0][0])
+    #N = len(train_ds[0][0])
+    N = train_ds[0][0].numel()
     C = len(train_ds.classes)
 
     # generate random id and date
@@ -351,7 +474,8 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, net_type = "fc", activatio
     model_path = f"{path_names.fc_path}/{net_type}{depth}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}"
     if not os.path.isdir(model_path): os.makedirs(f'{model_path}')
     # log marker
-    np.savetxt(f"{model_path}/epochs={epochs}_save_epoch={save_epoch}_weight_save={weight_save}_stablefit_save={stablefit_save}", np.array([0]))
+    np.savetxt(f"{model_path}/lr={lr}_momentum={momentum}_bs={bs}", np.array([0]))
+    np.savetxt(f"{model_path}/epochs={epochs}_save_epoch={save_epoch}_weight_save={weight_save}_stablefit_save={stablefit_save},eigvals_save={eigvals_save}", np.array([0]))
     np.savetxt(f"{model_path}/with_ed={with_ed}_with_ipr={with_ipr}_with_pc={with_pc}", np.array([0]))
 
     # move entire dataset to GPU
@@ -370,14 +494,24 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, net_type = "fc", activatio
         a = (C/N)**(1/depth)
         hidden_N = hidden_N + [int(N*a**l) for l in range(1, depth)]
     elif hidden_structure == 2:   # network setup 2 (square weight matrix)
-        hidden_N = hidden_N + [N for l in range(1, depth)]
+        hidden_N = hidden_N + [N]*(depth - 1)
     else: 
         assert isinstance(hidden_structure,list), 'hidden_N must be a list!'
         assert len(hidden_structure) == depth - 1, 'hidden_N length and depth inconsistent!'
         hidden_N += hidden_structure
 
     hidden_N.append(C)
+    # pretrained/saved weights    
+    """
+    if "init_path" in pretrained and "init_epoch" in pretrained:
+        kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+                  "init_path": pretrained.get("init_path"), "init_epoch": pretrained.get("init_epoch"),
+                  "activation": activation, "architecture": net_type}    
+    """
+    # randomly initialized weights
+    #else:
     kwargs = {"dims": hidden_N, "alpha": alpha, "g": g,
+              "init_path": None, "init_epoch": None,
               "activation": activation, "architecture": net_type}
     model = ModelFactory(**kwargs)
     # info
@@ -385,6 +519,12 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, net_type = "fc", activatio
     print(f"Network hidden layer structure: type {hidden_structure}" + "\n")
     print(f"Training method: {optimizer}, lr={lr}, batch_size={bs}, epochs={epochs}" + "\n")
     model.to(dev)   # move to CPU/GPU
+
+    print("Saving information into local model_path before training.")
+    # save information to model_path locally
+    log_model(model_path, model_path, file_name="net_log", local_log=False, net_type=net_type, model_dims=model.dims, model_id=model_id, train_date=train_date, name=name, 
+              alpha100=alpha100, g100=g100, activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, bs=bs, lr=lr, 
+              num_workers=num_workers, epochs=epochs, steps=steps)
 
     # for effective dimension (ED) analysis
     if with_pc or with_ipr:
@@ -401,24 +541,28 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, net_type = "fc", activatio
         train_ed, valid_ed = get_data(train_ds, valid_ds, len(train_ds))
         images_train, labels_train = next(iter(train_ed))
         images_valid, labels_valid = next(iter(valid_ed))
-        del train_ed, valid_ed
-    
-    if optimizer == 'sgd':
-        opt = optim.SGD(model.parameters(), lr=lr, momentum=0)
-    elif optimizer == 'adam':
-        opt = optim.Adam(model.parameters(), lr=lr)
-    else:
-        print("THIS OPTIMIZER DOES NOT EXIST!")
+        del train_ed, valid_ed   
+
+    opt_kwargs = {"lr": lr, "momentum": momentum, "weight_decay": weight_decay} if optimizer == "sgd" else {"lr": lr, "weight_decay": weight_decay}
+    opt = get_optimizer(optimizer, model, **opt_kwargs)
 
     # initial state of network
     print(f'Epoch 0:', end=' ')
     loss_func = F.__dict__[loss_func_name]
     epoch_path = f"{model_path}/epoch_0"
-    epoch0_data = train_epoch(model, loss_func, None, train_dl, valid_dl, epoch_path=epoch_path, weight_save=0, stablefit_save=0)
+    if not os.path.isdir(epoch_path): os.makedirs(epoch_path)
+    epoch0_data, stablefit_params = train_epoch(model, loss_func, None, train_dl, valid_dl, epoch_path=epoch_path, weight_save=1, stablefit_save=1, eigvals_save=1)
     print(epoch0_data)
     #if not os.path.isdir(f'{model_path}/epoch_0'): os.makedirs(f'{model_path}/epoch_0')
     acc_loss = pd.DataFrame(columns=['train loss', 'train acc', 'test loss', 'test acc'])
     acc_loss.loc[0,:] = epoch0_data[:-1]
+
+    if stablefit_save != 0:
+        stablefit_params_all = []
+        for widx in range(len(list(model.parameters()))):
+            stablefit_params_all.append( pd.DataFrame(columns=['alpha', 'beta', 'mu', 'sigma']) )
+        for widx in range(len(list(stablefit_params_all))):
+            stablefit_params_all[widx].loc[0,:] = stablefit_params[widx,:]
 
     if with_ed:
         with torch.no_grad():
@@ -443,21 +587,43 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, net_type = "fc", activatio
         #print(f'Epoch {(1+epoch)*(1+num_workers)}:', end=' ')
         print(f'Epoch {(1+epoch)*(num_workers)}:', end=' ')
         # record selected accuracies
-        #if epoch == 0.1:
+        epoch_path = f"{model_path}/epoch_{epoch + 1}"
         if (epoch+1) % save_epoch == 0 or epoch == epochs - 1:
             # train_loss, train_acc, val_loss, val_acc, epoch_time
-            epoch_path = f"{model_path}/epoch_{epoch + 1}"
-            #if not os.path.isdir(epoch_path): os.makedirs(epoch_path)
-            final_acc = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers,
-                                    epoch_path=epoch_path,
-                                    weight_save=weight_save, stablefit_save=stablefit_save)
+            if not os.path.isdir(epoch_path): os.makedirs(epoch_path)
+            if stablefit_save > 0:
+                final_acc, stablefit_params = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers,
+                                        epoch_path=epoch_path,
+                                        weight_save=weight_save, stablefit_save=stablefit_save, eigvals_save=eigvals_save)            
+            else:
+                final_acc = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers,
+                                        epoch_path=epoch_path,
+                                        weight_save=weight_save, stablefit_save=stablefit_save, eigvals_save=eigvals_save)
             
             print(final_acc)
-        else:
-            final_acc = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers,
-                                    epoch_path=epoch_path,
-                                    weight_save=0, stablefit_save=stablefit_save)
+        else:           
+            if (not os.path.isdir(epoch_path)) and stablefit_save > 0 and eigvals_save > 0: 
+                os.makedirs(epoch_path)
+                if stablefit_save > 0:
+                    final_acc, stablefit_params = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers,
+                                            epoch_path=epoch_path,
+                                            weight_save=0, stablefit_save=stablefit_save, eigvals_save=eigvals_save)
+                else:
+                    final_acc = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers,
+                                            epoch_path=epoch_path,
+                                            weight_save=0, stablefit_save=stablefit_save, eigvals_save=eigvals_save)
+
+            else:
+                final_acc = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers)                
+
             print(final_acc)
+
+        if stablefit_save == 1:
+            for widx in range(len(stablefit_params_all)):
+                stablefit_params_all[widx].loc[epoch+1,:] = stablefit_params[widx,:]
+        if stablefit_save == 2:
+            for widx in range(len(stablefit_params_all)):
+                stablefit_params_all[widx].loc[ epoch*steps + 1 : (epoch+1)*steps + 1 ,:] = stablefit_params[:,widx,:]        
 
         if with_ed:
             with torch.no_grad():
@@ -480,13 +646,21 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, net_type = "fc", activatio
 
         acc_loss.loc[epoch + 1,:] = final_acc[:-1]
 
+    # stablefit params
+    if stablefit_save == 1:
+        for widx in range(len(stablefit_params_all)):
+            stablefit_params_all[widx].to_csv(f"{model_path}/stablefit_epoch_widx={widx}")
+    elif stablefit_save == 2:
+        for widx in range(len(stablefit_params_all)):
+            stablefit_params_all[widx].to_csv(f"{model_path}/stablefit_step_widx={widx}")
+        
     # at least store accuracy at the end of each epoch
     acc_loss.to_csv(f"{model_path}/acc_loss", index=False)
 
     total_time = time() - t0
     # log dataframe
     log_path = path_names.log_path
-    log_model(log_path, model_path, net_type=net_type, model_dims=model.dims, model_id=model_id, train_date=train_date, name=name, alpha100=alpha100, g100=g100, 
+    log_model(log_path, model_path, file_name="net_log", net_type=net_type, model_dims=model.dims, model_id=model_id, train_date=train_date, name=name, alpha100=alpha100, g100=g100, 
               activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, bs=bs, lr=lr, num_workers=num_workers, 
               epochs=epochs, steps=steps, final_acc=final_acc, total_time=total_time)
 
@@ -499,8 +673,10 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, net_type = "fc", activatio
 
 # python torch_dnn.py train_submit_cnn train_ht_cnn
 def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, activation="tanh",                                             # network structure
-                 loss_func_name="cross_entropy", bs=1024, weight_decay=0, momentum=0, num_workers=1, epochs=1000,                             # training setting (weight_decay=0.0001)
-                 save_epoch=1000, weight_save=0, stablefit_save=0):                                                                           # save data options
+                 loss_func_name="cross_entropy", bs=128, weight_decay=0, momentum=0, num_workers=1, epochs=650,                             # training setting (weight_decay=0.0001)
+                 save_epoch=50, weight_save=1, stablefit_save=0):                                                                           # save data options
+
+    #global model, train_dl, valid_dl
 
     """
     For training CNNs and saving accuracies and losses.
@@ -510,18 +686,19 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
     from NetPortal.models import ModelFactory
 
     alpha100, g100 = int(alpha100), int(g100)
-    alpha = alpha100/100.
-    g = g100/100.
+    alpha, g = alpha100/100., g100/100.
 
-    bs = int(bs)
-    lr = float(lr)
+    bs, lr = int(bs), float(lr)
     lr_ls = [(0,lr)]
     epochs = int(epochs)
     num_workers = int(num_workers)
 
-    train_ds, valid_ds = set_data(name,False)
-    N = len(train_ds[0][0])
-    C = len(train_ds.classes)
+    if 'alexnet' in net_type and 'cifar' in name:
+        train_ds, valid_ds = set_data(name,False,cifar_upsize=True)
+        print("cifar upsized")
+    else:
+        train_ds, valid_ds = set_data(name,False)    
+    N, C = len(train_ds[0][0]), len(train_ds.classes)
 
     # generate random id and date
     import uuid
@@ -530,44 +707,47 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
     train_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
 
     # create path
-    model_path = f"{path_names.trained_path}/{net_type}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}"
+    model_path = join(f"{path_names.cnn_path}", f"{net_type}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}")
     if not os.path.isdir(model_path): os.makedirs(f'{model_path}')
 
     # log marker
     np.savetxt(f"{model_path}/{fc_init}", np.array([0]))
 
     # move entire dataset to GPU
+    """
     train_ds = TensorDataset(torch.stack([e[0] for e in train_ds]).to(dev),
                              torch.tensor(train_ds.targets).to(dev))
     valid_ds = TensorDataset(torch.stack([e[0] for e in valid_ds]).to(dev),
-                             torch.tensor(valid_ds.targets).to(dev))
+                             torch.tensor(valid_ds.targets).to(dev))    
+    """
 
     train_dl, valid_dl = get_data(train_ds, valid_ds, bs)#, num_workers=num_workers, pin_memory=True, persistent_workers=True)
     steps = len(train_dl)
     print("Data loaded.")
 
-    kwargs = {"alpha" :alpha, "g": g, "num_classes": C, "architecture": net_type, "activation": activation, "dataset": name, "fc_init": fc_init}
-    model = ModelFactory(**kwargs)
+    if net_type != 'resnext':
+        kwargs = {"alpha" :alpha, "g": g, "num_classes": C, "architecture": net_type, "activation": activation, "dataset": name, "fc_init": fc_init}
+        model = ModelFactory(**kwargs)
+    else:        
+        model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=False)
     # printed info
     print(model)
     print(f"Training method: {optimizer}, lr={lr}, batch_size={bs}, epochs={epochs}" + "\n")
     print(rf"Initialization: alpha={alpha}, g={g}" + "\n")
     model.to(dev)
-    
-    if optimizer == 'sgd':
-        opt_func = optim.SGD
-        opt = opt_func(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    elif optimizer == 'adam':
-        opt_func = optim.Adam
-        opt = opt_func(model.parameters(), lr=lr, weight_decay=weight_decay)
-    else:
-        print("THIS OPTIMIZER DOES NOT EXIST!")
 
+    print("Saving information into local model_path before training.")
+    # save information to model_path locally
+    log_model(model_path, model_path, file_name="net_log", local_log=False, net_type=net_type, model_id=model_id, train_date=train_date, name=name, activation=activation, 
+              alpha100=alpha100, g100=g100, loss_func_name=loss_func_name, optimizer=optimizer, bs=bs, lr=lr, lr_ls=lr_ls, weight_decay=weight_decay,
+              num_workers=num_workers, epochs=epochs, steps=steps)
+    
+    opt_kwargs = {"lr": lr, "momentum": momentum} if optimizer == "sgd" else {"lr": lr, "momentum": momentum, "weight_decay": weight_decay}
+    opt = get_optimizer(optimizer, model, **opt_kwargs)
     print(opt)
 
     # initial state of network
     print(f'Epoch 0:', end=' ')
-
     loss_func = F.__dict__[loss_func_name]
 
     epoch_path = f"{model_path}/epoch_0"
@@ -584,13 +764,14 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
         print(f'Epoch {(1+epoch)}:', end=' ')        
 
         # record selected accuracies
-        if epoch == 0.1:
+        if (epoch+1) % save_epoch == 0 or epoch == epochs - 1 or epoch == 9:
             # train_loss, train_acc, val_loss, val_acc, epoch_time
             epoch_path = f"{model_path}/epoch_{epoch + 1}"
-            #if not os.path.isdir(epoch_path): os.makedirs(epoch_path)
-            final_acc = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers,
+            if not os.path.isdir(epoch_path): os.makedirs(epoch_path)
+            final_acc = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers, save_type='torch',
                                     epoch_path=epoch_path,
                                     weight_save=weight_save, stablefit_save=stablefit_save)
+
             print(final_acc)
         else:
             final_acc = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers, 
@@ -609,16 +790,20 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
     total_time = time() - t0
     # log dataframe
     log_path = path_names.log_path
-    log_model(log_path, model_path, net_type=net_type, model_id=model_id, train_date=train_date, name=name, activation=activation, alpha100=alpha100, g100=g100,
+    log_model(log_path, model_path, file_name="net_log", net_type=net_type, model_id=model_id, train_date=train_date, name=name, activation=activation, alpha100=alpha100, g100=g100,
               loss_func_name=loss_func_name, optimizer=optimizer, bs=bs, lr=lr, lr_ls=lr_ls, weight_decay=weight_decay, num_workers=num_workers, 
               epochs=epochs, steps=steps, final_acc=final_acc, total_time=total_time)
+
     print(model_path)
 
+# ---------------------------------------
 
 # train networks in array jobs
 def train_submit(*args):
-    from qsub import qsub
+    from qsub import qsub, job_divider
+    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
 
+    #dataset_ls = ["fashionmnist"]
     dataset_ls = ["mnist"]
     #dataset_ls = ["cifar10"]
 
@@ -628,13 +813,16 @@ def train_submit(*args):
     #alpha100_ls = list(range(180,201,10))
     #g100_ls = list(range(25, 301, 25))
 
-    alpha100_ls = [100,200]
-    g100_ls = [100]
-    optimizer_ls = ["sgd"]
+    alpha100_ls = [200]
+    g100_ls = [25,100,300]
+    #optimizer_ls = ["sgd"]
+    optimizer_ls = ["adam"]
     #bs_ls = [int(2**p) for p in range(1,12)]
+    #bs_ls = [64]
     bs_ls = [1024]
+    init_path, init_epoch = None, None
 
-    pbs_array_data = [(name, alpha100, g100, optimizer, bs)
+    pbs_array_data = [(name, alpha100, g100, optimizer, bs, init_path, init_epoch)
                       for name in dataset_ls
                       for alpha100 in alpha100_ls
                       for g100 in g100_ls
@@ -645,7 +833,7 @@ def train_submit(*args):
     #print(pbs_array_data)
     #pbs_array_data = pbs_array_data[0:1]
 
-    pbs_array_true = pbs_array_data
+    #pbs_array_true = pbs_array_data
     #pbs_array_true = [("mnist", 140, 275, "sgd"), ("mnist", 180, 175, "sgd")]
     """
     pbs_array_true = []
@@ -654,44 +842,67 @@ def train_submit(*args):
     for nidx in range(1,len(net_ls)):
         ag_str = net_ls[nidx].split("/")[-1].split("_")
         pbs_array_nosubmit.append( (int(ag_str[1]), int(ag_str[2])) )
+
     for sub in pbs_array_data:
         if (sub[1],sub[2]) not in pbs_array_nosubmit:
             pbs_array_true.append(sub)
+
         #print((sub[1],sub[2]))
         #break
     print(len(pbs_array_true))
     """
 
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path='/project/dyson/dyson_dl',
+             P=project_ls[pidx],
+             ngpus=1,
+             ncpus=1,
+             walltime='1:59:59',
+             #walltime='23:59:59',
+             mem='6GB') 
+
+    """
     qsub(f'python {sys.argv[0]} {" ".join(args)}',    
          pbs_array_true, 
-         path='/project/dnn_maths/project_qu3/',
-         P='dnn_maths',
-         #P='phys_DL',
+         path='/project/dyson/dyson_dl',
+         #P='dnn_maths',
+         P='phys_DL',
          #P='PDLAI',
          #P='ddl',
+         #P='dyson',
          ngpus=1,
          ncpus=1,
-         #walltime='1:59:59',
-         walltime='12:59:59',
-         mem='4GB') 
-
+         walltime='1:59:59',
+         #walltime='23:59:59',
+         mem='6GB') 
+    """
 
 # version corresponding train_dnn
 def train_submit_cnn(*args):
-    from qsub import qsub
+    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
+    from qsub import qsub, job_divider
 
     #net_type_ls = ["alexnet", "resnet14"]
     #alpha100_ls = list(range(100,201,10))
 
     #alpha100_ls = list(range(100,111,10))
-    #alpha100_ls = list(range(120,141,10))
-    #alpha100_ls = list(range(150,171,10))
+    #alpha100_ls = list(range(120,131,10))
+    #alpha100_ls = list(range(140,151,10))
+    #alpha100_ls = list(range(160,171,10))
     #alpha100_ls = list(range(180,201,10))
     #g100_ls = list(range(25, 301, 25))
     #g100_ls = list(range(10, 201, 10))
 
-    alpha100_ls = [200] 
-    g100_ls = [25,100,300]
+    alpha100_ls = [100, 200]
+    g100_ls = [25,300]
+
+    #alpha100_ls = [100] 
+    #g100_ls = [25,100,300]
 
     #net_type_ls = ["convnet_old"]
     #net_type_ls = ["van20nobias"]
@@ -699,12 +910,14 @@ def train_submit_cnn(*args):
     #net_type_ls = ["van100"]
     #net_type_ls = ["van100nobias"]
     #net_type_ls = ["resnet14_ht"]
-    net_type_ls = ["alexnetold"]
+    #net_type_ls = ["alexnetold"]
+    #net_type_ls = ["alexnet"]
+    net_type_ls = ["resnet34_HT", "resnet50_HT"]
     #fc_init = "fc_ht"
     #fc_init = "fc_orthogonal"
     fc_init = "fc_default"
     #dataset_ls = ["mnist"]
-    dataset_ls = ["cifar10"]
+    dataset_ls = ["cifar100"]
     optimizer_ls = ["sgd"]
 
     pbs_array_data = [(name, alpha100, g100, optimizer, net_type, fc_init)
@@ -715,33 +928,29 @@ def train_submit_cnn(*args):
                       for net_type in net_type_ls
                       ]
 
-    #print(len(pbs_array_data))
-    #pbs_array_data = pbs_array_data[0:1]
-
-    pbs_array_true = pbs_array_data
     """
     pbs_array_no = [(100,25), (100,100), (100,300), (200,25), (200,100), (200,300)]
     for sub in pbs_array_data:
         if (sub[1],sub[2]) not in pbs_array_no:
             pbs_array_true.append(sub)
+
         #print((sub[1],sub[2]))
         #break
     """
 
-    print(len(pbs_array_true))
-
-    qsub(f'python {sys.argv[0]} {" ".join(args)}',    
-         pbs_array_true, 
-         path='/project/dnn_maths/project_qu3/',
-         #P='dnn_maths',
-         #P='phys_DL',
-         P='PDLAI',
-         #P='ddl',
-         ngpus=1,
-         ncpus=1,
-         #walltime='5:59:59',
-         walltime='0:59:59',
-         mem='6GB') 
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path='/project/dyson/dyson_dl',
+             P=project_ls[pidx],
+             ngpus=1,
+             ncpus=1,
+             walltime='23:59:59',
+             #walltime='23:59:59',
+             mem='8GB')
      
 
 if __name__ == '__main__':
@@ -750,3 +959,4 @@ if __name__ == '__main__':
         print('Usage: python %s FUNCTION_NAME ARG1 ... ARGN' % sys.argv[0])
         quit()
     result = globals()[sys.argv[1]](*sys.argv[2:])
+
