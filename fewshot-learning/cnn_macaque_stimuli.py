@@ -602,10 +602,10 @@ def snr_submit(*args):
 
 def snr_metric_plot(model_name, init_alpha100s, init_g100s, init_epoch, root_path):
 
-    global PRs_all, SNRs_all
+    #global PRs_all, SNRs_all
 
     import matplotlib.pyplot as plt
-    import pubplot.pubplot as ppt
+    import pubplot as ppt
     plt.rc('font', **ppt.pub_font)
     plt.rcParams.update(ppt.plot_sizes(False))
     
@@ -639,7 +639,8 @@ def snr_metric_plot(model_name, init_alpha100s, init_g100s, init_epoch, root_pat
         ax2.set_xlabel("Layer")
         #plt.show()
 
-        fig_path = "/project/dnn_maths/project_qu3/fig_path"
+        #fig_path = "/project/dnn_maths/project_qu3/fig_path"
+        fig_path = "/project/PDLAI/project2_data/figure_ms"
         plt.savefig(f"{fig_path}/{model_name}_g={init_g100s[0]/100}_snr_metrics.pdf", bbox_inches='tight')
         print(f"Plot saved for {init_g100}!")
 

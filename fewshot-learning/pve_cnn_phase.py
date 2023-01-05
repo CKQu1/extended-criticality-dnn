@@ -26,6 +26,7 @@ linewidth = 0.8
 trained_path = join(root_data, "trained_cnns", "alexnets_nomomentum")
 net_ls = [ f.path for f in os.scandir(trained_path) if f.is_dir() and "epochs=100" in f.path ]
 epoch_last = int(net_ls[0][net_ls[0].index("epochs=")+7:])
+epoch = 100
 print(trained_path)
 print(f"Total of networks: {len(net_ls)}.")
 
