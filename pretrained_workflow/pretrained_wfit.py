@@ -398,10 +398,9 @@ def submit(*args):
 
     #qsub(f'python geometry_preplot.py {" ".join(args)}', pbs_array_data, path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/metrics_postact/', P='phys_DL')
     #qsub(f'python pretrained_workflow/pretrained_wfit.py {" ".join(args)}', pbs_array_data, path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow', P='phys_DL', mem="3GB")
-
+ 
     print(len(pbs_array_data))
   
-    """  
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -412,8 +411,7 @@ def submit(*args):
              #path='/project/phys_DL/project2_data/pretrained_workflow',
              path='/project/PDLAI/project2_data/pretrained_workflow',  
              P=project_ls[pidx], 
-             mem="1GB")  
-    """
+             mem="4GB")  
     
 
 if __name__ == '__main__':

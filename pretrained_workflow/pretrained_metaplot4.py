@@ -20,7 +20,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import figure
 from matplotlib.gridspec import GridSpec
-from matplotlib.pyplot import subplot, title, axis, xlim, ylim, gca, xticks, yticks, xlabel, ylabel, plot, legend, gcf, cm # colorbar
+#from matplotlib.pyplot import subplot, title, axis, xlim, ylim, gca, xticks, yticks, xlabel, ylabel, plot, legend, gcf, cm # colorbar
 from matplotlib.ticker import AutoMinorLocator
 
 from pretrained_wfit import replace_name
@@ -34,6 +34,7 @@ t0 = time.time()
 
 # 3 by 3 template
 
+cm_type = 'CMRmap'
 inset_width, inset_height = 0.9/9, 1.4/10
 
 tick_size = 18.5
@@ -53,7 +54,7 @@ linestyle_ls = ["solid", "dashed","dashdot"]
 
 #figure(figsize=(12.5,3*3.5)) #3 by 3
 #figure(figsize=(12.5,1*3.5 - 0.3)) #1 by 3
-figure(figsize=(12.5,2*3.5 + 2.5)) #1 by 3
+fig = figure(figsize=(12.5,2*3.5 + 2.5)) #1 by 3
 
 axes_list = []
 axes_inset_list = []
@@ -89,7 +90,7 @@ Distribution of fitted stable distribution parameters
 
 # load two files of fitted params from Pytorch and Tensorflow
 files = []
-for mpath in [f"{prepath}/stablefit_all", f"{prepath}/stablefit_all_tf_imagenet=False"]:
+for mpath in [f"{prepath}/stablefit_all", f"{prepath}/stablefit_all_tf"]:
     for f1 in os.listdir(mpath):
         f1_path = os.path.join(mpath, f1)
         for f2 in os.listdir(f1_path):
@@ -119,8 +120,9 @@ for file_idx in range(len(files)):
 
 # weight tensor information 
 # files for each weight tensor (method 2)
-for weight_info_name in ["weight_info.csv", "weight_info_tf_imagenet=False.csv"]:
-    dirname = "stablefit_all_tf_imagenet=False" if "_tf" in weight_info_name else "stablefit_all"
+#for weight_info_name in ["weight_info.csv"]:
+for weight_info_name in ["weight_info.csv", "weight_info_tf.csv"]:
+    dirname = "stablefit_all_tf" if "_tf" in weight_info_name else "stablefit_all"
     weight_info = pd.read_csv( join(prepath,weight_info_name) )
     for metric_idx in range(3,len(metric_names)-1):
         metric_name = metric_names[metric_idx]
@@ -128,16 +130,28 @@ for weight_info_name in ["weight_info.csv", "weight_info_tf_imagenet=False.csv"]
 
     metrics_all['dirname'] += [dirname] * len(weight_info.loc[:,'model_name'])
 
-assert len(files) == len(metrics_all['model_name']), "Mismatch between files and imported data."
+#assert len(files) == len(metrics_all['model_name']), "Mismatch between files and imported data."
 
+# top-1 and top-5 acc
+net_names_all = [pd.read_csv(join(prepath,fname)) for fname in ["net_names_all.csv", "net_names_all_tf.csv"]]
+
+metrics_all['top-1'], metrics_all['top-5'] = [], []
 # load stablefit alpha and sigma
 for ii in tqdm(range(len(metrics_all['param_shape']))):
     weight_foldername = replace_name(metrics_all['weight_file'][ii], "stablefit") + ".csv"
     dirname = metrics_all['dirname'][ii]
-    df = pd.read_csv( join(prepath, dirname, metrics_all['model_name'][ii], weight_foldername) )
+    model_name = metrics_all['model_name'][ii]
+    df = pd.read_csv( join(prepath, dirname, model_name, weight_foldername) )
     alpha, sigma = df.loc[0,'alpha'].item(), df.loc[0,'sigma'].item()
     metrics_all['alpha'].append( alpha )
     metrics_all['sigma'].append( sigma )
+
+    fidx = 0 if "_tf" not in dirname else 1
+    database = net_names_all[fidx]
+    row_num = database[database.loc[:,"model_name"] == model_name].index.item()
+    top_1, top_5 = database[database.loc[:,"model_name"] == model_name].loc[row_num, ['top-1', 'top-5']]
+    metrics_all['top-1'].append(top_1)
+    metrics_all['top-5'].append(top_5)
     
     param_shape = literal_eval(metrics_all['param_shape'][ii])
     metrics_all['param_shape'][ii] = param_shape
@@ -157,12 +171,13 @@ for ii in tqdm(range(len(metrics_all['param_shape']))):
 
 print("alpha and sigma loaded!")
 
-for metric_name in metric_names:
+for metric_name in metric_names + ['top-1', 'top-5']:
     metrics_all[metric_name] = np.array(metrics_all[metric_name])
 
 # filter weight matrices/tensors with very few entries
-indices = np.where(metrics_all['weight_num'] >= 500)
-for metric_name in metric_names:
+min_weight_num = 1000
+indices = np.where(metrics_all['weight_num'] >= min_weight_num)
+for metric_name in metric_names + ['top-1', 'top-5']:
     if metric_name != 'sample_w':
         metrics_all[metric_name] = metrics_all[metric_name][indices]
 
@@ -191,11 +206,13 @@ bin_ls = [1000,250,2500]
 #xlabel_ls = [r"$\mathbf{{W}}^{{{}}}$ ".format(l + 1) + f"entries ({net.upper()})", r"$\alpha$", r"$\sigma$"]
 xlabel_ls = [r"$\mathbf{{W}}^{{{}}}$ ".format(l + 1) + f"entries ({net.upper()})", r"$\alpha$", r"$\alpha$"] 
 ylabel_ls = ["Probability Density", r"$D_w^{1/\alpha}$"]
+#ylabel_ls = ["Probability Density", r"$\sigma$"]
 
 #xlim_ls = [[-0.3, 0.3], [0.5,2], [0,0.3]]
 #ylim_ls = [[0,12.5], [0,3], [0,40]]
-xlim_ls = [[-0.3, 0.3], [0.5,2], [0.4,2.1]]
-ylim_ls = [[0,12.5], [0,3], [-1,1000]]
+xlim_ls = [[-0.3, 0.3], [0.5,2], [0.45,2.05]]
+#ylim_ls = [[0,12.5], [0,3], [-1,1000]]
+ylim_ls = [[0,12.5], [0,3], [0,20]]
 
 metric_names_plot = ["sample_w", "alpha", "sigma_scaled"]
 for i in range(3):
@@ -217,11 +234,27 @@ for i in range(3):
     if i == 0 or i == 1:
         axis.hist(metric, bin_ls[i], density=True)
     else:
-        torch_indices = [i for i in range(len(metrics_all['dirname'])) if "_tf" not in metrics_all['dirname'][i]]
-        tf_indices = [i for i in range(len(metrics_all['dirname'])) if "_tf" in metrics_all['dirname'][i]]
-        axis.plot(metrics_all['alpha'][torch_indices], metrics_all['sigma_scaled'][torch_indices], '.', markersize=5, label="Pytorch")
-        axis.plot(metrics_all['alpha'][tf_indices], metrics_all['sigma_scaled'][tf_indices], '.', markersize=5, label="TensorFlow")
-        axis.legend(loc = 'upper left', fontsize = legend_size, frameon=False)
+        #torch_indices = [i for i in range(len(metrics_all['dirname'])) if "_tf" not in metrics_all['dirname'][i]]
+        #tf_indices = [i for i in range(len(metrics_all['dirname'])) if "_tf" in metrics_all['dirname'][i]]
+        #conv_indices = [i for i in range(len(metrics_all['dirname'])) if len(metrics_all['param_shape'][i]) == 4]
+        #fc_indices = [i for i in range(len(metrics_all['dirname'])) if len(metrics_all['param_shape'][i]) == 2]
+        #axis.plot(metrics_all['alpha'][conv_indices], metrics_all['sigma_scaled'][conv_indices], '.', markersize=3.5, label="Conv2d")
+        #axis.plot(metrics_all['alpha'][fc_indices], metrics_all['sigma_scaled'][fc_indices], '.', markersize=3.5, alpha=0.65, label="Linear")
+
+        # im = ax.scatter(x , y , z, c=thetas, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, alpha=1, cmap=cm)
+        pretrained_acc = metrics_all['top-5']
+        cmap_bd = [round(np.percentile(pretrained_acc,5)), round(np.percentile(pretrained_acc,95))]
+        im = axis.scatter(metrics_all['alpha'], metrics_all['sigma_scaled'], 
+                     c=pretrained_acc, vmin=cmap_bd[0], vmax=cmap_bd[1],
+                     marker='.', s=3.5, alpha=0.8, cmap=plt.cm.get_cmap(cm_type))
+
+        #axis.legend(loc = 'upper left', fontsize = legend_size, frameon=False)
+
+        # colour bar
+        cbar_ax = plt.axes([0.93, 0.5, 0.012, height])
+        cbar_ticks = list(range(cmap_bd[0],cmap_bd[1]+1,2))
+        cbar = fig.colorbar(im, cax=cbar_ax, ticks=cbar_ticks)
+        cbar.ax.set_yticklabels(cbar_ticks,size=tick_size-3)
 
     if i == 0:
         print(f"Stable params: {params_stable}")
@@ -456,9 +489,9 @@ print(sum(metrics_all[metric_name] <= thresholds)/len(metrics_all[metric_name]))
 print(f"Time: {time.time() - t0}")
 
 plt.tight_layout()
-plt.show()
+#plt.show()
 
-fig1_path = "/project/phys_DL/project2_data/figure_ms"
+fig1_path = "/project/PDLAI/project2_data/figure_ms"
 #fig1_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms"
-#plt.savefig(f"{fig1_path}/pretrained_stablefit_torch4.pdf", bbox_inches='tight')
+plt.savefig(f"{fig1_path}/pretrained_stablefit_torch5.pdf", bbox_inches='tight')
 
