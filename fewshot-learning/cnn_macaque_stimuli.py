@@ -11,7 +11,7 @@ from os.path import join
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
 import path_names
-from path_names import log_path, cnn_path
+from path_names import root_data
 
 t0 = time()
 dev = torch.device(f"cuda:{torch.cuda.device_count()-1}"
@@ -27,6 +27,7 @@ creating manifold.npy for different types of NNs based on the phase transition d
 print("Loading data.")
 
 #imnames = pd.read_csv(join(os.getcwd(),"brain-score/image_dicarlo_hvm-public.csv"))
+log_path = join(root_data, "fewshot-data")
 imdir = join(log_path, "image_dicarlo_hvm-public")
 imnames = np.load(join(imdir,"majaj_2015_imnames_2.npy"),allow_pickle=True)
 

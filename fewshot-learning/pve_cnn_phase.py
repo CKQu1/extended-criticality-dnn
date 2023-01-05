@@ -6,9 +6,8 @@ import string
 import sys
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
-import path_names
 from os.path import join
-from path_names import log_path
+from path_names import root_data
 
 # colorbar
 cm_type = 'CMRmap'
@@ -41,7 +40,7 @@ def id_to_path(model_id, path):   # tick
 
 
 def model_log(model_id):    # tick
-    log_book = pd.read_csv(f"{log_path}/net_log.csv")
+    log_book = pd.read_csv(f"{root_data}/net_log.csv")
     #print(f"length {len(log_book)}")     # delete
     #if model_id in log_book['model_id'].item():
     if model_id in list(log_book['model_id']):
@@ -166,7 +165,7 @@ plt.show()
 #net_type = "alexnet"
 net_type = model_info.loc[model_info.index[0],'net_type']
 dataname = model_info.loc[model_info.index[0],'name']
-#plt.savefig(f"{path_names.log_path}/fig_path/{net_type}_{dataname}_{acc_type}_epoch={epoch}_grid_all.pdf", bbox_inches='tight')
+#plt.savefig(f"root_data/figure_ms/{net_type}_{dataname}_{acc_type}_epoch={epoch}_grid_all.pdf", bbox_inches='tight')
 
 print(f"Loaded networks: {good}")
 print(f"Existing networks folders: {len(net_ls)}")

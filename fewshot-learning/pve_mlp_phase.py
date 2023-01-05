@@ -11,6 +11,11 @@ from matplotlib.cm import coolwarm
 from ast import literal_eval
 from os.path import join
 
+lib_path = os.getcwd()
+sys.path.append(f'{lib_path}')
+
+from path_names import root_data
+
 # colorbar
 cm_type = 'CMRmap'
 interp = "quadric"
@@ -19,9 +24,8 @@ plt.rcParams["font.family"] = "serif"     # set plot font globally
 fcn = "fc10"
 net_type = f"{fcn}_mnist_tanh"
 #net_type = f"{fcn}_mnist_tanh_2"
-main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
-path = f"{main_path}/fcn_grid/{fcn}_grid"
-#path = f"{main_path}/fcn_grid/{fcn}_grid128"
+path = join(root_path, "trained_mlps", "fcn_grid", f"{fcn}_grid")
+#path = f"{root_path}/trained_mlps/fcn_grid/{fcn}_grid128"
 #net_ls = [net[0] for net in os.walk(path)]
 net_ls = [ f.path for f in os.scandir(path) if f.is_dir() and "epoch650" in f.path ]
 
@@ -34,7 +38,7 @@ epoch_last = 650
 # phase boundaries
 
 # new version
-bound1 = pd.read_csv(f"{main_path}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
+bound1 = pd.read_csv(f"{root_path}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
 boundaries = []
 bd_path = "/project/phys_DL/phasediagram"
 for i in range(1,92,10):
@@ -211,7 +215,7 @@ print(f"Good: {good}")
 plt.tight_layout()
 plt.show()
 
-fig1_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms"
+fig1_path = join(root_path, "figure_ms")
 #plt.savefig(f"{fig1_path}/{net_type}_grid_snr_m={ms[midx]}_D={ks[kidx]}_{fn}_pve.pdf", bbox_inches='tight')
 
 print("Figure 1")

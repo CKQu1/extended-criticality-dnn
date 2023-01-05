@@ -14,19 +14,9 @@ from time import time
 from os.path import join
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
-import path_names
-from path_names import log_path, cnn_path
 
-# load manifold
-"""
-net_type = "resnet50"
-manifolds_load = np.load(join(log_path, f"manifold/embeddings_new/macaque/{net_type}/manifolds.npy"),
-                   allow_pickle=True)
-"""
 
-def pve_plot(net_type, init_alpha100, init_g100, root_path, fname, plot_type="snr", force_replot=True):
-
-    
+def pve_plot(net_type, init_alpha100, init_g100, root_path, fname, plot_type="snr", force_replot=True):    
 
     assert plot_type == "snr" or plot_type == "err", "plot_type does not exist!"
 

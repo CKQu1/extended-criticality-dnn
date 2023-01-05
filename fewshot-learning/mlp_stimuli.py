@@ -18,7 +18,7 @@ sys.path.append(f'{lib_path}')
 import path_names
 from mlp_fshot import quick_dataload
 from NetPortal.models import ModelFactory
-from path_names import log_path, cnn_path
+from path_names import root_data
 
 t0 = time()
 dev = torch.device(f"cuda:{torch.cuda.device_count()-1}"
@@ -544,23 +544,6 @@ def snr_submit(*args):
     from qsub import qsub, job_divider
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
 
-    # ----- AlexNets -----
-    """
-    alpha100_ls = [100,150,200]
-    g100_ls = [25,100,300]
-    no_pair = [(alpha,g) for alpha in alpha100_ls for g in g100_ls]
-    g100_ls = list(range(25, 301, 25))
-    alpha100_ls = list(range(100,201,10))
-
-    models = ["alexnet"]
-    init_epoch = 100
-    root_path = join(log_path, "alexnets_nomomentum")
-    fname = "bs=10_K=64_P=50_N=2048"
-    """
-
-    # ----- ResNets -----
-    #alpha100_ls = [1.0,2.0]
-    #g100_ls = [0.25,1.0,3.0]
     alpha100_ls = [1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0]
     g100_ls = [str(g) for g in np.arange(0.25,3.01,0.25)]
     g100_ls[-1] = '3.0'
