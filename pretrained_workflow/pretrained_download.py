@@ -170,7 +170,7 @@ def pretrained_store_dnn(n_model, *args):
 
         # path for saving the weights
         #main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
-        net_path = join(main_path, model_name)
+        net_path = join(main_path, "pretrained_dnns", model_name)
         if not os.path.exists(net_path):
             os.makedirs(net_path)
 
@@ -316,7 +316,7 @@ def pretrained_store_dnn_tf(n_model, *args):
         print(f"Loaded {model_name} in {t1 - t0} s")
 
         # path for saving the network
-        net_path = join(main_path, model_name)
+        net_path = join(main_path, "pretrained_dnns_tf", model_name)
         if not os.path.exists(net_path):
             os.makedirs(net_path)
         torch.save(model, join(net_path, "model.pt"))
