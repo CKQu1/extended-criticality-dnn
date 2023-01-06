@@ -16,7 +16,7 @@ sys.path.append(f'{lib_path}')
 import path_names
 #from mlp_fshot import quick_dataload
 from NetPortal.models import ModelFactory
-from path_names import log_path, cnn_path
+from path_names import root_data
 
 from train_supervised import set_data, get_data, IPR, compute_dq
 
@@ -128,7 +128,7 @@ def ed_dq_submit(*args):
     g_ls[-1] = '3.0'
 
     init_epoch = 650
-    root_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD/fcn_grid/fc10_grid"
+    root_path = join(root_data,"trained_cnns","/fcn_grid/fc10_grid")
     pbs_array_data = [(alpha, g, init_epoch, root_path)
                       #for alpha100 in alpha100_ls
                       #for g100 in g100_ls
@@ -142,7 +142,7 @@ def ed_dq_submit(*args):
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path='/project/dyson/dyson_dl',
+             path=root_data,
              P=project_ls[pidx],
              #ngpus=1,
              ncpus=1,
@@ -152,16 +152,16 @@ def ed_dq_submit(*args):
 
 #def ed_dq_plot(lidx, pidx, postact=True):
 def ed_dq_plot(pidx, init_g, postact=True):
-    global metrics
+    #global metrics, matches, root_path
 
-    import pubplot.pubplot as ppt
+    import pubplot as ppt
     plt.rc('font', **ppt.pub_font)
     plt.rcParams.update(ppt.plot_sizes(False))
 
     #lidx, pidx = int(lidx), int(pidx)
-    pidx = int(pidx)
+    pidx = int(pidx)    # the top pidx(th) principal component
     postact = literal_eval(postact) if isinstance(postact, str) else postact
-    root_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD/fcn_grid/fc10_grid"
+    root_path = join(root_data,"trained_mlps","fcn_grid/fc10_grid")
 
     metrics = {}
     fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=False,figsize=(9.5,7.142/2 + 0.15))
@@ -224,7 +224,7 @@ def ed_dq_plot(pidx, init_g, postact=True):
     ax2.legend(frameon=False, loc='best')
     #plt.show()
 
-    fig_path = "/project/dnn_maths/project_qu3/fig_path"
+    fig_path = join(root_data, "figure_ms")
     plt.savefig(f"{fig_path}/fc10_g={init_g}_postact={postact}_ed-vs-dq.pdf", bbox_inches='tight')
     print("Plot saved!")
     

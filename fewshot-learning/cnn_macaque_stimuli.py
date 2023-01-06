@@ -75,6 +75,7 @@ def cnn_stimuli(model_name, init_alpha100, init_g100, init_epoch, root_path, pro
     model = torch.load(join(init_path, f"epoch_{init_epoch}/weights"), map_location=dev)
 
     print("Model loaded.")
+    """
     if pretrained:
         #emb_path = '/mnt/fs2/bsorsch/manifold/embeddings_new/macaque/{}/'.format(model_name)
         #emb_path = '/project/dyson/dyson_dl/embeddings_new/{}/'.format(model_name)
@@ -83,6 +84,7 @@ def cnn_stimuli(model_name, init_alpha100, init_g100, init_epoch, root_path, pro
         #emb_path = '/mnt/fs2/bsorsch/manifold/embeddings_new/macaque/{}_untrained/'.format(model_name)
         #emb_path = '/project/dyson/dyson_dl/embeddings_new/{}_untrained/'.format(model_name)
         emb_path = join(log_path, '/manifold/embeddings_new/macaque/{}_untrained/'.format(model_name))
+    """
 
     random_projection=True
     if 'resnet' in model_name or 'resnext' in model_name:
@@ -185,7 +187,7 @@ def stimuli_submit(*args):
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path='/project/dyson/dyson_dl',
+             path='/project/PDLAI/project2_data',
              P=project_ls[pidx],
              #ngpus=1,
              ncpus=1,
@@ -197,6 +199,7 @@ def stimuli_submit(*args):
 
 from train_supervised import compute_dq
 
+# projection has to be set to True
 def snr_components(model_name, init_alpha100, init_g100, fname, root_path, projection=True):
 
     import numpy.linalg as LA
@@ -208,6 +211,7 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
     global manifolds
     global init_epoch, emb_path
     """
+    #global EDs, dqs, EDs_layer, dqs_layer, EDs_all, dqs_all, output, eigvals, eigvecs
 
     print("Setting up model path.")
     if "alexnet" in model_name:
@@ -305,6 +309,8 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
     # -------------------
 
     N = 5000
+    N_dq = 2048   # size for subsampling the neurons for computing dqs
+    navg_dq = 1  # number of subsamples of N_dq
     #N = 2048
     #N_all = 169000
     #idxs = np.random.randint(0,N_all,N)
@@ -315,16 +321,27 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
     K = 64
     P = 50
 
-    layerwise_file = "manifolds_layerwise.npy"
+    layerwise_file = f"manifolds_layerwise_projection={projection}.npy" if not projection else f"manifolds_layerwise_N={N}.npy"
     print(f"Computation for {layerwise_file}")
     if os.path.isfile( join(emb_path, layerwise_file) ):
         #manifolds_all_load = np.load(join(emb_path, 'manifolds_layerwise.npy'))
         #manifolds_all = np.load(join(emb_path, 'manifolds_layerwise.npy'))
         print(f"{layerwise_file} computed already, loading now.")
         manifolds_all = np.load(join(emb_path, layerwise_file))
-
     else:
         print(f"Total number of modules: { len(list(model.children())) }")
+
+        # added analysis for correlation matrix (same as MLP)
+        # ------
+        pc_idxs = list(range(25))   # top 25 PCs for each neural representation
+        EDs_all = []                # eigenvalues of the covariance matrix
+        dqs_all = {}                # D_q's for top 25 PCs pf each layer neural representation 
+        for pc_idx in pc_idxs:
+            dqs_all[pc_idx] = []
+
+        # for computing D_q
+        qs = np.linspace(0,2,100)
+        # ------
 
         counter = 0
         manifolds_all = []
@@ -344,20 +361,53 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
                     with torch.no_grad():
                         output = backbone(input_tensor.to(dev))
                     N_all = output.shape[-1]
+
                     if projection:
                         O = torch.randn(N_all,N) / np.sqrt(N)
                         O = O.to(dev)
         #             idxs = np.random.randint(0,N_all,N)
-                    
+
+                    dqs = {}
+                    for pc_idx in pc_idxs:
+                        dqs[pc_idx] = []                    
+                    EDs = []
                     manifolds = []
                     for i in tqdm(range(K*P//batch_size)):
                         input_tensor = get_batch(i,batch_size)
                         with torch.no_grad():
                             output = backbone(input_tensor.to(dev))
+
+                        # dq must be computed before projection to lower dim
+                        dqs_layer = {}
+                        for pc_idx in pc_idxs:
+                            dqs_layer[pc_idx] = []
+                        EDs_layer = []
+                        # get a general version of cov mat  
+                        #for nsamp in tqdm(range(navg_dq)):    
+                        for nsamp in range(navg_dq):
+                            # arbitrarily sample neurons
+                            subsampled_idxs = np.random.choice(output.shape[-1], N_dq)
+                            output_sub = output[:,subsampled_idxs]
+                            # get cov matrix
+                            #eigvals, eigvecs = LA.eig( np.cov( output_sub.T ) )
+                            eigvals, eigvecs = LA.eig( np.cov( output_sub.numpy().T ) )
+                            EDs_layer.append( np.mean(eigvals**2)**2 / np.sum(eigvals**4) )
+                            for pc_idx in pc_idxs:
+                                dqs_layer[pc_idx].append( [compute_dq(eigvecs[:,pc_idx],q) for q in qs ] )
+                        for pc_idx in pc_idxs:
+                            dqs[pc_idx].append(np.stack(dqs_layer[pc_idx]).mean(0)) 
+                        EDs.append(np.mean(EDs_layer))
+                        
                         if projection:
                             manifolds.append((output@O).cpu().numpy())
                         else:
                             manifolds.append(output.cpu().numpy())
+
+                    EDs_all.append(EDs)
+                    for pc_idx in pc_idxs:
+                        dqs_all[pc_idx].append(np.stack(dqs[pc_idx])) 
+
+                    print(eigvecs.shape) # for double-checking
                     if projection:  # not sure about the non-projection version
                         manifolds = np.stack(manifolds).reshape(K,P,N)
                     manifolds_all.append(manifolds)
@@ -381,15 +431,46 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
                     O = O.to(dev)
         #         idxs = np.random.randint(0,N_all,N)        
 
+                dqs = {}
+                for pc_idx in pc_idxs:
+                    dqs[pc_idx] = []                
+                EDs = []
                 manifolds = []
                 for i in tqdm(range(K*P//batch_size)):
                     input_tensor = get_batch(i,batch_size)
                     with torch.no_grad():
                         output = backbone(input_tensor.to(dev))
+
+                    # dq must be computed before projection to lower dim
+                    dqs_layer = {}
+                    for pc_idx in pc_idxs:
+                        dqs_layer[pc_idx] = []
+                    EDs_layer = []
+                    # get a general version of cov mat      
+                    for nsamp in range(navg_dq):
+                        # arbitrarily sample neurons
+                        subsampled_idxs = np.random.choice(output.shape[-1], N_dq)
+                        output_sub = output[:,subsampled_idxs]
+                        # get cov matrix
+                        eigvals, eigvecs = LA.eig( np.cov( output_sub.numpy().T ) )
+                        EDs_layer.append( np.mean(eigvals**2)**2 / np.sum(eigvals**4) )
+                        for pc_idx in pc_idxs:
+                            dqs_layer[pc_idx].append( [compute_dq(eigvecs[:,pc_idx],q) for q in qs ] )
+                    for pc_idx in pc_idxs:
+                        dqs[pc_idx].append(np.stack(dqs_layer[pc_idx]).mean(0)) 
+                    EDs.append(np.mean(EDs_layer))
+
                     if projection:
                         manifolds.append((output@O).cpu().numpy())
                     else:
                         manifolds.append(output.cpu().numpy())
+
+                EDs_all.append(EDs)
+                for pc_idx in pc_idxs:
+                    dqs_all[pc_idx].append(np.stack(dqs[pc_idx])) 
+
+                print(eigvecs.shape) # for double-checking
+
                 manifolds = np.stack(manifolds).reshape(K,P,N)
                 manifolds_all.append(manifolds)
                 counter += 1
@@ -397,6 +478,13 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
         np.save(os.path.join(emb_path, layerwise_file), manifolds_all)
         #manifolds_all_load = manifolds_all
         print(f"{layerwise_file} saved!")
+
+        # save dqs_all and EDs_all
+        np.save(join(emb_path, "EDs_layerwise_all.npy"), EDs_all)
+        for pc_idx in pc_idxs:
+            np.save( join(emb_path, f"dqs_layerwise_{pc_idx}"), dqs_all[pc_idx]  )
+
+        del dqs, dqs_layer, dqs_all, EDs, EDs_layer, EDs_all
 
     """
     # random projection
@@ -468,24 +556,8 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
     css_all = []
     SNRs_all = []
 
-    # added analysis for correlation matrix (same as MLP)
-    #pc_idx = 0  # select first pc of cov mat
-    pc_idxs = list(range(25))   # top 25 PCs for each neural representation
-    EDs_all = []
-    dqs_all = {}
-    for pc_idx in pc_idxs:
-        dqs_all[pc_idx] = []
-
-    qs = np.linspace(0,2,100)
     for manifolds in tqdm(manifolds_all):
         manifolds = np.stack(manifolds)
-
-        # get a general version of cov mat      
-        eigvals, eigvecs = LA.eig( np.cov( manifolds.reshape( manifolds.shape[0] * manifolds.shape[1], manifolds.shape[2] ).T ) )
-        EDs_all.append( eigvals )
-        for pc_idx in pc_idxs:
-            dqs_all[pc_idx].append( [compute_dq(eigvecs[:,pc_idx],q) for q in qs ] )
-        print(eigvecs.shape)
 
         Rs = []
         centers = []
@@ -512,9 +584,9 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
     css_all = np.stack(css_all)
     SNRs_all = np.stack(SNRs_all)
 
-    EDs_all = np.stack(EDs_all)
-    for pc_idx in pc_idxs:
-        dqs_all[pc_idx] = np.stack(dqs_all[pc_idx])
+    #EDs_all = np.stack(EDs_all)
+    #for pc_idx in pc_idxs:
+    #    dqs_all[pc_idx] = np.stack(dqs_all[pc_idx])
 
     #data_path = f"{fname}_epoch={init_epoch}"
     #if not os.path.isdir(f"{data_path}"): os.makedirs(data_path)
@@ -525,10 +597,10 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
         np.save(os.path.join(emb_path,f'dist_norm_layerwise_N={N}.npy'),dists_all)
         np.save(os.path.join(emb_path,f'css_layerwise_N={N}.npy'),css_all)
 
-        np.save(join(emb_path,f'EDs_N={N}_layerwise.npy'), EDs_all)    
+        #np.save(join(emb_path,f'EDs_N={N}_layerwise.npy'), EDs_all)    
 
-        for pc_idx in pc_idxs:
-            np.save(join(emb_path,f'dqs_layerwise_N={N}_{pc_idx}.npy'), dqs_all[pc_idx])
+        #for pc_idx in pc_idxs:
+        #    np.save(join(emb_path,f'dqs_layerwise_N={N}_{pc_idx}.npy'), dqs_all[pc_idx])
 
     else:
         np.save(os.path.join(emb_path,'SNRs_layerwise.npy'),SNRs_all)
@@ -536,10 +608,10 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
         np.save(os.path.join(emb_path,'dist_norm_layerwise.npy'),dists_all)
         np.save(os.path.join(emb_path,'css_layerwise.npy'),css_all)
 
-        np.save(join(emb_path,'EDs_layerwise.npy'), EDs_all) 
+        #np.save(join(emb_path,'EDs_layerwise.npy'), EDs_all) 
 
-        for pc_idx in pc_idxs:
-            np.save(join(emb_path,f'dqs_layerwise_{pc_idx}.npy'), dqs_all[pc_idx])
+        #for pc_idx in pc_idxs:
+        #    np.save(join(emb_path,f'dqs_layerwise_{pc_idx}.npy'), dqs_all[pc_idx])
 
     print(f"SNR metrics saved in: {emb_path}!")
 
@@ -588,21 +660,47 @@ def snr_submit(*args):
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path='/project/dyson/dyson_dl',
+             path='/project/PDLAI/project2_data',
              P=project_ls[pidx],
              #ngpus=1,
              ncpus=1,
              walltime='23:59:59',
              #walltime='23:59:59',
-             mem='12GB') 
+             mem='14GB') 
     
 
 # ---------------------- Plotting ----------------------
 
 
-def snr_metric_plot(model_name, init_alpha100s, init_g100s, init_epoch, root_path):
+def snr_metric_plot(model_name, metric, init_alpha100s, init_g100s, init_epoch, root_path):
 
-    #global PRs_all, SNRs_all
+    global metric_data, SNRs_all
+    manifold_path = join("manifold", "bs=10_K=64_P=50_N=2048_epoch=100_projection=False")
+
+    """
+    Plots the a selected metric (based on metric_dict) vs layer and SNR vs layer,
+    for dq, the pc_idx PC needs to be selected
+    """
+
+    metric0 = "SNR"     # always plot SNR
+    dq_ls = metric.split("_") if "dq" in metric else []
+    dq_filename = f"dqs_layerwise_N=5000_{dq_ls[1]}" if len(dq_ls) > 0 else None
+    metric_dict = {"SNR"        : "SNRs_layerwise_N=5000",
+                   "D"          : "Ds_layerwise_N=5000",
+                   "dist_norm"  : "dist_norm_layerwise_N=5000",
+                   "css"        : "css_layerwise_N=5000"               
+                   }
+
+    name_dict = {"D"          : r'$D$',
+                 "dist_norm"  : "Distance norm",
+                 "css"        : "Centre subsplace"               
+                 }   
+
+    if "dq_" in metric:
+        metric_dict[metric] = dq_filename
+        name_dict[metric] = r'$D_2$' 
+
+    assert metric in metric_dict.keys(), "metric not in dictionary!" 
 
     import matplotlib.pyplot as plt
     import pubplot as ppt
@@ -621,19 +719,25 @@ def snr_metric_plot(model_name, init_alpha100s, init_g100s, init_epoch, root_pat
                 matches = [f.path for f in os.scandir(root_path) if f.is_dir() and "epochs=650" in f.path and f"_{init_alpha100}_{init_g100}_" in f.path]        
             init_path = matches[0]
             #print(init_path)
-            emb_path = join(init_path,"manifold")
-            PRs_all = np.load(join(emb_path, "Ds_layerwise.npy"))
-            SNRs_all = np.load(join(emb_path, "SNRs_layerwise.npy"))
+            emb_path = join(init_path, manifold_path)
+            #PRs_all = np.load(join(emb_path, "Ds_layerwise.npy"))
+            metric_data = np.load( join(emb_path, f"{metric_dict[metric]}.npy") )
+            # we are only interested in the correlation D_2 for the dqs as it reveals how localized the eigenvectors are
+            metric_data = metric_data[:,-1] if "dq_" in metric else metric_data
+            SNRs_all = np.load(join(emb_path, f"{metric_dict[metric0]}.npy"))
                 
             #break
             #ax1.plot(1/PRs_all.mean(-1), label=init_alpha100)
-            ax1.plot(PRs_all.mean(-1), label=int(init_alpha100)/100)
+            if "dq" not in metric:
+                ax1.plot(metric_data.mean(-1), label=int(init_alpha100)/100)
+            else:
+                ax1.plot(metric_data, label=int(init_alpha100)/100)
             ax2.plot(np.nanmean(SNRs_all,(1,2)), label=int(init_alpha100)/100)
 
         ax1.legend(frameon=False)
-        ax1.set_yscale('log')
+        #ax1.set_yscale('log')
         #ax1.set_ylabel(r'$1/D$')
-        ax1.set_ylabel(r'$D$')
+        ax1.set_ylabel(name_dict[metric])
         ax2.set_ylabel("SNR")
         ax1.set_xlabel("Layer")
         ax2.set_xlabel("Layer")
@@ -641,9 +745,16 @@ def snr_metric_plot(model_name, init_alpha100s, init_g100s, init_epoch, root_pat
 
         #fig_path = "/project/dnn_maths/project_qu3/fig_path"
         fig_path = "/project/PDLAI/project2_data/figure_ms"
-        plt.savefig(f"{fig_path}/{model_name}_g={init_g100s[0]/100}_snr_metrics.pdf", bbox_inches='tight')
+        plt.savefig(join(fig_path, f"{model_name}_g={init_g100s[0]/100}_snr_{metric}-vs-layer.pdf") , bbox_inches='tight')
         print(f"Plot saved for {init_g100}!")
 
+    # cheeky plot of selected metric vs SNR
+    plt.clf()
+    if "dq" not in metric:
+        plt.plot(metric_data.mean(-1), np.nanmean(SNRs_all,(1,2)), '.')
+    else:
+        plt.plot(metric_data, np.nanmean(SNRs_all,(1,2)), '.')
+    plt.show()
 
 
 if __name__ == '__main__':
