@@ -631,7 +631,7 @@ def snr_submit(*args):
 
     models = ["alexnet"]
     init_epoch = 100
-    root_path = join(log_path, "alexnets_nomomentum")
+    root_path = join(root_data, "trained_cnns", "alexnets_nomomentum")
     #fname = "bs=10_K=64_P=50_N=2048"
     fname = "bs=10_K=64_P=50_N=2048_epoch=100_projection=False"
 
