@@ -20,6 +20,8 @@ from scipy.stats import anderson_ksamp, ks_2samp, shapiro, distributions, norm, 
 
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
+
+from path_names import root_data
  
 #import net_load as nl
 #from net_load.get_layer import get_hidden_layers, load_weights, get_epoch_weights, layer_struct
@@ -150,6 +152,40 @@ def pretrained_store(n_model, *args):
     except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
         print(f"{model_name} not implemented!")
 
+def pretrained_store_dnn(n_model, *args):
+
+    """
+    Downloading pretrained DNN from Pytorch in get_pretrained_names()
+    """
+
+    t0 = time.time()
+
+    model_ls = get_pretrained_names()
+    model_name = model_ls[int(n_model)]
+    try:
+        model = models.__dict__[model_name](pretrained=True)
+
+        t1 = time.time()
+        print(f"Loaded {model_name} in {t1 - t0} s")
+
+        # path for saving the weights
+        #main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
+        net_path = join(main_path, model_name)
+        if not os.path.exists(net_path):
+            os.makedirs(net_path)
+
+        torch.save(model, join(net_path, "model.pt"))
+
+        # create dataframe that stores the model_name
+        #log(main_path, "net_names_all", 
+        #    model_name=model_name, total_wmat=wmat_idx, saved_wmat=i)
+
+        # clear some space
+        t_last = time.time()
+        print(f"{model_name}: stored in {t_last - t1} s!")      
+    except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
+        print(f"{model_name} not implemented!")
+
 def get_pretrained_names_tf():
 
     """
@@ -257,6 +293,46 @@ def pretrained_store_tf(n_model, *args):
     except (NotImplementedError,ValueError):
         print(f"({model_name},n_model) not implemented!")
       
+def pretrained_store_dnn_tf(n_model, *args):
+
+    """
+    Downloading all full pretrained networks from TensorFlow pretrained CNNs in get_pretrained_names_tf()
+    """
+
+    t0 = time.time()
+
+    model_ls = get_pretrained_names()
+    model_name = model_ls[int(n_model)]
+
+    try:
+        model_precursor = kapp.__dict__[model_name]
+        #model = locals()["model_precursor"](pretrained=True)
+        # random weights?
+        model = locals()["model_precursor"]()
+        # pretrained weights on Imagenet
+        model = locals()["model_precursor"](weights='imagenet', include_top=True)
+
+        t1 = time.time()
+        print(f"Loaded {model_name} in {t1 - t0} s")
+
+        # path for saving the network
+        net_path = join(main_path, model_name)
+        if not os.path.exists(net_path):
+            os.makedirs(net_path)
+        torch.save(model, join(net_path, "model.pt"))
+
+        # create dataframe that stores the model_name
+        #log(main_path, "net_names_all_tf", 
+        #    model_name=model_name, total_wmat=wmat_idx, saved_wmat=i)
+
+        # clear some space
+        t_last = time.time()
+        print(f"{model_name}: stored in {t_last - t1} s!")  
+        print("All weight names") 
+        print(names)       
+    except (NotImplementedError,ValueError):
+        print(f"({model_name},n_model) not implemented!")
+
 def submit(*args):
     from qsub import qsub, job_divider
     N = len(get_pretrained_names())  # number of models
