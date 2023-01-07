@@ -157,7 +157,7 @@ def pretrained_stimuli(model_name, pretrained=True, projection=False):
     """
 
     manifold_fname = 'manifolds.npy' if not projection else f'manifolds_N={N}.npy'
-    np.save(os.path.join(emb_path, manifold_name), manifolds)
+    np.save(os.path.join(emb_path, manifold_fname), manifolds)
     print("Manifold saved!")
 
 def stimuli_submit(*args):
@@ -198,7 +198,7 @@ def stimuli_submit(*args):
              #ngpus=1,
              ncpus=1,
              walltime='23:59:59',
-             mem='4GB') 
+             mem='8GB') 
         
 
 # ---------------------- SNR Theory ----------------------
@@ -206,7 +206,7 @@ def stimuli_submit(*args):
 from train_supervised import compute_dq
 
 # projection must equal True lol otherwise computation gets too expensive for computing the covariance matrix
-def snr_components(model_name, fname, root_path, projection=True):
+def snr_components(model_name, fname, projection=True):
 
     import numpy.linalg as LA
 
@@ -217,6 +217,7 @@ def snr_components(model_name, fname, root_path, projection=True):
     global manifolds
     global init_epoch, emb_path
     """
+    global model, module_idx, layer_idx, Backbone
 
     print("Setting up model path.")        
     # where the desired manifolds.npy/manifolds_N={N}.npy, etc is located
@@ -303,10 +304,10 @@ def snr_components(model_name, fname, root_path, projection=True):
 
     # -------------------
 
-    # same as in cnn_macaque_stimuli.py
-    N = 5000
-    N_dq = 2048
-    navg_dq = 1
+    # same variables as in cnn_macaque_stimuli.py
+    N = 2048
+    N_dq = 500
+    navg_dq = 5
 
     batch_size = 10
     K = 64
@@ -332,6 +333,7 @@ def snr_components(model_name, fname, root_path, projection=True):
 
         counter = 0
         manifolds_all = []
+        #for module_idx in tqdm(range(len(list(model.children())))):
         for module_idx in tqdm(range(len(list(model.children())))):
 
             try:
@@ -410,26 +412,6 @@ def snr_components(model_name, fname, root_path, projection=True):
                 with torch.no_grad():
                     output = backbone(input_tensor.to(dev))
                 N_all = output.shape[-1]
-
-                # dq must be computed before projection to lower dim
-                dqs_layer = {}
-                for pc_idx in pc_idxs:
-                    dqs_layer[pc_idx] = []
-                EDs_layer = []
-                # get a general version of cov mat      
-                for nsamp in range(navg_dq):
-                    # arbitrarily sample neurons
-                    subsampled_idxs = np.random.choice(output.shape[-1], N_dq)
-                    output_sub = output[:,subsampled_idxs]
-                    # get cov matrix
-                    eigvals, eigvecs = LA.eig( np.cov( output_sub.numpy().T ) )
-                    EDs_layer.append( np.mean(eigvals**2)**2 / np.sum(eigvals**4) )
-                    for pc_idx in pc_idxs:
-                        dqs_layer[pc_idx].append( [compute_dq(eigvecs[:,pc_idx],q) for q in qs ] )
-                for pc_idx in pc_idxs:
-                    dqs[pc_idx].append(np.stack(dqs_layer[pc_idx]).mean(0)) 
-                EDs.append(np.mean(EDs_layer))
-
                 if projection:
                     O = torch.randn(N_all,N) / np.sqrt(N)
                     O = O.to(dev)
@@ -444,6 +426,26 @@ def snr_components(model_name, fname, root_path, projection=True):
                     input_tensor = get_batch(i,batch_size)
                     with torch.no_grad():
                         output = backbone(input_tensor.to(dev))
+
+                    # dq must be computed before projection to lower dim
+                    dqs_layer = {}
+                    for pc_idx in pc_idxs:
+                        dqs_layer[pc_idx] = []
+                    EDs_layer = []
+                    # get a general version of cov mat      
+                    for nsamp in range(navg_dq):
+                        # arbitrarily sample neurons
+                        subsampled_idxs = np.random.choice(output.shape[-1], N_dq)
+                        output_sub = output[:,subsampled_idxs]
+                        # get cov matrix
+                        eigvals, eigvecs = LA.eig( np.cov( output_sub.numpy().T ) )
+                        EDs_layer.append( np.mean(eigvals**2)**2 / np.sum(eigvals**4) )
+                        for pc_idx in pc_idxs:
+                            dqs_layer[pc_idx].append( [compute_dq(eigvecs[:,pc_idx],q) for q in qs ] )
+                    for pc_idx in pc_idxs:
+                        dqs[pc_idx].append(np.stack(dqs_layer[pc_idx]).mean(0)) 
+                    EDs.append(np.mean(EDs_layer))
+
                     if projection:
                         manifolds.append((output@O).cpu().numpy())
                     else:
@@ -546,7 +548,6 @@ def snr_components(model_name, fname, root_path, projection=True):
     #EDs_all = []
     #dqs_all = []
 
-    qs = np.linspace(0,2,100)
     for manifolds in tqdm(manifolds_all):
         manifolds = np.stack(manifolds)
 
@@ -597,7 +598,6 @@ def snr_components(model_name, fname, root_path, projection=True):
 
     print(f"SNR metrics saved in: {emb_path}!")
 
-# def snr_components(model_name, init_alpha100, init_g100, init_epoch, fname, root_path):
 def snr_submit(*args):
     from qsub import qsub, job_divider
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
@@ -615,7 +615,7 @@ def snr_submit(*args):
             models.append(model_name)
     
     fname = "embeddings_new/macaque/trained"
-    pbs_array_data = [(model_name , fname, join(root_data, "pretrained_workflow", "pretrained_dnns", model_name))
+    pbs_array_data = [(model_name , fname)
                       for model_name in models
                       ]
 
@@ -627,13 +627,13 @@ def snr_submit(*args):
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path='/project/dyson/dyson_dl',
+             path='/project/PDLAI/project2_data',
              P=project_ls[pidx],
              #ngpus=1,
              ncpus=1,
              walltime='23:59:59',
              #walltime='23:59:59',
-             mem='14GB') 
+             mem='18GB') 
 
 # ---------------------- Plotting ----------------------
 
