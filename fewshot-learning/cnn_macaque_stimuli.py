@@ -674,7 +674,7 @@ def snr_submit(*args):
 
 def snr_metric_plot(model_name, metric, init_alpha100s, init_g100s, init_epoch, root_path):
 
-    global metric_data, SNRs_all
+    global metric_data, SNRs_all, metric_dict, name_dict, emb_path
     manifold_path = join("manifold", "bs=10_K=64_P=50_N=2048_epoch=100_projection=False")
 
     """
@@ -684,7 +684,8 @@ def snr_metric_plot(model_name, metric, init_alpha100s, init_g100s, init_epoch, 
 
     metric0 = "SNR"     # always plot SNR
     dq_ls = metric.split("_") if "dq" in metric else []
-    dq_filename = f"dqs_layerwise_N=5000_{dq_ls[1]}" if len(dq_ls) > 0 else None
+    #dq_filename = f"dqs_layerwise_N=5000_{dq_ls[1]}" if len(dq_ls) > 0 else None
+    dq_filename = f"dqs_layerwise_{dq_ls[1]}" if len(dq_ls) > 0 else None
     metric_dict = {"SNR"        : "SNRs_layerwise_N=5000",
                    "D"          : "Ds_layerwise_N=5000",
                    "dist_norm"  : "dist_norm_layerwise_N=5000",
@@ -716,14 +717,16 @@ def snr_metric_plot(model_name, metric, init_alpha100s, init_g100s, init_epoch, 
             if "alexnet" in model_name:
                 matches = [f.path for f in os.scandir(root_path) if f.is_dir() and "epochs=100" in f.path and f"_{init_alpha100}_{init_g100}_" in f.path]        
             elif "resnet" in model_name:        
-                matches = [f.path for f in os.scandir(root_path) if f.is_dir() and "epochs=650" in f.path and f"_{init_alpha100}_{init_g100}_" in f.path]        
+                matches = [f.path for f in os.scandir(root_path) if f.is_dir() and "epochs=650" in f.path and f"_{init_alpha100}_{init_g100}_" in f.path] 
+            assert len(matches) > 0, "network does not exists!"       
             init_path = matches[0]
             #print(init_path)
             emb_path = join(init_path, manifold_path)
             #PRs_all = np.load(join(emb_path, "Ds_layerwise.npy"))
             metric_data = np.load( join(emb_path, f"{metric_dict[metric]}.npy") )
+            #print(metric_data.shape)
             # we are only interested in the correlation D_2 for the dqs as it reveals how localized the eigenvectors are
-            metric_data = metric_data[:,-1] if "dq_" in metric else metric_data
+            metric_data = metric_data[:,:,-1] if "dq_" in metric else metric_data
             SNRs_all = np.load(join(emb_path, f"{metric_dict[metric0]}.npy"))
                 
             #break
@@ -731,7 +734,7 @@ def snr_metric_plot(model_name, metric, init_alpha100s, init_g100s, init_epoch, 
             if "dq" not in metric:
                 ax1.plot(metric_data.mean(-1), label=int(init_alpha100)/100)
             else:
-                ax1.plot(metric_data, label=int(init_alpha100)/100)
+                ax1.plot(metric_data.mean(-1), label=int(init_alpha100)/100)
             ax2.plot(np.nanmean(SNRs_all,(1,2)), label=int(init_alpha100)/100)
 
         ax1.legend(frameon=False)
@@ -745,16 +748,19 @@ def snr_metric_plot(model_name, metric, init_alpha100s, init_g100s, init_epoch, 
 
         #fig_path = "/project/dnn_maths/project_qu3/fig_path"
         fig_path = "/project/PDLAI/project2_data/figure_ms"
-        plt.savefig(join(fig_path, f"{model_name}_g={init_g100s[0]/100}_snr_{metric}-vs-layer.pdf") , bbox_inches='tight')
+        plt.savefig(join(fig_path, f"{model_name}_g={init_g100/100}_snr_{metric}-vs-layer.pdf") , bbox_inches='tight')
+        plt.close()
         print(f"Plot saved for {init_g100}!")
 
     # cheeky plot of selected metric vs SNR
+    """
     plt.clf()
     if "dq" not in metric:
-        plt.plot(metric_data.mean(-1), np.nanmean(SNRs_all,(1,2)), '.')
+        plt.plot(metric_data.mean(-1), np.nanmean(SNRs_all,(1,2)), 'b.')
     else:
-        plt.plot(metric_data, np.nanmean(SNRs_all,(1,2)), '.')
+        plt.plot(metric_data, np.nanmean(SNRs_all,(1,2)), 'b.')
     plt.show()
+    """
 
 
 if __name__ == '__main__':

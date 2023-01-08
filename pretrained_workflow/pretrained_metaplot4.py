@@ -103,7 +103,8 @@ print(f"Total number of weight matrices and convolution tensors: {len(files)}")
 
 # load stable fit params, and weight tensor size and dimension
 # sigma_scaled corresponds to D_w^(1/alpha)
-metric_names = ['alpha', 'sigma', 'sigma_scaled', 'model_name', 'param_shape', 'weight_num', 'wmat_idx', 'idx', 'weight_file', 'dirname']
+metric_names = ['alpha', 'sigma', 'sigma_scaled', 'shap pvalue', 'ks pvalue stable', 'ks pvalue normal',
+                'model_name', 'param_shape', 'weight_num', 'wmat_idx', 'idx', 'weight_file', 'dirname']
 net_names = []
 for metric_name in metric_names:
     metrics_all[metric_name] = []
@@ -124,7 +125,7 @@ for file_idx in range(len(files)):
 for weight_info_name in ["weight_info.csv", "weight_info_tf.csv"]:
     dirname = "stablefit_all_tf" if "_tf" in weight_info_name else "stablefit_all"
     weight_info = pd.read_csv( join(prepath,weight_info_name) )
-    for metric_idx in range(3,len(metric_names)-1):
+    for metric_idx in range(6,len(metric_names)-1):
         metric_name = metric_names[metric_idx]
         metrics_all[metric_name] += list(weight_info.loc[:,metric_name])
 
@@ -142,9 +143,15 @@ for ii in tqdm(range(len(metrics_all['param_shape']))):
     dirname = metrics_all['dirname'][ii]
     model_name = metrics_all['model_name'][ii]
     df = pd.read_csv( join(prepath, dirname, model_name, weight_foldername) )
+    # stablefit params
     alpha, sigma = df.loc[0,'alpha'].item(), df.loc[0,'sigma'].item()
     metrics_all['alpha'].append( alpha )
     metrics_all['sigma'].append( sigma )
+    # fitting stats
+    shap_stat, ks_pvalue_stable, ks_pvalue_normal = df.loc[0,["shap pvalue","ks pvalue stable","ks pvalue normal"]]
+    metrics_all['shap pvalue'].append(shap_stat)
+    metrics_all['ks pvalue stable'].append(ks_pvalue_stable)
+    metrics_all['ks pvalue normal'].append(ks_pvalue_normal)
 
     fidx = 0 if "_tf" not in dirname else 1
     database = net_names_all[fidx]
@@ -246,7 +253,7 @@ for i in range(3):
         cmap_bd = [round(np.percentile(pretrained_acc,5)), round(np.percentile(pretrained_acc,95))]
         im = axis.scatter(metrics_all['alpha'], metrics_all['sigma_scaled'], 
                      c=pretrained_acc, vmin=cmap_bd[0], vmax=cmap_bd[1],
-                     marker='.', s=3.5, alpha=0.8, cmap=plt.cm.get_cmap(cm_type))
+                     marker='.', s=45, alpha=0.7, cmap=plt.cm.get_cmap(cm_type))
 
         #axis.legend(loc = 'upper left', fontsize = legend_size, frameon=False)
 
@@ -474,17 +481,19 @@ axis_inset.tick_params(axis='both', which='major', labelsize=tick_size - 4)
 
 # print the necessary statistics
 
-#thresholds = [2, 0.05, 0.05]
-#thresholds = [1.95, 1]
-#thresholds = [1.90, 0.025]
-thresholds = 1.90
-#for idx in range(len(metric_names)):
-idx = 1
-metric_name = metric_names[idx]
-print(metric_name)
-print(sum(metrics_all[metric_name] <= thresholds)/len(metrics_all[metric_name]))
-#print(sum(metrics_all[metric_name] >= thresholds[idx])/len(metrics_all[metric_name]))
+metric_name = 'alpha'
+thresholds = 1.9
+count = len(metrics_all[metric_name])
+percentage = sum(metrics_all[metric_name] < thresholds)
+print(f"{metric_name} smaller than {thresholds} percentage: {percentage/count}")
 
+thresholds = 2.5e-2
+percentage = sum(metrics_all["shap pvalue"] < thresholds)
+print(f"Shapiro Wilk test p-value smaller than {thresholds} percentage: {percentage/count}")
+
+thresholds = 1
+percentage = sum(metrics_all["ks pvalue stable"]/metrics_all["ks pvalue normal"] > thresholds)
+print(f"stable/normal Kolmogorov-Smirnov test pvalue ratio greater than {thresholds} percentage: {percentage/count}")
 
 print(f"Time: {time.time() - t0}")
 
@@ -493,5 +502,5 @@ plt.tight_layout()
 
 fig1_path = "/project/PDLAI/project2_data/figure_ms"
 #fig1_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms"
-plt.savefig(f"{fig1_path}/pretrained_stablefit_torch5.pdf", bbox_inches='tight')
+plt.savefig(f"{fig1_path}/pretrained_stablefit_torch6.pdf", bbox_inches='tight')
 

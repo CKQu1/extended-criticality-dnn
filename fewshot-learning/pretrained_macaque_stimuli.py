@@ -617,6 +617,7 @@ def snr_submit(*args):
     fname = "embeddings_new/macaque/trained"
     pbs_array_data = [(model_name , fname)
                       for model_name in models
+                      if "alexnet" not in model_name
                       ]
 
     print(len(pbs_array_data))
@@ -633,7 +634,7 @@ def snr_submit(*args):
              ncpus=1,
              walltime='23:59:59',
              #walltime='23:59:59',
-             mem='18GB') 
+             mem='24GB') 
 
 # ---------------------- Plotting ----------------------
 
