@@ -641,14 +641,18 @@ def snr_submit(*args):
 
 # ---------------------- Plotting ----------------------
 
-
+# creates two plots
 def snr_metric_plot(metric1, metric2):
 
     global metric_data, SNRs_all, all_models
 
     """
-    Plots the a selected metric (based on metric_dict) vs layer and SNR vs layer,
+    Fig 1:
+    Plots the a selected metric1 (based on metric_dict) vs layer and SNR vs layer,
     for dq, the pc_idx PC needs to be selected
+
+    Fig 2:
+    Plots the a selected metric2 (based on metric_dict) vs layer and a scatter plot between SNR and D_2
     """
 
     # Plot settings
