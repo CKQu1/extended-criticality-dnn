@@ -617,11 +617,13 @@ def snr_submit(*args):
     fname = "embeddings_new/macaque/trained"
     pbs_array_data = [(model_name , fname)
                       for model_name in models
-                      if "alexnet" not in model_name
+                      if not os.path.isfile(join(root_data,"pretrained_workflow/pretrained_dnns",model_name,"manifold",fname,"css_layerwise.npy"))
                       ]
 
     print(len(pbs_array_data))
+    print(pbs_array_data)
     
+    """
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -634,23 +636,27 @@ def snr_submit(*args):
              ncpus=1,
              walltime='23:59:59',
              #walltime='23:59:59',
-             mem='24GB') 
+             mem='32GB') 
+    """
 
 # ---------------------- Plotting ----------------------
 
 
-def snr_metric_plot(model_name, root_path):
+def snr_metric_plot(metric1, metric2):
 
-    #global metric_data, SNRs_all
-    manifold_path = join("manifold", "embeddings_new/macaque/trained")
+    global metric_data, SNRs_all, all_models
 
     """
     Plots the a selected metric (based on metric_dict) vs layer and SNR vs layer,
     for dq, the pc_idx PC needs to be selected
     """
 
+    # Plot settings
+ 
+    markers = ["o", "v", "s", "p", "*", "P", "H", "D", "d", "+", "x"]
+
     metric0 = "SNR"     # always plot SNR
-    dq_ls = metric.split("_") if "dq" in metric else []
+    dq_ls = metric1.split("_") if "dq" in metric1 else []
     dq_filename = f"dqs_layerwise_{dq_ls[1]}" if len(dq_ls) > 0 else None
     metric_dict = {"SNR"        : "SNRs_layerwise",
                    "D"          : "Ds_layerwise",
@@ -663,61 +669,127 @@ def snr_metric_plot(model_name, root_path):
                  "css"        : "Centre subsplace"               
                  }   
 
-    if "dq_" in metric:
-        metric_dict[metric] = dq_filename
-        name_dict[metric] = r'$D_2$' 
+    if "dq_" in metric1:
+        metric_dict[metric1] = dq_filename
+        name_dict[metric1] = r'$D_2$' 
 
-    assert metric in metric_dict.keys(), "metric not in dictionary!" 
+    assert metric1 in metric_dict.keys(), "metric1 not in dictionary!"
+    assert metric2 in metric_dict.keys(), "metric2 not in dictionary!" 
 
     import matplotlib.pyplot as plt
     import pubplot as ppt
+
+    # get available networks
+    all_models = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv")).loc[:,"model_name"]
+    #model_names = [model_name for model_name in all_models if os.path.isfile(join(root_data,"pretrained_workflow/pretrained_dnns",model_name,"manifold/embeddings_new/macaque/trained","css_layerwise.npy"))]
+    model_names = ["alexnet", "resnet18", "resnet34", "resnet50", "resnet101", 
+                   "resnext50_32x4d", "resnext101_32x8d", 
+                   "wide_resnet50_2", "wide_resnet101_2", 
+                   "squeezenet1_1"]
+    #model_names = ["alexnet", "resnet18", "resnet34", "resnet50", "resnet101", "resnext101_32x8d", "squeezenet1_1"]
+    
+    # transparency list
+    trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
+
+    # --------------- Plot 1 ---------------
     plt.rc('font', **ppt.pub_font)
     plt.rcParams.update(ppt.plot_sizes(False))
+    fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=False,figsize=(9.5,7.142/2 + 0.15))
+    for nidx in range(len(model_names)):
     
-    init_alpha100s, init_g100s = literal_eval(init_alpha100s), literal_eval(init_g100s)
-    # plot dimension for now
-    for init_g100 in init_g100s:
-        fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=False,figsize=(9.5,7.142/2 + 0.15))
-        for init_alpha100 in init_alpha100s:
-            # load data     
-            init_path = join(root_data, "pretrained_workflow", "pretrained_dnns", model_name)
-            emb_path = join(init_path, manifold_path)
-            #PRs_all = np.load(join(emb_path, "Ds_layerwise.npy"))
-            metric_data = np.load( join(emb_path, f"{metric_dict[metric]}.npy") )
-            # we are only interested in the correlation D_2 for the dqs as it reveals how localized the eigenvectors are
-            metric_data = metric_data[:,-1] if "dq_" in metric else metric_data
-            SNRs_all = np.load(join(emb_path, f"{metric_dict[metric0]}.npy"))
-                
-            #break
-            #ax1.plot(1/PRs_all.mean(-1), label=init_alpha100)
-            if "dq" not in metric:
-                ax1.plot(metric_data.mean(-1), label=int(init_alpha100)/100)
-            else:
-                ax1.plot(metric_data, label=int(init_alpha100)/100)
-            ax2.plot(np.nanmean(SNRs_all,(1,2)), label=int(init_alpha100)/100)
+        model_name = model_names[nidx]
+        # set paths
+        init_path = join(root_data, "pretrained_workflow", "pretrained_dnns", model_name)
+        manifold_path = join("manifold", "embeddings_new/macaque/trained")
 
-        ax1.legend(frameon=False)
-        #ax1.set_yscale('log')
-        #ax1.set_ylabel(r'$1/D$')
-        ax1.set_ylabel(name_dict[metric])
-        ax2.set_ylabel("SNR")
-        ax1.set_xlabel("Layer")
-        ax2.set_xlabel("Layer")
-        #plt.show()
+        # load data     
+        emb_path = join(init_path, manifold_path)
+        #PRs_all = np.load(join(emb_path, "Ds_layerwise.npy"))
+        metric_data = np.load( join(emb_path, f"{metric_dict[metric1]}.npy") )
+        # we are only interested in the correlation D_2 for the dqs as it reveals how localized the eigenvectors are
+        metric_data = metric_data[:,:,-1] if "dq_" in metric1 else metric_data
+        SNRs_all = np.load(join(emb_path, f"{metric_dict[metric0]}.npy"))
+        # fractional layer
+        total_layers = SNRs_all.shape[0]
+        frac_layers = np.arange(0,total_layers)/(total_layers-1)
+            
+        if "dq" not in metric1:
+            ax1.plot(frac_layers, metric_data.mean(-1), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
+        else:
+            ax1.plot(frac_layers, metric_data.mean(-1), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
+        ax2.plot(frac_layers, np.nanmean(SNRs_all,(1,2)), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
+        print(f"{model_name} done!")
 
-        #fig_path = "/project/dnn_maths/project_qu3/fig_path"
-        fig_path = "/project/PDLAI/project2_data/figure_ms"
-        plt.savefig(join(fig_path, f"{model_name}_pretrained_snr_{metric}-vs-layer.pdf") , bbox_inches='tight')
-        print(f"Plot saved for {init_g100}!")
+    ax1.set_ylim((0,1))
+    ax2.set_ylim((0.05,0.4))
 
-    # cheeky plot of selected metric vs SNR
-    plt.clf()
-    if "dq" not in metric:
-        plt.plot(metric_data.mean(-1), np.nanmean(SNRs_all,(1,2)), '.')
-    else:
-        plt.plot(metric_data, np.nanmean(SNRs_all,(1,2)), '.')
-    plt.show()
+    ax1.legend(frameon=False, ncol=2, fontsize=10)
+    #ax2.set_yscale('log')
+    #ax2.ticklabel_format(style="sci", axis="y" )
 
+    ax1.set_ylabel(name_dict[metric1])
+    ax2.set_ylabel("SNR")
+    ax1.set_xlabel("Fractional depth")
+    ax2.set_xlabel("Fractional depth")
+    #plt.show()
+
+    #fig_path = "/project/dnn_maths/project_qu3/fig_path"
+    fig_path = "/project/PDLAI/project2_data/figure_ms"
+    plt.savefig(join(fig_path, f"pretrained_snr_{metric1}-vs-layer.pdf") , bbox_inches='tight')
+    print(f"Plot 1 saved!")
+
+    # --------------- Plot 2 ---------------
+    plt.rc('font', **ppt.pub_font)
+    plt.rcParams.update(ppt.plot_sizes(False))
+    fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = False,sharey=False,figsize=(9.5,7.142/2 + 0.15))
+    for nidx in range(len(model_names)):
+    
+        model_name = model_names[nidx]
+        # set paths
+        init_path = join(root_data, "pretrained_workflow", "pretrained_dnns", model_name)
+        manifold_path = join("manifold", "embeddings_new/macaque/trained")
+
+        # load data     
+        emb_path = join(init_path, manifold_path)
+        #PRs_all = np.load(join(emb_path, "Ds_layerwise.npy"))
+        metric_data = np.load( join(emb_path, f"{metric_dict[metric2]}.npy") )
+        # we are only interested in the correlation D_2 for the dqs as it reveals how localized the eigenvectors are
+        metric_data = metric_data[:,:,-1] if "dq_" in metric2 else metric_data
+        dq_name = "dq_0"
+        dq_data = np.load( join(emb_path, f"{metric_dict[dq_name]}.npy") )
+        dq_data = dq_data[:,:,-1]
+        SNRs_all = np.load(join(emb_path, f"{metric_dict[metric0]}.npy"))
+        # fractional layer
+        total_layers = SNRs_all.shape[0]
+        frac_layers = np.arange(0,total_layers)/(total_layers-1)
+            
+        if "dq" not in metric2:
+            ax1.plot(frac_layers, metric_data.mean(-1), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
+        else:
+            ax1.plot(frac_layers, metric_data.mean(-1), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
+
+        # only scatter plot the latter layers
+        deep_layers = np.where(frac_layers >= 0)
+        ax2.scatter(dq_data.mean(-1)[deep_layers], np.nanmean(SNRs_all,(1,2))[deep_layers], alpha=0.6)
+        print(f"{model_name} done!")
+    
+    #ax2.set_xlim((0,1))
+    #ax2.set_ylim((0.05,0.4))
+
+    ax1.legend(frameon=False, ncol=2, fontsize=10)
+    ax2.set_yscale('log')
+    #ax2.ticklabel_format(style="sci", axis="y" )
+
+    ax1.set_ylabel(name_dict[metric2])
+    ax2.set_ylabel("SNR")
+    ax1.set_xlabel("Fractional depth")
+    ax2.set_xlabel(r"$D_2$")
+    #plt.show()
+
+    #fig_path = "/project/dnn_maths/project_qu3/fig_path"
+    fig_path = "/project/PDLAI/project2_data/figure_ms"
+    plt.savefig(join(fig_path, f"pretrained_snr_{metric2}-dq_scatter.pdf") , bbox_inches='tight')
+    print(f"Plot 2 saved!")
 
 
 if __name__ == '__main__':
