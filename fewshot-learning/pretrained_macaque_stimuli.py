@@ -307,7 +307,7 @@ def snr_components(model_name, fname, projection=True):
     # same variables as in cnn_macaque_stimuli.py
     N = 2048
     N_dq = 500
-    navg_dq = 5
+    navg_dq = 10
 
     batch_size = 10
     K = 64
@@ -461,7 +461,7 @@ def snr_components(model_name, fname, projection=True):
                 manifolds_all.append(manifolds)
                 counter += 1
 
-        #np.save(os.path.join(emb_path, f'manifolds_layerwise.npy'), manifolds_all)
+        np.save(os.path.join(emb_path, f'manifolds_layerwise.npy'), manifolds_all)
         #manifolds_all_load = manifolds_all
         print("manifolds_layerwise.npy saved!")
 
@@ -603,7 +603,9 @@ def snr_submit(*args):
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
 
     # get all appropriate networks
-    nets_with_backbone = ["resnet", "resnext", "vgg", "alexnet", "squeeze", "efficient"]
+    """
+    #nets_with_backbone = ["resnet", "resnext", "vgg", "alexnet", "squeeze", "efficient"]
+    nets_with_backbone = ["resnet", "resnext", "alexnet", "squeeze", "efficient"]
     net_names = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv"))    # locally available pretrained nets
     models = []
     for model_name in net_names.loc[:, "model_name"]:
@@ -613,31 +615,37 @@ def snr_submit(*args):
                 matches += 1
         if matches > 0:
             models.append(model_name)
+    """
+    # small models
+    #models = ["alexnet", "resnet18", "resnet34", "resnet50"]
+    # large models
+    models = ["resnet101", "resnet152", 
+              "resnext50_32x4d", "resnext101_32x8d",
+              "squeezenet1_0", "squeezenet1_1", 
+              "wide_resnet50_2", "wide_resnet101_2"]
     
     fname = "embeddings_new/macaque/trained"
     pbs_array_data = [(model_name , fname)
                       for model_name in models
-                      if not os.path.isfile(join(root_data,"pretrained_workflow/pretrained_dnns",model_name,"manifold",fname,"css_layerwise.npy"))
+                      #if not os.path.isfile(join(root_data,"pretrained_workflow/pretrained_dnns",model_name,"manifold",fname,"css_layerwise.npy"))
                       ]
 
     print(len(pbs_array_data))
     print(pbs_array_data)
     
-    """
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path='/project/PDLAI/project2_data',
+             path='/project/PDLAI/project2_data/pretrained_workflow/',
              P=project_ls[pidx],
              #ngpus=1,
              ncpus=1,
-             walltime='23:59:59',
+             walltime='47:59:59',
              #walltime='23:59:59',
              mem='32GB') 
-    """
 
 # ---------------------- Plotting ----------------------
 
@@ -665,12 +673,14 @@ def snr_metric_plot(metric1, metric2):
     metric_dict = {"SNR"        : "SNRs_layerwise",
                    "D"          : "Ds_layerwise",
                    "dist_norm"  : "dist_norm_layerwise",
-                   "css"        : "css_layerwise"               
+                   "css"        : "css_layerwise",        
+                   "ED"         : "EDs_layerwise_all"     
                    }
 
     name_dict = {"D"          : r'$D$',
                  "dist_norm"  : "Distance norm",
-                 "css"        : "Centre subsplace"               
+                 "css"        : "Centre subsplace",
+                 "ED"         : "ED"              
                  }   
 
     if "dq_" in metric1:
@@ -686,11 +696,17 @@ def snr_metric_plot(metric1, metric2):
     # get available networks
     all_models = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv")).loc[:,"model_name"]
     #model_names = [model_name for model_name in all_models if os.path.isfile(join(root_data,"pretrained_workflow/pretrained_dnns",model_name,"manifold/embeddings_new/macaque/trained","css_layerwise.npy"))]
+    """
     model_names = ["alexnet", "resnet18", "resnet34", "resnet50", "resnet101", 
                    "resnext50_32x4d", "resnext101_32x8d", 
                    "wide_resnet50_2", "wide_resnet101_2", 
                    "squeezenet1_1"]
+    """
     #model_names = ["alexnet", "resnet18", "resnet34", "resnet50", "resnet101", "resnext101_32x8d", "squeezenet1_1"]
+    model_names = ["alexnet", "resnet50", "resnet101", 
+                   "resnext50_32x4d", "resnext101_32x8d", 
+                   "wide_resnet50_2", "wide_resnet101_2", 
+                   "squeezenet1_1"]
     
     # transparency list
     trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
@@ -780,7 +796,7 @@ def snr_metric_plot(metric1, metric2):
     #ax2.set_xlim((0,1))
     #ax2.set_ylim((0.05,0.4))
 
-    ax1.legend(frameon=False, ncol=2, fontsize=10)
+    #ax1.legend(frameon=False, ncol=2, fontsize=10)
     ax2.set_yscale('log')
     #ax2.ticklabel_format(style="sci", axis="y" )
 

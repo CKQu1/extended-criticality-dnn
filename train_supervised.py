@@ -10,6 +10,8 @@ from torch.autograd import Variable
 from tqdm import tqdm
 from scipy.stats import levy_stable
 
+from path_names import root_data
+
 dev = torch.device(f"cuda:{torch.cuda.device_count()-1}"
                    if torch.cuda.is_available() else "cpu")
 print(dev)
@@ -32,7 +34,7 @@ def log_model(log_path, model_path, file_name="net_log", local_log=True, **kwarg
     print('Log saved!')
 
 def read_log():    
-    fi = f"{path_names.log_path}/net_log.csv"
+    fi = join(root_data, "net_log.csv")
     if os.path.isfile(fi):
         df_og = pd.read_csv(fi)
         print(df_og)
@@ -436,10 +438,10 @@ import torch.nn.functional as F
 
 # maybe write a network Wrapper to include differenet kinds of attributes like ED, IPR, etc
 
-def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, 
+def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path,
                  net_type = "fc", activation='tanh', hidden_structure=2, depth=10,                                     # network structure
                  loss_func_name="cross_entropy", lr=0.001, momentum=0, weight_decay=0, num_workers=1, epochs=650,                      # training setting
-                 save_epoch=50, weight_save=1, stablefit_save=1, eigvals_save=1,                                       # save data options
+                 save_epoch=650, weight_save=1, stablefit_save=1, eigvals_save=0,                                       # save data options
                  with_ed=False, with_pc=False, with_ipr=False):
                  #with_ed=True, with_pc=True, with_ipr=False):                                                            # save extra data options
 
@@ -452,6 +454,8 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch,
     from time import time; t0 = time()
     from NetPortal.models import ModelFactory
 
+    init_path = None if init_path.lower() == "none" else init_path
+    init_epoch = None if init_epoch.lower() == "none" else init_epoch
     alpha100, g100 = int(alpha100), int(g100)
     alpha, g = int(alpha100)/100., int(g100)/100.
     bs, lr = int(bs), float(lr)
@@ -471,7 +475,7 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch,
     train_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")  
 
     # create path
-    model_path = f"{path_names.fc_path}/{net_type}{depth}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}"
+    model_path = f"{root_path}/{net_type}{depth}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}"
     if not os.path.isdir(model_path): os.makedirs(f'{model_path}')
     # log marker
     np.savetxt(f"{model_path}/lr={lr}_momentum={momentum}_bs={bs}", np.array([0]))
@@ -659,7 +663,7 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch,
 
     total_time = time() - t0
     # log dataframe
-    log_path = path_names.log_path
+    log_path = root_data
     log_model(log_path, model_path, file_name="net_log", net_type=net_type, model_dims=model.dims, model_id=model_id, train_date=train_date, name=name, alpha100=alpha100, g100=g100, 
               activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, bs=bs, lr=lr, num_workers=num_workers, 
               epochs=epochs, steps=steps, final_acc=final_acc, total_time=total_time)
@@ -789,7 +793,7 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
 
     total_time = time() - t0
     # log dataframe
-    log_path = path_names.log_path
+    log_path = root_data
     log_model(log_path, model_path, file_name="net_log", net_type=net_type, model_id=model_id, train_date=train_date, name=name, activation=activation, alpha100=alpha100, g100=g100,
               loss_func_name=loss_func_name, optimizer=optimizer, bs=bs, lr=lr, lr_ls=lr_ls, weight_decay=weight_decay, num_workers=num_workers, 
               epochs=epochs, steps=steps, final_acc=final_acc, total_time=total_time)
@@ -813,23 +817,26 @@ def train_submit(*args):
     #alpha100_ls = list(range(180,201,10))
     #g100_ls = list(range(25, 301, 25))
 
-    alpha100_ls = [200]
+    alpha100_ls = [100, 200]
     g100_ls = [25,100,300]
-    #optimizer_ls = ["sgd"]
-    optimizer_ls = ["adam"]
-    #bs_ls = [int(2**p) for p in range(1,12)]
+    optimizer_ls = ["sgd"]
+    #optimizer_ls = ["adam"]
+    bs_ls = [int(2**p) for p in range(3,11)]
     #bs_ls = [64]
-    bs_ls = [1024]
+    #bs_ls = [1024]
     init_path, init_epoch = None, None
+    root_path = join(root_data, "trained_mlps/bs_analysis")
 
-    pbs_array_data = [(name, alpha100, g100, optimizer, bs, init_path, init_epoch)
+    pbs_array_data = [(name, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path)
                       for name in dataset_ls
                       for alpha100 in alpha100_ls
                       for g100 in g100_ls
                       for optimizer in optimizer_ls
                       for bs in bs_ls
+                      for repetition in range(5)   # delete for usual case
                       ]
 
+    pbs_array_data = pbs_array_data[2:]
     #print(pbs_array_data)
     #pbs_array_data = pbs_array_data[0:1]
 
@@ -851,18 +858,18 @@ def train_submit(*args):
         #break
     print(len(pbs_array_true))
     """
-
+    
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path='/project/dyson/dyson_dl',
+             path=join(root_data, "trained_mlps"),
              P=project_ls[pidx],
              ngpus=1,
              ncpus=1,
-             walltime='1:59:59',
+             walltime='2:59:59',
              #walltime='23:59:59',
              mem='6GB') 
 

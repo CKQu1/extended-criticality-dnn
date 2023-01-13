@@ -221,8 +221,11 @@ def snr_components(model_name, init_alpha100, init_g100, fname,
     import numpy.linalg as LA
     from NetPortal.models import ModelFactory
 
+    # dist_norm, Ds, csa, ss, SNR = geometry(centers,Rs,Us,m)
     global model
-    global Us, manifolds_all, Rs_all, dists_all, PRs_all, css_all, SNRs_all
+    global centers, Rs, Us, m
+    global dist_norm, Ds, csa, ss
+    global manifolds_all, Rs_all, dists_all, PRs_all, css_all, SNRs_all
     global EDs_all, dqs_all
     global layers
     global manifolds
