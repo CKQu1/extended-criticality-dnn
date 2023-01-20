@@ -133,7 +133,8 @@ def gcircle_prop(N, L, N_thetas, alpha100, g100, *args):
 def gcircle_save(N, L, N_thetas,
                  alpha100, g100, *args):
     import torch    
-    path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
+    #path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
+    path = "/project/PDLAI/project2_data/geometry_data/gcircle3d_data"
     if not os.path.exists(f'{path}'):
         os.makedirs(f'{path}')
 
@@ -156,7 +157,8 @@ def submit(*args):
     #qsub(f'python greatcircle_proj_trial.py {sys.argv[0]} {" ".join(args)}',
     qsub(f'python {sys.argv[0]} {" ".join(args)}',    
          pbs_array_data, 
-         path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/',
+         #path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/',
+         path = '/project/PDLAI/project2_data/geometry_data',
          P='phys_DL')
 
 # ----- preplot -----
@@ -164,7 +166,8 @@ def submit(*args):
 def gcircle_preplot(alpha100, g100, *args):
     import torch    
 
-    path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
+    #path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
+    path = "/project/PDLAI/project2_data/geometry_data/gcircle3d_data"
     if not os.path.exists(f'{path}'):
         os.makedirs(f'{path}') 
 
@@ -178,7 +181,8 @@ def gcircle_preplot(alpha100, g100, *args):
 
 def submit_preplot(*args):
 #def submit_preplot(path):
-    data_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
+    #data_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
+    data_path = "/project/PDLAI/project2_data/geometry_data/gcircle3d_data"
     # find the `alpha100`s and `g100`s of the files in the folder
     pbs_array_data = set([tuple(re.findall('\d+', fname)[:2]) for fname in os.listdir(data_path)
                       if all(s in fname for s in ('alpha', 'g', 'gcircles'))])
@@ -189,7 +193,8 @@ def submit_preplot(*args):
 
     from qsub import qsub
     qsub(f'python {sys.argv[0]} gcircle_preplot', pbs_array_data, 
-         path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/',
+         #path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/',
+         path = "/project/PDLAI/project2_data/geometry_data",
          P='phys_DL')
 
 # ----- plot -----
@@ -228,8 +233,10 @@ def gcircle_plot(*args, cbar_separate=True):
     linewidth = 0.8
     text_size = 14
 
-    data_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
-    plot_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms"
+    #data_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/gcircle3d_data"
+    #plot_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms"
+    data_path = "/project/PDLAI/project2_data/geometry_data/gcircle3d_data"
+    plot_path = "/project/PDLAI/project2_data/figure_ms"
    
     alpha_mult_pair = []
     for alpha100 in alpha100_ls:
