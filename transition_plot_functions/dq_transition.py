@@ -6,25 +6,24 @@ import scipy.io as sio
 import pandas as pd
 import seaborn as sns
 from matplotlib.pyplot import figure
-from matplotlib.gridspec import GridSpec
-from matplotlib.pyplot import subplot, title, axis, xlim, ylim, gca, xticks, yticks, xlabel, ylabel, plot, legend, gcf, cm # colorbar
+#from matplotlib.pyplot import subplot, title, axis, xlim, ylim, gca, xticks, yticks, xlabel, ylabel, plot, legend, gcf
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 # colorbar scheme
 from matplotlib.cm import coolwarm
 #from matplotlib.cm import inferno
 
 # colorbar
-#cm = cm.get_cmap('RdYlBu')
-#cm = cm.get_cmap('inferno')
-cm = cm.get_cmap('plasma')
+cm_type = 'CMRmap'
+interp = "quadric"
+plt.rcParams["font.family"] = "serif"     # set plot font globally
 
 from ast import literal_eval
 
 fcn = "fc10"
 net_type = f"{fcn}_mnist_tanh"
 #net_type = f"{fcn}_mnist_tanh_2"
-main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
-path = f"{main_path}/fcn_grid/{fcn}_grid"
+main_path = "/project/PDLAI/project2_data"
+path = f"{main_path}/trained_mlps/fcn_grid/{fcn}_grid"
 dq_path = "/project/phys_DL/grad_plots"
 
 net_data_path = "/project/phys_DL/grad_plots"
@@ -238,14 +237,14 @@ for epoch in range(0,601,50):
             std_mesh[x_loc,y_loc] = d2_std_ls[t]
 
         # plot results
-        #axs[r].scatter(alpha_ls, m_ls, c=d2_ls, vmin=test_min, vmax=test_max,s=55, cmap=cm)
-        #main_plot = axs[r].scatter(alpha_ls, m_ls, c=d2_ls, vmin=cmap_bd[r][0], vmax=cmap_bd[r][1],s=55, cmap=cm)
-        mean_plot = axs[2].imshow(mean_mesh,extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], vmin=cmap_bd[0][0], vmax=cmap_bd[0][1], cmap=cm, interpolation='quadric', aspect='auto')
-        #main_plot = axs[r].imshow(mean_mesh,extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], cmap=cm, interpolation='quadric', aspect='auto')
+        #axs[r].scatter(alpha_ls, m_ls, c=d2_ls, vmin=test_min, vmax=test_max,s=55, cmap=plt.cm.get_cmap(cm_type))
+        #main_plot = axs[r].scatter(alpha_ls, m_ls, c=d2_ls, vmin=cmap_bd[r][0], vmax=cmap_bd[r][1],s=55, cmap=plt.cm.get_cmap(cm_type))
+        mean_plot = axs[2].imshow(mean_mesh,extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], vmin=cmap_bd[0][0], vmax=cmap_bd[0][1], cmap=plt.cm.get_cmap(cm_type), interpolation='quadric', aspect='auto')
+        #main_plot = axs[r].imshow(mean_mesh,extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], cmap=plt.cm.get_cmap(cm_type), interpolation='quadric', aspect='auto')
         plt.colorbar(mean_plot,ax=axs[2])
 
-        std_plot = axs[3].imshow(std_mesh,extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], vmin=cmap_bd[1][0], vmax=cmap_bd[1][1], cmap=cm, interpolation='quadric', aspect='auto')
-        #main_plot = axs[r].imshow(mean_mesh,extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], cmap=cm, interpolation='quadric', aspect='auto')
+        std_plot = axs[3].imshow(std_mesh,extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], vmin=cmap_bd[1][0], vmax=cmap_bd[1][1], cmap=plt.cm.get_cmap(cm_type), interpolation='quadric', aspect='auto')
+        #main_plot = axs[r].imshow(mean_mesh,extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], cmap=plt.cm.get_cmap(cm_type), interpolation='quadric', aspect='auto')
         plt.colorbar(std_plot,ax=axs[3])
 
         #axs[r].colorbar()
@@ -256,7 +255,7 @@ for epoch in range(0,601,50):
         plt.tight_layout()
         #plt.show()
 
-        fig1_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_grad_plots"
+        fig1_path = "/project/PDLAI/project2_data/figure_ms/dq_grad_plots"
         plt.savefig(f"{fig1_path}/dq_transition_l={layer}_epoch={epoch}.pdf", bbox_inches='tight')
 
     print(f"{epoch} done!")

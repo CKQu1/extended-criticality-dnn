@@ -258,7 +258,7 @@ def layer_ipr(model,hidden_layer,lq_ls):
                           
     return arr
 
-def effective_dimension(model,hidden_layer,with_pc:bool,q_ls):    # hidden_layer is image    
+def effective_dimension(model, hidden_layer, with_pc:bool, q_ls):    # hidden_layer is input image    
     ed_arr = np.zeros([len(model.sequential)])
     C_dims = np.zeros([len(model.sequential)])   # record dimension of correlation matrix
     with torch.no_grad():
@@ -821,7 +821,8 @@ def train_submit(*args):
     g100_ls = [25,100,300]
     optimizer_ls = ["sgd"]
     #optimizer_ls = ["adam"]
-    bs_ls = [int(2**p) for p in range(3,11)]
+    #bs_ls = [int(2**p) for p in range(3,11)]
+    bs_ls = [8]
     #bs_ls = [64]
     #bs_ls = [1024]
     init_path, init_epoch = None, None
@@ -871,7 +872,7 @@ def train_submit(*args):
              ncpus=1,
              walltime='2:59:59',
              #walltime='23:59:59',
-             mem='6GB') 
+             mem='12GB') 
 
     """
     qsub(f'python {sys.argv[0]} {" ".join(args)}',    

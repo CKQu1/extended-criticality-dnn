@@ -3,6 +3,7 @@ import numpy as np
 import os
 import re
 import scipy.io as sio
+import sys
 
 import pandas as pd
 import seaborn as sns
@@ -11,6 +12,10 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.pyplot import subplot, title, axis, xlim, ylim, gca, xticks, yticks, xlabel, ylabel, plot, legend, gcf, cm # colorbar
 from matplotlib.ticker import AutoMinorLocator
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
+from os.path import join
+
+sys.path.append(os.getcwd())
+from path_names import root_data
 
 plt.switch_backend('agg')
 
@@ -23,7 +28,9 @@ cm = cm.get_cmap('plasma')
 fcn = "fc10"
 net_type = f"{fcn}_mnist_tanh"
 #net_type = f"{fcn}_mnist_tanh_2"
-main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
+#main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
+main_path = join(root_data, "trained_mlps")
+
 path = f"{main_path}/fcn_grid/{fcn}_grid"
 
 # post/pre-activation and right/left-eigenvectors
@@ -36,27 +43,34 @@ post_dict = {0:'pre', 1:'post'}
 reig_dict = {0:'l', 1:'r'}
 
 #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise"
-dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
+#dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
+dq_path = join(root_data, f"geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}")
 
 # new version phase boundaries
-bound1 = pd.read_csv(f"{main_path}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
+#bound1 = pd.read_csv(f"{main_path}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
+bound1 = pd.read_csv(f"{root_data}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
 boundaries = []
-bd_path = "/project/phys_DL/phasediagram"
+bd_path = join(root_data, "phasediagram")
 for i in range(1,102,10):
     boundaries.append(pd.read_csv(f"{bd_path}/pow_{i}.csv"))
 
 # ----- plot phase transition -----
 
-title_size = 23.5
-tick_size = 23.5
-label_size = 23.5
-axis_size = 23.5
-legend_size = 23.5
-c_ls = ["tab:blue", "tab:orange"]
-
+#title_size = 23.5
+#tick_size = 23.5
+#label_size = 23.5
+#axis_size = 23.5
+#legend_size = 23.5
+title_size = 23.5 * 2.5
+tick_size = 23.5 * 2.5
+label_size = 23.5 * 2.5
+axis_size = 23.5 * 2.5
+legend_size = 23.5 * 2.5
+#c_ls = ["tab:blue", "tab:orange"]
+c_ls = ["blue", "red"]
 
 alpha100_ls = [120,200]
-g100 = 150
+g100 = 100
 
 q_folder_idx = 25
 missing_data = []
@@ -64,7 +78,8 @@ missing_data = []
 # test first
 #for epoch in [0,1]:
 #    for layer in range(0,2):
-for epoch in [0,1] + list(range(50,651,50)):   # all
+#for epoch in [0,1] + list(range(50,651,50)):   # all
+for epoch in [0,650]:
     for layer in range(0,10):
 
         #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = False,sharey=False,figsize=(9.5,7.142))
@@ -76,8 +91,8 @@ for epoch in [0,1] + list(range(50,651,50)):   # all
         #ax1.set_xticks(np.arange(0,2.05,0.5))
 
 
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(True)
+        ax.spines['right'].set_visible(True)
 
         # ticks
         #axs[i].tick_params(axis='both',labelsize=tick_size)
@@ -144,11 +159,13 @@ for epoch in [0,1] + list(range(50,651,50)):   # all
 
         ax.set_title(f"Layer {layer+1}, Epoch {epoch}", fontsize=title_size)
 
-        ax.legend(fontsize = legend_size, frameon=False)
+        #if epoch == 0:
+        #    ax.legend(fontsize = legend_size, frameon=False)
         plt.tight_layout()
         #plt.show()
 
-        fig1_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots"
+        #fig1_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots"
+        fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
         if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
         # alleviate memory
         plt.savefig(f"{fig1_path}/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_l={layer}_epoch={epoch}.pdf", bbox_inches='tight')

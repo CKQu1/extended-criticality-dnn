@@ -10,11 +10,26 @@ plt.switch_backend('agg')
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
 
+"""
+
+This is for computing and saving the multifractal data of the (layerwise) Jacobian eigenvectors.
+
+"""
+
 def IPR(vec, q):
     return sum(abs(vec)**(2*q)) / sum(abs(vec)**2)**q
 
-# computes all the D^l W^l's matrix multiplication
 def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
+    """
+    
+    computes and saves all the D^l W^l's matrix multiplication, i.e. pre- or post-activation jacobians
+    - post = 1: post-activation jacobian
+           = 0: pre-activation jacobian
+
+    - input_idx: the index of the image
+    
+    """
+
     import scipy.io as sio
     import torch
     import train_DNN_code.model_loader as model_loader
@@ -29,8 +44,8 @@ def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
     total_epoch = 650
     fcn = f"fc{L}"
     net_type = f"{fcn}_mnist_tanh"
-    main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
-    data_path = f"{main_path}/fcn_grid/{fcn}_grid"
+    main_path = "/project/PDLAI/project2_data"
+    data_path = f"{main_path}/trained_mlps/fcn_grid/{fcn}_grid"
 
     # Extract numeric arguments.
     alpha = int(alpha100)/100.
@@ -63,9 +78,9 @@ def jac_save(post, alpha100, g100, input_idx, epoch, *args):
     post = int(post)
     assert post == 1 or post == 0, "No such option!"
     if post == 1:
-        path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/postjac_layerwise"
+        path = "/project/PDLAI/project2_data/geometry_data/postjac_layerwise"
     elif post == 0:
-        path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/prejac_layerwise"
+        path = "/project/PDLAI/project2_data/geometry_data/prejac_layerwise"
     if not os.path.exists(f'{path}'):
         os.makedirs(f'{path}')
 
@@ -95,12 +110,19 @@ def submit(*args):
     #qsub(f'python greatcircle_proj_trial.py {sys.argv[0]} {" ".join(args)}',
     qsub(f'python {sys.argv[0]} {" ".join(args)}',    
          pbs_array_data, 
-         path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/',
+         path='/project/PDLAI/project2_data/geometry_data/',
          P='phys_DL')
 
 # ----- preplot -----
 
 def jac_to_dq(alpha100, g100, input_idx, epoch, post, reig, *args):
+
+    """
+
+    computing the eigenvectors of the associated jacobians from jac_save(), and then saving the Dq's
+
+    """
+
     import numpy as np    
     import torch
     from numpy import linalg as la
@@ -114,7 +136,7 @@ def jac_to_dq(alpha100, g100, input_idx, epoch, post, reig, *args):
     post_dict = {0:'pre', 1:'post'}
     reig_dict = {0:'l', 1:'r'}
 
-    main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data"
+    main_path = "/project/PDLAI/project2_data/geometry_data"
     data_path = f"{main_path}/{post_dict[post]}jac_layerwise"
     save_path = f"{main_path}/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
     fig_path = f"{main_path}/dq_layerplot_{post_dict[post]}_{reig_dict[reig]}"
@@ -213,8 +235,7 @@ def submit_preplot(*args,post=1,reig=0):
     post_dict = {0:'pre', 1:'post'}
 
     # change the path accordingly
-    #data_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/jac_layerwise"
-    data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
+    data_path = f"/project/PDLAI/project2_data/geometry_data/{post_dict[post]}jac_layerwise"
     # find the `alpha100`s and `g100`s of the files in the folder
     # dw_alpha{alpha100}_g{g100}_ipidx{input_idx}_epoch{epoch}
     pbs_array_data = set([tuple(re.findall('\d+', fname)[:4]) + (int(post),int(reig)) for fname in os.listdir(data_path)
@@ -229,7 +250,7 @@ def submit_preplot(*args,post=1,reig=0):
 
     # rerunning missing data
     """
-    dq_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data"
+    dq_path = "/project/PDLAI/project2_data/geometry_data"
     missing_data = np.loadtxt(f"{dq_path}/missing_data.txt")
     pbs_array_data = []
     for m in missing_data:
@@ -239,7 +260,7 @@ def submit_preplot(*args,post=1,reig=0):
 
     from qsub import qsub
     qsub(f'python {sys.argv[0]} jac_to_dq', pbs_array_data, 
-         path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/',
+         path='/project/PDLAI/project2_data/geometry_data/',
          #P='phys_DL'
          P='dnn_maths'
          #P='PDLAI'

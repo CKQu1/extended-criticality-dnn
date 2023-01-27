@@ -7,24 +7,23 @@ import scipy.io as sio
 import pandas as pd
 import seaborn as sns
 from matplotlib.pyplot import figure
-from matplotlib.gridspec import GridSpec
-from matplotlib.pyplot import subplot, title, axis, xlim, ylim, gca, xticks, yticks, xlabel, ylabel, plot, legend, gcf, cm # colorbar
+#from matplotlib.pyplot import subplot, title, axis, xlim, ylim, gca, xticks, yticks, xlabel, ylabel, plot, legend, gcf, cm # colorbar
 from matplotlib.ticker import AutoMinorLocator
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 
 plt.switch_backend('agg')
 
-# colorbar scheme
-from matplotlib.cm import coolwarm
-
 # colorbar
-cm = cm.get_cmap('plasma')
+cm_type = 'CMRmap'
+interp = "quadric"
+plt.rcParams["font.family"] = "serif"     # set plot font globally
 
 fcn = "fc10"
 net_type = f"{fcn}_mnist_tanh"
 #net_type = f"{fcn}_mnist_tanh_2"
-main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
-path = f"{main_path}/fcn_grid/{fcn}_grid"
+#main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
+main_path = "/project/PDLAI/project2_data"
+path = f"{main_path}/trained_mlps/fcn_grid/{fcn}_grid"
 
 # post/pre-activation and right/left-eigenvectors
 post = 0
@@ -36,14 +35,14 @@ post_dict = {0:'pre', 1:'post'}
 reig_dict = {0:'l', 1:'r'}
 
 #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise"
-dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
+dq_path = f"/project/PDLAI/project2_data/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
 
 # new version phase boundaries
 bound1 = pd.read_csv(f"{main_path}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
 boundaries = []
-bd_path = "/project/phys_DL/phasediagram"
-for i in range(1,102,10):
-    boundaries.append(pd.read_csv(f"{bd_path}/pow_{i}.csv"))
+#bd_path = "/project/PDLAI/project2_data/phasediagram"
+#for i in range(1,102,10):
+#    boundaries.append(pd.read_csv(f"{bd_path}/pow_{i}.csv"))
 
 # ----- plot phase transition -----
 
@@ -79,7 +78,8 @@ missing_data = []
 # test first
 #for epoch in [0,1]:
 #    for layer in range(0,2):
-for epoch in [0,1] + list(range(50,651,50)):   # all
+#for epoch in [0,1] + list(range(50,651,50)):   # all
+for epoch in [0,650]:
     for layer in range(0,10):
 
         if epoch == 0 and layer == 0:
@@ -155,7 +155,7 @@ for epoch in [0,1] + list(range(50,651,50)):   # all
             mean_mesh[x_loc,y_loc] = d2_mean_ls[t]
             std_mesh[x_loc,y_loc] = d2_std_ls[t]
 
-        fig1_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_q={round(q_folder,1)}_plots"
+        fig1_path = f"/project/PDLAI/project2_data/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_q={round(q_folder,1)}_plots"
         if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
 
         # ----- plot template -----
@@ -166,13 +166,13 @@ for epoch in [0,1] + list(range(50,651,50)):   # all
             fig, ax = plt.subplots(1, 1,figsize=(9.5,7.142))
             # plot boundaries for each axs
             ax.plot(bound1.iloc[:,0], bound1.iloc[:,1], linewidth=2.5, color='k')
-            for j in range(len(boundaries)):
-                bd = boundaries[j]
-                ax.plot(bd.iloc[:,0], bd.iloc[:,1], linewidth=2.5, color='k', linestyle='-.')
+            #for j in range(len(boundaries)):
+            #    bd = boundaries[j]
+            #    ax.plot(bd.iloc[:,0], bd.iloc[:,1], linewidth=2.5, color='k', linestyle='-.')
 
             # plot points which computations where executed
-            a_cross, m_cross = np.meshgrid(alpha_grid, mult_grid)
-            ax.plot(a_cross, m_cross, c='k', linestyle='None',marker='.',markersize=12)
+            #a_cross, m_cross = np.meshgrid(alpha_grid, mult_grid)
+            #ax.plot(a_cross, m_cross, c='k', linestyle='None',marker='.',markersize=12)
                 
             ax.set_xlabel(r'$\alpha$', fontsize=axis_size)
             ax.set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
@@ -189,8 +189,11 @@ for epoch in [0,1] + list(range(50,651,50)):   # all
 
             title_name = title_names[plot_idx]
             main_plot = ax.imshow(metrics_all[title_name],extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], vmin=cmap_bd[plot_idx][0], vmax=cmap_bd[plot_idx][1], 
-                                  cmap=cm, interpolation='quadric', aspect='auto')
-            ax.set_title(rf"$D_{{{round(q_folder,1)}}}$ {title_name}", fontsize=label_size)
+                                  cmap=plt.cm.get_cmap(cm_type), interpolation='quadric', aspect='auto')
+            if q_folder == int(q_folder):
+                ax.set_title(rf"$D_{{{int(q_folder)}}}$ {title_name}", fontsize=label_size)
+            else:
+                ax.set_title(rf"$D_{{{round(q_folder,1)}}}$ {title_name}", fontsize=label_size)
             cbar = plt.colorbar(main_plot,ax=ax)
             cbar.formatter.set_powerlimits((0, 0))
             cbar.ax.tick_params(labelsize=axis_size - 3)
@@ -204,5 +207,5 @@ for epoch in [0,1] + list(range(50,651,50)):   # all
     print(f"Epoch {epoch} done!")
 
 #np.savetxt("/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data", missing_data)
-np.savetxt("/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/missing_data.txt", np.array(missing_data), fmt='%s')
+np.savetxt("/project/PDLAI/project2_data/geometry_data/missing_data.txt", np.array(missing_data), fmt='%s')
 

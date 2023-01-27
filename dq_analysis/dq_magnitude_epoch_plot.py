@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import re
+import sys
 import scipy.io as sio
 import torch
 
@@ -13,6 +14,10 @@ from matplotlib.pyplot import subplot, title, axis, xlim, ylim, gca, xticks, yti
 from matplotlib.ticker import AutoMinorLocator
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 from numpy import linalg as la
+from os.path import join
+
+sys.path.append(os.getcwd())
+from path_names import root_data
 
 plt.rcParams["font.family"] = "serif"     # set plot font globally
 #plt.rcParams["font.family"] = "Helvetica"
@@ -21,7 +26,7 @@ plt.switch_backend('agg')
 fcn = "fc10"
 net_type = f"{fcn}_mnist_tanh"
 #net_type = f"{fcn}_mnist_tanh_2"
-main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
+main_path = join(root_data, "trained_mlps")
 path = f"{main_path}/fcn_grid/{fcn}_grid"
 
 # post/pre-activation and right/left-eigenvectors
@@ -35,30 +40,29 @@ reig_dict = {0:'l', 1:'r'}
 
 #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise"
 #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
-data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
+#data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
+data_path = join(root_data, f"geometry_data/{post_dict[post]}jac_layerwise")
 
 # ----- plot phase transition -----
 
-title_size = 23.5 * 1.5
-tick_size = 23.5 * 1.5
-label_size = 23.5 * 1.5
-axis_size = 23.5 * 1.5
-legend_size = 23.5 * 1.5
-c_ls = ["tab:blue", "tab:orange"]
-
+title_size = 23.5 * 2.5
+tick_size = 23.5 * 2.5
+label_size = 23.5 * 2.5
+axis_size = 23.5 * 2.5
+legend_size = 23.5 * 2.5
+#c_ls = ["tab:blue", "tab:orange"]
+c_ls = ["blue", "red"]
 
 alpha100_ls = [120,200]
-#alpha100_ls = [120]
-g100 = 150
+g100 = 100
 
-q_folder_idx = 25
 missing_data = []
 # in the future for ipidx might be needed
 # test first
 #for epoch in [0,1]:
 #    for layer in range(0,2):
 #for epoch in [0,1] + list(range(50,651,50)):   # all
-for epoch in [650]:
+for epoch in [0,650]:
     #for layer in range(0,10):
     for f_idx in range(len(alpha100_ls)):
         #for f_idx in range(len(extension_names)):
@@ -93,6 +97,8 @@ for epoch in [650]:
                 # set ticks
                 ax.set_yticks(np.arange(0,0.151,0.05))
                 ax.set_yticklabels(np.round(np.arange(0,0.151,0.05),2))
+                ax.set_xticks([0,400,800])
+                ax.set_xticklabels([0,400,800])
 
                 # label ticks
                 ax.tick_params(axis='x', labelsize=axis_size - 1)
@@ -101,6 +107,9 @@ for epoch in [650]:
                 # minor ticks
                 ax.xaxis.set_minor_locator(AutoMinorLocator())
                 ax.yaxis.set_minor_locator(AutoMinorLocator())
+
+                # scientific notation
+                #ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
 
                 # ----- 1. Plot individual dqs -----
                 # Figure (a) and (b): plot the D_q vs q (for different alphas same g), chosen a priori
@@ -126,21 +135,23 @@ for epoch in [650]:
                 # eigenvector corresponding to the eigenvalue with the largest magnitude
                 ax.plot(np.abs(eigvecs[:,np.argmax(np.abs(eigvals))]), c = c_ls[f_idx], linewidth=3)
                 
-                if f_idx == 1:
-                    ax.set_xlabel('Site', fontsize=axis_size)
+                #if f_idx == 1:
+                ax.set_xlabel('Site', fontsize=axis_size)
                 ax.set_ylabel('Magnitude', fontsize=axis_size)
 
                 #ax.set_title(f"Layer {layer+1}, Epoch {epoch}", fontsize=title_size)
-                ax.set_title(rf"$\alpha$ = {alpha100/100}", fontsize=title_size)
+                if epoch == 0:
+                    ax.set_title(rf"$\alpha$ = {alpha100/100}", fontsize=title_size)
 
                 ax.legend(fontsize = legend_size, frameon=False)
                 plt.tight_layout()
                 #plt.show()
 
-                fig1_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots"
+                #fig1_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots"
+                fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
                 if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
                 # alleviate memory
-                plt.savefig(f"{fig1_path}/eigvec_jac_single_{post_dict[post]}_{reig_dict[reig]}_alpha100={alpha100}_l={layer}_epoch={epoch}.pdf", bbox_inches='tight')
+                plt.savefig(f"{fig1_path}/eigvec_jac_single_{post_dict[post]}_{reig_dict[reig]}_alpha100={alpha100}_g100={g100}_l={layer}_epoch={epoch}.pdf",             bbox_inches='tight')
                 plt.clf()
                 plt.close(fig)
 
