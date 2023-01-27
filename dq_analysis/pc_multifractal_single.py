@@ -6,21 +6,12 @@ import pandas as pd
 import seaborn as sns
 import scipy.io as sio
 import sys
+from os.path import join
 
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
 
-import path_names
-#from tamsd_analysis.tamsd import id_to_path, model_log
-
-def id_to_path(model_id, path):   # tick
-    for subfolder in os.walk(path):
-        if model_id in subfolder[0]:
-            model_path = subfolder[0]
-            break
-    assert 'model_path' in locals(), "model_id does not exist!"
-
-    return model_path
+from path_names import root_data, model_log, id_to_path
 
 
 def model_log(model_id):    # tick
@@ -49,11 +40,16 @@ linewidth = 0.8
 text_size = 14
 """
 
-title_size = 26.5
-tick_size = 26.5
-label_size = 26.5
-axis_size = 26.5
-legend_size = 23.5
+#title_size = 26.5
+#tick_size = 26.5
+#label_size = 26.5
+#axis_size = 26.5
+#legend_size = 23.5
+title_size = 23.5 * 1.5
+tick_size = 23.5 * 1.5
+label_size = 23.5 * 1.5
+axis_size = 23.5 * 1.5
+legend_size = 23.5 * 1.5
 
 #c_ls = ["tab:blue", "tab:orange", "tab:green"]
 c_ls = list(mcl.TABLEAU_COLORS.keys())
@@ -63,7 +59,8 @@ label_ls = ['(a)', '(b)', '(c)', '(d)']
 
 #selected_path = path_names.fc_path
 #selected_path = "/project/dnn_maths/project_qu3/fc10_pcdq"
-selected_path = "/project/dnn_maths/project_qu3/fc10_momentum"
+#selected_path = "/project/dnn_maths/project_qu3/fc10_momentum"
+selected_path = join(root_data, "trained_mlps/fc10_pcdq")
 net_ls = [net[0] for net in os.walk(selected_path) if "epochs=650" in net[0]]
 #net_ls.pop(0)
 
@@ -117,8 +114,8 @@ for epoch_plot in [1,50,100,650]:
             #axs[i].set_xlim(0.975,2.025)
             #axs[i].set_yticks(np.arange(0.4,2.01,0.4))
 
-            if gidx != 0:
-                axs[i].set_xlabel(r'$q$', fontsize=label_size)
+            #if gidx != 0:
+            axs[i].set_xlabel(r'$q$', fontsize=label_size)
             #axs[i].set_title(f"{title_ls[i]}", fontsize=axis_size)
 
             # adding labels
@@ -189,7 +186,8 @@ for epoch_plot in [1,50,100,650]:
             axs[0].plot(q_ls,upper,linewidth=0.25, alpha=1,c = c_ls[aidx])
             axs[0].fill_between(q_ls, lower, upper, color = c_ls[aidx], alpha=0.2)               
 
-        axs[0].set_title(r"$D_w^{1 / \alpha}$" + f" = {g}", fontsize=title_size)  
+        axs[0].set_ylim(-0.05,1.05)
+        #axs[0].set_title(r"$D_w^{1 / \alpha}$" + f" = {g}", fontsize=title_size)  
         if gidx == 0 or gidx == 1:
             axs[0].legend(fontsize=legend_size, loc="lower left", frameon=False) 
 
@@ -204,9 +202,9 @@ for epoch_plot in [1,50,100,650]:
         #depth = int(model_info.loc[model_info.index[0],'depth'])
         net_type = "fc"
         depth = 10
-        plot_path = f"{path_names.log_path}/fig_path/{net_type}{depth}_pcmfrac"
+        plot_path = join(root_data, f"figure_ms/{net_type}{depth}_pcmfrac")
         if not os.path.isdir(plot_path): os.makedirs(plot_path)    
-        #plt.savefig(f"{plot_path}/{net_type}{depth}_mnist_epoch={epoch_plot}_g100={g100}_pcmfrac={i_pc}_{pc_type}_single.pdf", bbox_inches='tight')
-        plt.show()
+        plt.savefig(f"{plot_path}/{net_type}{depth}_mnist_epoch={epoch_plot}_g100={g100}_pcmfrac={i_pc}_{pc_type}_single.pdf", bbox_inches='tight')
+        #plt.show()
 
 
