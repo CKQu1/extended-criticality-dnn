@@ -529,74 +529,86 @@ def snr_components(model_name, fname, projection=True):
         bias = (Rs**2).sum(-1) / (Rs**2).sum(-1)[:,None] - 1
         SNR = 1/2*(dist_norm**2 + bias/m)/ np.sqrt(1/Ds[:,None]/m + css + ss/m)
         
-        return dist_norm, Ds, csa, ss, SNR
+        # additionally returning bias
+        return dist_norm, Ds, csa, ss, SNR, bias
 
 
     print("Computing SNR metrics!")
     from scipy.spatial.distance import pdist, squareform
-    m = 5
+    ms = list(range(1,10))
+    #m = 5
+    for m in ms:
+        # dir for m-shot SNR and related metrics
+        m_shot_path = join(emb_path, f"{m}_shot_path")
+        if not os.path.isdir(m_shot_path): os.makedirs(m_shot_path)
 
-    K = len(manifolds)
-    PRs_all = []
-    Rs_all = []
-    dists_all = []
-    css_all = []
-    SNRs_all = []
+        #K = len(manifolds)
+        K = len(manifolds_all[0])
+        PRs_all = []
+        Rs_all = []
+        dists_all = []
+        css_all = []
+        SNRs_all = []
+        biases_all = []
 
-    # added analysis for correlation matrix (same as MLP)
-    #pc_idx = 0  # select first pc of cov mat
-    #EDs_all = []
-    #dqs_all = []
+        # added analysis for correlation matrix (same as MLP)
+        #pc_idx = 0  # select first pc of cov mat
+        #EDs_all = []
+        #dqs_all = []
 
-    for manifolds in tqdm(manifolds_all):
-        manifolds = np.stack(manifolds)
+        for manifolds in tqdm(manifolds_all):
+            manifolds = np.stack(manifolds)
 
-        # get a general version of cov mat      
-        #eigvals, eigvecs = LA.eig( np.cov( manifolds.reshape( manifolds.shape[0] * manifolds.shape[1], manifolds.shape[2] ).T ) )
-        #EDs_all.append( eigvals )
-        #dqs_all.append( [compute_dq(eigvecs[:,pc_idx],q) for q in qs ] )
-        #print(eigvecs.shape)
+            # get a general version of cov mat      
+            #eigvals, eigvecs = LA.eig( np.cov( manifolds.reshape( manifolds.shape[0] * manifolds.shape[1], manifolds.shape[2] ).T ) )
+            #EDs_all.append( eigvals )
+            #dqs_all.append( [compute_dq(eigvecs[:,pc_idx],q) for q in qs ] )
+            #print(eigvecs.shape)
 
-        Rs = []
-        centers = []
-        Us = []
-        for manifold in manifolds:
-            centers.append(manifold.mean(0))
-            U,R,V = np.linalg.svd(manifold - manifold.mean(0),full_matrices=False)
-            Rs.append(R)
-            Us.append(V)
-        Rs = np.stack(Rs)
-        Rs_all.append(Rs)
-        centers = np.stack(centers)
-        Us = np.stack(Us)
-        
-        dist_norm, Ds, csa, ss, SNR = geometry(centers,Rs,Us,m)
-        dists_all.append(dist_norm)
-        PRs_all.append(Ds)
-        css_all.append(csa)
-        SNRs_all.append(SNR)
-        
-    Rs_all = np.stack(Rs_all)
-    dists_all = np.stack(dists_all)
-    PRs_all = np.stack(PRs_all)
-    css_all = np.stack(css_all)
-    SNRs_all = np.stack(SNRs_all)
+            Rs = []
+            centers = []
+            Us = []
+            for manifold in manifolds:
+                centers.append(manifold.mean(0))
+                U,R,V = np.linalg.svd(manifold - manifold.mean(0),full_matrices=False)
+                Rs.append(R)
+                Us.append(V)
+            Rs = np.stack(Rs)
+            Rs_all.append(Rs)
+            centers = np.stack(centers)
+            Us = np.stack(Us)
+            
+            #dist_norm, Ds, csa, ss, SNR = geometry(centers,Rs,Us,m)
+            dist_norm, Ds, csa, ss, SNR, bias = geometry(centers,Rs,Us,m)
+            dists_all.append(dist_norm)
+            PRs_all.append(Ds)
+            css_all.append(csa)
+            SNRs_all.append(SNR)
+            biases_all.append(bias)
+            
+        Rs_all = np.stack(Rs_all)
+        dists_all = np.stack(dists_all)
+        PRs_all = np.stack(PRs_all)
+        css_all = np.stack(css_all)
+        SNRs_all = np.stack(SNRs_all)
+        biases_all = np.stack(biases_all)
 
-    #EDs_all = np.stack(EDs_all)
-    #dqs_all = np.stack(dqs_all)
+        #EDs_all = np.stack(EDs_all)
+        #dqs_all = np.stack(dqs_all)
 
-    #data_path = f"{fname}_epoch={init_epoch}"
-    #if not os.path.isdir(f"{data_path}"): os.makedirs(data_path)
+        #data_path = f"{fname}_epoch={init_epoch}"
+        #if not os.path.isdir(f"{data_path}"): os.makedirs(data_path)
 
-    np.save(os.path.join(emb_path,'SNRs_layerwise.npy'),SNRs_all)
-    np.save(os.path.join(emb_path,'Ds_layerwise.npy'),PRs_all)
-    np.save(os.path.join(emb_path,'dist_norm_layerwise.npy'),dists_all)
-    np.save(os.path.join(emb_path,'css_layerwise.npy'),css_all)
+        np.save(os.path.join(m_shot_path,'SNRs_layerwise.npy'),SNRs_all)
+        np.save(os.path.join(m_shot_path,'Ds_layerwise.npy'),PRs_all)
+        np.save(os.path.join(m_shot_path,'dist_norm_layerwise.npy'),dists_all)
+        np.save(os.path.join(m_shot_path,'css_layerwise.npy'),css_all)
+        np.save(os.path.join(m_shot_path,f'biases_layerwise.npy'),biases_all)
 
-    #np.save(join(emb_path,'EDs_layerwise.npy'), EDs_all)    
-    #np.save(join(emb_path,f'dqs_layerwise_{pc_idx}.npy'), dqs_all)
+        #np.save(join(emb_path,'EDs_layerwise.npy'), EDs_all)    
+        #np.save(join(emb_path,f'dqs_layerwise_{pc_idx}.npy'), dqs_all)
 
-    print(f"SNR metrics saved in: {emb_path}!")
+        print(f"SNR metrics saved in: {m_shot_path}!")
 
 def snr_submit(*args):
     from qsub import qsub, job_divider
@@ -643,9 +655,10 @@ def snr_submit(*args):
              P=project_ls[pidx],
              #ngpus=1,
              ncpus=1,
-             walltime='47:59:59',
-             #walltime='23:59:59',
-             mem='32GB') 
+             #walltime='47:59:59',
+             walltime='23:59:59',
+             #mem='32GB')
+             mem='10GB') 
 
 # ---------------------- Plotting ----------------------
 
@@ -667,20 +680,23 @@ def snr_metric_plot(metric1, metric2):
  
     markers = ["o", "v", "s", "p", "*", "P", "H", "D", "d", "+", "x"]
 
-    metric0 = "SNR"     # always plot SNR
+    metric0 = "dist_norm"     
     dq_ls = metric1.split("_") if "dq" in metric1 else []
     dq_filename = f"dqs_layerwise_{dq_ls[1]}" if len(dq_ls) > 0 else None
     metric_dict = {"SNR"        : "SNRs_layerwise",
                    "D"          : "Ds_layerwise",
                    "dist_norm"  : "dist_norm_layerwise",
                    "css"        : "css_layerwise",        
-                   "ED"         : "EDs_layerwise_all"     
+                   "ED"         : "EDs_layerwise_all",   
+                   "bias"       : "biases_layerwise_all"
                    }
 
-    name_dict = {"D"          : r'$D$',
+    name_dict = {"SNR"        : "SNR",
+                 "D"          : r'$D$',
                  "dist_norm"  : "Distance norm",
                  "css"        : "Centre subsplace",
-                 "ED"         : "ED"              
+                 "ED"         : "ED",
+                 "bias"       : "Bias"              
                  }   
 
     if "dq_" in metric1:
@@ -748,20 +764,20 @@ def snr_metric_plot(metric1, metric2):
     #ax2.ticklabel_format(style="sci", axis="y" )
 
     ax1.set_ylabel(name_dict[metric1])
-    ax2.set_ylabel("SNR")
+    ax2.set_ylabel(name_dict[metric0])
     ax1.set_xlabel("Fractional depth")
     ax2.set_xlabel("Fractional depth")
     #plt.show()
 
     #fig_path = "/project/dnn_maths/project_qu3/fig_path"
     fig_path = "/project/PDLAI/project2_data/figure_ms"
-    plt.savefig(join(fig_path, f"pretrained_snr_{metric1}-vs-layer.pdf") , bbox_inches='tight')
+    plt.savefig(join(fig_path, f"pretrained_{metric0}_{metric1}-vs-layer.pdf") , bbox_inches='tight')
     print(f"Plot 1 saved!")
 
     # --------------- Plot 2 ---------------
     plt.rc('font', **ppt.pub_font)
     plt.rcParams.update(ppt.plot_sizes(False))
-    fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = False,sharey=False,figsize=(9.5,7.142/2 + 0.15))
+    fig, ((ax3,ax4)) = plt.subplots(1, 2,sharex = False,sharey=False,figsize=(9.5,7.142/2 + 0.15))
     for nidx in range(len(model_names)):
     
         model_name = model_names[nidx]
@@ -784,31 +800,32 @@ def snr_metric_plot(metric1, metric2):
         frac_layers = np.arange(0,total_layers)/(total_layers-1)
             
         if "dq" not in metric2:
-            ax1.plot(frac_layers, metric_data.mean(-1), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
+            ax3.plot(frac_layers, np.nanmean(metric_data,(1,2)), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
         else:
-            ax1.plot(frac_layers, metric_data.mean(-1), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
+            #ax3.plot(frac_layers, metric_data.mean(-1), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
+            ax3.plot(frac_layers, metric_data.mean(-1), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
 
         # only scatter plot the latter layers
         deep_layers = np.where(frac_layers >= 0)
-        ax2.scatter(dq_data.mean(-1)[deep_layers], np.nanmean(SNRs_all,(1,2))[deep_layers], alpha=0.6)
+        ax4.scatter(dq_data.mean(-1)[deep_layers], np.nanmean(SNRs_all,(1,2))[deep_layers], alpha=0.6)
         print(f"{model_name} done!")
     
-    #ax2.set_xlim((0,1))
-    #ax2.set_ylim((0.05,0.4))
+    #ax4.set_xlim((0,1))
+    #ax4.set_ylim((0.05,0.4))
 
-    #ax1.legend(frameon=False, ncol=2, fontsize=10)
-    ax2.set_yscale('log')
-    #ax2.ticklabel_format(style="sci", axis="y" )
+    #ax3.legend(frameon=False, ncol=2, fontsize=10)
+    ax4.set_yscale('log')
+    #ax4.ticklabel_format(style="sci", axis="y" )
 
-    ax1.set_ylabel(name_dict[metric2])
-    ax2.set_ylabel("SNR")
-    ax1.set_xlabel("Fractional depth")
-    ax2.set_xlabel(r"$D_2$")
+    ax3.set_ylabel(name_dict[metric2])
+    ax4.set_ylabel(name_dict[metric0])
+    ax3.set_xlabel("Fractional depth")
+    ax4.set_xlabel(r"$D_2$")
     #plt.show()
 
     #fig_path = "/project/dnn_maths/project_qu3/fig_path"
     fig_path = "/project/PDLAI/project2_data/figure_ms"
-    plt.savefig(join(fig_path, f"pretrained_snr_{metric2}-dq_scatter.pdf") , bbox_inches='tight')
+    plt.savefig(join(fig_path, f"pretrained_metric0_{metric2}-dq_scatter.pdf") , bbox_inches='tight')
     print(f"Plot 2 saved!")
 
 
