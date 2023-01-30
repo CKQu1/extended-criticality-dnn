@@ -195,19 +195,16 @@ def d2_vs_depth(i_pc=0, train=True):
     tick_size = 23.5 * 1.5
     label_size = 23.5 * 1.5
     axis_size = 23.5 * 1.5
-    legend_size = 23.5 * 1.5 - 5
+    legend_size = 23.5 * 1.5 - 10
 
     #c_ls = ["tab:blue", "tab:orange", "tab:green"]
     c_ls = list(mcl.TABLEAU_COLORS.keys())
     linestyle_ls = ["-", "--", ":"]
-    marker_ls = ["o","^","+"]
-    label_ls = ['(a)', '(b)', '(c)', '(d)']
 
     #selected_path = "/project/dnn_maths/project_qu3/fc10_pcdq"
     #selected_path = "/project/dnn_maths/project_qu3/fc10_momentum"
     selected_path = join(root_data, "trained_mlps/fc10_pcdq")
     net_ls = [net[0] for net in os.walk(selected_path) if "epochs=650" in net[0]]
-    #net_ls.pop(0)
 
     print(selected_path)
     print(f"Total of networks: {len(net_ls)}.")
@@ -217,40 +214,48 @@ def d2_vs_depth(i_pc=0, train=True):
 
     alpha100_ls = [100,200]
     g100_ls = [25,100,300]
-    q_ls = np.linspace(0,2,50)
 
     # get depth of network
     alpha100, g100 = 100, 100
     net_path = [npath for npath in net_ls if f"_{alpha100}_{g100}_" in npath in npath][0]
-    total_depth = len(np.loadtxt(f"{net_path}/C_dims")) - 1   # excluding final layer as it only has 10 neurons for classification, this includes pre and post activation
-    #for epoch_plot in [1,50,100,650]:
-    for epoch_plot in [0,650]:
-        D2ss = np.zeros([len(alpha100_ls),len(g100_ls),total_depth])
+    total_depth = len(np.loadtxt(f"{net_path}/C_dims"))
+
+    for gidx in range(len(g100_ls)):
         #D2ss_std = np.zeros([len(alpha100_ls),len(g100_ls),total_depth])
         alpha_m_ls = []
         good = 0
-        for gidx in range(len(g100_ls)):
-            # set up plot
-            fig = plt.figure(figsize=(9.5,7.142))
 
+        # set up plot
+        fig = plt.figure(figsize=(9.5,7.142))
+
+        plt.gca().spines['right'].set_color('none')
+        plt.gca().spines['top'].set_color('none')
+
+        if gidx == 0:
             plt.ylabel(r'$D_2$', fontsize=label_size)
 
-            #if gidx != 0:
-            plt.xlabel('Depth', fontsize=label_size)
+        #if gidx != 0:
+        plt.xlabel('Depth', fontsize=label_size)
 
-            # setting ticks
-            plt.xlim(1,total_depth)
-            #plt.xticks(np.arange(0,2.1,0.5))
+        # setting ticks
+        plt.xlim(0.8, total_depth - 0.2)
+        #plt.xticks(np.arange(0,2.1,0.5))
 
-            plt.tick_params(bottom=True, top=False, left=True, right=False)
-            plt.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
-            #plt.tick_params(axis='both',labelsize=tick_size)
+        plt.tick_params(bottom=True, top=False, left=True, right=False)
+        plt.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
+        #plt.tick_params(axis='both',labelsize=tick_size)
 
-            plt.tick_params(axis="x", direction="out", labelsize=tick_size)
-            plt.tick_params(axis="y", direction="out", labelsize=tick_size)            
+        plt.tick_params(axis="x", direction="out", labelsize=tick_size)
+        plt.tick_params(axis="y", direction="out", labelsize=tick_size)            
 
-            g100 = g100_ls[gidx]
-            g = int(g100/100)
+        g100 = g100_ls[gidx]
+        g = int(g100/100)
+
+        #plt.plot([], [] ,linewidth=2.5, linestyle=linestyle_ls[1], c='k', label="Before training")
+        #plt.plot([], [] ,linewidth=2.5, linestyle=linestyle_ls[0], c='k', label="After training")
+
+        for epoch_plot in [0,650]:
+            D2ss = np.zeros([len(alpha100_ls),len(g100_ls),total_depth])
             for aidx in range(len(alpha100_ls)):
                 alpha100 = alpha100_ls[aidx]
                 alpha = int(alpha100/100)
@@ -268,7 +273,7 @@ def d2_vs_depth(i_pc=0, train=True):
                     # exclude final layer due to only 10 neurons are present
                     for l in range(len(C_dims) - 1): 
                         end = start + int(C_dims[l])                            
-                        D2ss[aidx,gidx,l] += np.mean(pc_dqss[start:start + 1,-1], axis=0)
+                        D2ss[aidx,gidx,l] = np.mean(pc_dqss[start:start + 1,-1], axis=0)
                         #D2ss_std[aidx,gidx,l] += np.mean(pc_dqss[start:start + 1,-1]**2 , axis=0)
                         start = end
                         total_layers += 1
@@ -288,34 +293,40 @@ def d2_vs_depth(i_pc=0, train=True):
                     print(net_path)
 
                 #lower = dq_mean - np.sqrt( Dqss_std[aidx,gidx,:]/total_layers - dq_mean**2 )
-                #upper = dq_mean*2 - lower         
-                plt.plot(np.arange(1, total_depth+1) ,D2ss[aidx,gidx,:],linewidth=2.5,alpha=1,c = c_ls[aidx],label=rf"$\alpha$ = {alpha}")
+                #upper = dq_mean*2 - lower       
+                if epoch_plot == 0:  
+                    plt.plot(np.arange(1, total_depth+1) ,D2ss[aidx,gidx,:],linewidth=4.5,linestyle=linestyle_ls[1],
+                             alpha=1,c = c_ls[aidx])
+                else:
+                    plt.plot(np.arange(1, total_depth+1) ,D2ss[aidx,gidx,:],linewidth=4.5,linestyle=linestyle_ls[0],
+                             alpha=1,c = c_ls[aidx],label=rf"$\alpha$ = {alpha}")
 
                 # standard deviation
                 #plt.plot(q_ls,lower,linewidth=0.25, alpha=1,c = c_ls[aidx])
                 #plt.plot(q_ls,upper,linewidth=0.25, alpha=1,c = c_ls[aidx])
                 #plt.fill_between(q_ls, lower, upper, color = c_ls[aidx], alpha=0.2)               
 
-            plt.ylim(-0.05,1.05)
-            #plt.title(r"$D_w^{1 / \alpha}$" + f" = {g}", fontsize=title_size)  
-            if gidx == 0 or gidx == 1:
-                plt.legend(fontsize=legend_size, ncol=2, loc="upper right", frameon=False) 
+        plt.xticks([1,5,10,15,total_depth])
+        plt.ylim(-0.05,1.05)
+        #plt.title(r"$D_w^{1 / \alpha}$" + f" = {g}", fontsize=title_size)  
+        #if gidx == 0:
+        #    plt.legend(fontsize=legend_size, ncol=2, loc="upper left", frameon=False) 
 
-            print(f"Epoch {epoch_plot}")
-            print(f"Good: {good}")
-            #print("\n")
-            #print(len(net_ls))
-            #print(len(alpha_m_ls))
+        print(f"Epoch {epoch_plot}")
+        print(f"Good: {good}")
+        #print("\n")
+        #print(len(net_ls))
+        #print(len(alpha_m_ls))
 
-            plt.tight_layout()
-            #net_type = model_info.loc[model_info.index[0],'net_type']
-            #depth = int(model_info.loc[model_info.index[0],'depth'])
-            net_type = "fc"
-            depth = 10
-            plot_path = join(root_data, f"figure_ms/{net_type}{depth}_pcmfrac")
-            if not os.path.isdir(plot_path): os.makedirs(plot_path)    
-            plt.savefig(f"{plot_path}/{net_type}{depth}_mnist_epoch={epoch_plot}_g100={g100}_pcmfrac={i_pc}_{pc_type}_d2-vs-depth.pdf", bbox_inches='tight')
-            #plt.show()
+        plt.tight_layout()
+        #net_type = model_info.loc[model_info.index[0],'net_type']
+        #depth = int(model_info.loc[model_info.index[0],'depth'])
+        net_type = "fc"
+        depth = 10
+        plot_path = join(root_data, f"figure_ms/{net_type}{depth}_pcmfrac")
+        if not os.path.isdir(plot_path): os.makedirs(plot_path)    
+        plt.savefig(f"{plot_path}/{net_type}{depth}_mnist_epoch={epoch_plot}_g100={g100}_pcmfrac={i_pc}_{pc_type}_d2-vs-depth.pdf", bbox_inches='tight')
+        #plt.show()
 
 
 def d2_vs_ed(i_pc=0, train=True):
@@ -324,11 +335,6 @@ def d2_vs_ed(i_pc=0, train=True):
     train = train if isinstance(train, bool) else literal_eval(train)
     pc_type = "train" if train else "test"
 
-    #title_size = 26.5
-    #tick_size = 26.5
-    #label_size = 26.5
-    #axis_size = 26.5
-    #legend_size = 23.5
     title_size = 23.5 * 1.5
     tick_size = 23.5 * 1.5
     label_size = 23.5 * 1.5
@@ -346,7 +352,6 @@ def d2_vs_ed(i_pc=0, train=True):
     #selected_path = "/project/dnn_maths/project_qu3/fc10_momentum"
     selected_path = join(root_data, "trained_mlps/fc10_pcdq")
     net_ls = [net[0] for net in os.walk(selected_path) if "epochs=650" in net[0]]
-    #net_ls.pop(0)
 
     print(selected_path)
     print(f"Total of networks: {len(net_ls)}.")
@@ -457,6 +462,126 @@ def d2_vs_ed(i_pc=0, train=True):
             #plt.savefig(f"{plot_path}/{net_type}{depth}_mnist_epoch={epoch_plot}_g100={g100}_pcmfrac={i_pc}_{pc_type}_d2-vs-ed.pdf", bbox_inches='tight')
             plt.show()
 
+
+
+def ed_vs_depth(i_pc=0, train=True):
+
+    i_pc = int(i_pc)
+    train = train if isinstance(train, bool) else literal_eval(train)
+    pc_type = "train" if train else "test"
+
+    title_size = 23.5 * 1.5
+    tick_size = 23.5 * 1.5
+    label_size = 23.5 * 1.5
+    axis_size = 23.5 * 1.5
+    legend_size = 23.5 * 1.5
+
+    c_ls = list(mcl.TABLEAU_COLORS.keys())
+    linestyle_ls = ["-", "--", ":"]
+
+    #selected_path = "/project/dnn_maths/project_qu3/fc10_pcdq"
+    #selected_path = "/project/dnn_maths/project_qu3/fc10_momentum"
+    selected_path = join(root_data, "trained_mlps/fc10_pcdq")
+    net_ls = [net[0] for net in os.walk(selected_path) if "epochs=650" in net[0]]
+
+    print(selected_path)
+    print(f"Total of networks: {len(net_ls)}.")
+
+    # epoch network was trained till
+    epoch_last = 650
+
+    alpha100_ls = [100,200]
+    g100_ls = [25,100,300]
+    q_ls = np.linspace(0,2,50)
+
+    # get depth of network
+    alpha100, g100 = 100, 100
+    net_path = [npath for npath in net_ls if f"_{alpha100}_{g100}_" in npath in npath][0]
+    total_depth = len(np.loadtxt(f"{net_path}/C_dims"))
+
+    alpha_m_ls = []
+    good = 0
+    for gidx in range(len(g100_ls)):
+        # set up plot
+        fig = plt.figure(figsize=(9.5,7.142))
+
+        plt.gca().spines['right'].set_color('none')
+        plt.gca().spines['top'].set_color('none')
+
+        plt.plot([], [] ,linewidth=2.5, linestyle=linestyle_ls[1], c='k', label="Before training")
+        plt.plot([], [] ,linewidth=2.5, linestyle=linestyle_ls[0], c='k', label="After training")
+
+        if gidx == 0:
+            plt.ylabel('ED', fontsize=label_size)
+
+        #if gidx != 0:
+        plt.xlabel('Depth', fontsize=label_size)
+
+        # setting ticks
+        plt.xlim(1,total_depth)
+        #plt.xticks(np.arange(0,2.1,0.5))
+
+        plt.tick_params(bottom=True, top=False, left=True, right=False)
+        plt.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
+        #plt.tick_params(axis='both',labelsize=tick_size)
+
+        plt.tick_params(axis="x", direction="out", labelsize=tick_size)
+        plt.tick_params(axis="y", direction="out", labelsize=tick_size)            
+
+        g100 = g100_ls[gidx]
+        g = int(g100/100)
+
+        for epoch_plot in [0,650]:
+        #for epoch_plot in [0, 50]:
+
+            for aidx in range(len(alpha100_ls)):
+                alpha100 = alpha100_ls[aidx]
+                alpha = int(alpha100/100)
+                
+                net_path = [npath for npath in net_ls if f"_{alpha100}_{g100}_" in npath in npath][0]
+                if len(net_path) == 0:
+                    print(f"({alpha100},{g100}) not trained!")
+
+                #model_id = get_model_id(net_path)
+                try:
+                    C_dims = np.loadtxt(f"{net_path}/C_dims")
+                    EDs = np.loadtxt(join(net_path, f"ed_{pc_type}"))
+
+                    #model_info = model_log(model_id)
+                    alpha100, g100 = get_alpha_g(net_path)
+                    alpha, g = int(alpha100)/100, int(g100)/100
+
+                    alpha_m_ls.append((alpha, g))
+                    good += 1     
+
+                except (FileNotFoundError, OSError) as error:
+                    # use the following to keep track of what to re-run
+                    #print((alpha100, g100))
+                    print(net_path)
+
+                if epoch_plot == 0:
+                    plt.plot(np.arange(1,total_depth+1),EDs[:, epoch_plot],linewidth=4.5,linestyle=linestyle_ls[1],
+                             alpha=1,c = c_ls[aidx])
+                else:
+                    plt.plot(np.arange(1,total_depth+1),EDs[:, epoch_plot],linewidth=4.5,linestyle=linestyle_ls[0],
+                             alpha=1,c = c_ls[aidx],label=rf"$\alpha$ = {alpha}")
+             
+        if gidx == 2:
+            plt.legend(fontsize=legend_size, ncol=1, loc="upper left", frameon=False) 
+
+        print(f"Epoch {epoch_plot}")
+        print(f"Good: {good}")
+
+        plt.xticks([1,5,10,15,total_depth])
+        plt.tight_layout()
+        #net_type = model_info.loc[model_info.index[0],'net_type']
+        #depth = int(model_info.loc[model_info.index[0],'depth'])
+        net_type = "fc"
+        depth = 10
+        plot_path = join(root_data, f"figure_ms/{net_type}{depth}_pcmfrac")
+        if not os.path.isdir(plot_path): os.makedirs(plot_path)    
+        plt.savefig(f"{plot_path}/{net_type}{depth}_mnist_epoch={epoch_plot}_g100={g100}_pcmfrac={i_pc}_{pc_type}_ed-vs-depth.pdf", bbox_inches='tight')
+        #plt.show()
 
 
 if __name__ == '__main__':
