@@ -321,7 +321,9 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
     K = 64
     P = 50
 
-    layerwise_file = f"manifolds_layerwise_projection={projection}.npy" if not projection else f"manifolds_layerwise_N={N}.npy"
+    #
+    #layerwise_file = f"manifolds_layerwise_projection={projection}.npy" if not projection else f"manifolds_layerwise_N={N}.npy"
+    layerwise_file = "manifolds_layerwise.npy"
     print(f"Computation for {layerwise_file}")
     if os.path.isfile( join(emb_path, layerwise_file) ):
         #manifolds_all_load = np.load(join(emb_path, 'manifolds_layerwise.npy'))
@@ -542,12 +544,17 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
         bias = (Rs**2).sum(-1) / (Rs**2).sum(-1)[:,None] - 1
         SNR = 1/2*(dist_norm**2 + bias/m)/ np.sqrt(1/Ds[:,None]/m + css + ss/m)
         
-        return dist_norm, Ds, csa, ss, SNR
+        # additionally returning bias
+        return dist_norm, Ds, csa, ss, SNR, bias
 
 
     print("Computing SNR metrics!")
     from scipy.spatial.distance import pdist, squareform
+    # m-shot learning
     m = 5
+    # dir for m-shot SNR and related metrics
+    m_shot_path = join(emb_path, f"{m}_shot_path")
+    if not os.path.isdir(m_shot_path): os.makedirs(m_shot_path)
 
     K = len(manifolds)
     PRs_all = []
@@ -555,6 +562,8 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
     dists_all = []
     css_all = []
     SNRs_all = []
+    # extra metrics added in geometry()
+    biases_all = []
 
     for manifolds in tqdm(manifolds_all):
         manifolds = np.stack(manifolds)
@@ -572,30 +581,32 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
         centers = np.stack(centers)
         Us = np.stack(Us)
         
-        dist_norm, Ds, csa, ss, SNR = geometry(centers,Rs,Us,m)
+        #dist_norm, Ds, csa, ss, SNR = geometry(centers,Rs,Us,m)
+        dist_norm, Ds, csa, ss, SNR, bias = geometry(centers,Rs,Us,m)
         dists_all.append(dist_norm)
         PRs_all.append(Ds)
         css_all.append(csa)
         SNRs_all.append(SNR)
+        biases_all.append(bias)
         
     Rs_all = np.stack(Rs_all)
     dists_all = np.stack(dists_all)
     PRs_all = np.stack(PRs_all)
     css_all = np.stack(css_all)
     SNRs_all = np.stack(SNRs_all)
+    biases_all = np.stack(biases_all)
 
     #EDs_all = np.stack(EDs_all)
     #for pc_idx in pc_idxs:
     #    dqs_all[pc_idx] = np.stack(dqs_all[pc_idx])
 
-    #data_path = f"{fname}_epoch={init_epoch}"
-    #if not os.path.isdir(f"{data_path}"): os.makedirs(data_path)
-
     if projection:
-        np.save(os.path.join(emb_path,f'SNRs_layerwise_N={N}.npy'),SNRs_all)
-        np.save(os.path.join(emb_path,f'Ds_layerwise_N={N}.npy'),PRs_all)
-        np.save(os.path.join(emb_path,f'dist_norm_layerwise_N={N}.npy'),dists_all)
-        np.save(os.path.join(emb_path,f'css_layerwise_N={N}.npy'),css_all)
+        np.save(os.path.join(m_shot_path,f'SNRs_layerwise_N={N}.npy'),SNRs_all)
+        np.save(os.path.join(m_shot_path,f'Ds_layerwise_N={N}.npy'),PRs_all)
+        np.save(os.path.join(m_shot_path,f'dist_norm_layerwise_N={N}.npy'),dists_all)
+        np.save(os.path.join(m_shot_path,f'css_layerwise_N={N}.npy'),css_all)
+
+        np.save(os.path.join(m_shot_path,f'biases_layerwise_N={N}.npy'),biases_all)
 
         #np.save(join(emb_path,f'EDs_N={N}_layerwise.npy'), EDs_all)    
 
@@ -603,17 +614,19 @@ def snr_components(model_name, init_alpha100, init_g100, fname, root_path, proje
         #    np.save(join(emb_path,f'dqs_layerwise_N={N}_{pc_idx}.npy'), dqs_all[pc_idx])
 
     else:
-        np.save(os.path.join(emb_path,'SNRs_layerwise.npy'),SNRs_all)
-        np.save(os.path.join(emb_path,'Ds_layerwise.npy'),PRs_all)
-        np.save(os.path.join(emb_path,'dist_norm_layerwise.npy'),dists_all)
-        np.save(os.path.join(emb_path,'css_layerwise.npy'),css_all)
+        np.save(os.path.join(m_shot_path,'SNRs_layerwise.npy'),SNRs_all)
+        np.save(os.path.join(m_shot_path,'Ds_layerwise.npy'),PRs_all)
+        np.save(os.path.join(m_shot_path,'dist_norm_layerwise.npy'),dists_all)
+        np.save(os.path.join(m_shot_path,'css_layerwise.npy'),css_all)
+
+        np.save(os.path.join(m_shot_path,f'biases_layerwise.npy'),biases_all)
 
         #np.save(join(emb_path,'EDs_layerwise.npy'), EDs_all) 
 
         #for pc_idx in pc_idxs:
         #    np.save(join(emb_path,f'dqs_layerwise_{pc_idx}.npy'), dqs_all[pc_idx])
 
-    print(f"SNR metrics saved in: {emb_path}!")
+    print(f"SNR metrics saved in: {m_shot_path}!")
 
 
 # def snr_components(model_name, init_alpha100, init_g100, init_epoch, fname, root_path):
