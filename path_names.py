@@ -1,3 +1,5 @@
+import pandas as pd
+
 root_data = "/project/PDLAI/project2_data"
 
 def model_log(model_id):    # tick
