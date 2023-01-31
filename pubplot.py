@@ -1,4 +1,4 @@
-import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt
 
 # reference: https://stackoverflow.com/questions/3899980/how-to-change-the-font-size-on-a-matplotlib-plot
 
@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 pub_font = {'family' : 'serif'}
 #plt.rc('font', **pub_font)
 
+# set up figures font sizes 
 def plot_sizes(small:bool):
     if small == True:
         title_size = 26.5
@@ -29,6 +30,19 @@ def plot_sizes(small:bool):
               'ytick.labelsize': tick_size}
 
     return params
+
+# allows to fix axes height and width 
+# (https://stackoverflow.com/questions/44970010/axes-class-set-explicitly-size-width-height-of-axes-in-given-units)
+def set_size(w,h, ax=None):
+    """ w, h: width, height in inches """
+    if not ax: ax=plt.gca()
+    l = ax.figure.subplotpars.left
+    r = ax.figure.subplotpars.right
+    t = ax.figure.subplotpars.top
+    b = ax.figure.subplotpars.bottom
+    figw = float(w)/(r-l)
+    figh = float(h)/(t-b)
+    ax.figure.set_size_inches(figw, figh)
 
 #plt.rcParams.update(params)
 
