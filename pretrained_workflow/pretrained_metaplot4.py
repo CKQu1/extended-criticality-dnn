@@ -34,7 +34,15 @@ t0 = time.time()
 
 # 3 by 3 template
 
-cm_type = 'CMRmap'
+# colour schemes
+#cm_type = 'CMRmap'
+cm_type = 'jet'
+c_hist_1 = "dimgrey"
+c_ls_1 = ["forestgreen", "coral"]
+c_ls_2 = ['tab:blue','tab:orange','tab:green']
+#c_ls_3 = ['dodgerblue', 'darkorange']
+c_ls_3 = ['dodgerblue', 'lightcoral']
+
 inset_width, inset_height = 0.9/9, 1.4/10
 
 tick_size = 18.5
@@ -238,7 +246,9 @@ for i in range(3):
     axis.spines['right'].set_visible(False)
 
     # plotting the histogram
-    if i == 0 or i == 1:
+    if i == 0:
+        axis.hist(metric, bin_ls[i], color=c_hist_1, density=True)
+    elif i == 1:
         axis.hist(metric, bin_ls[i], density=True)
     else:
         #torch_indices = [i for i in range(len(metrics_all['dirname'])) if "_tf" not in metrics_all['dirname'][i]]
@@ -253,7 +263,8 @@ for i in range(3):
         cmap_bd = [round(np.percentile(pretrained_acc,5)), round(np.percentile(pretrained_acc,95))]
         im = axis.scatter(metrics_all['alpha'], metrics_all['sigma_scaled'], 
                      c=pretrained_acc, vmin=cmap_bd[0], vmax=cmap_bd[1],
-                     marker='.', s=45, alpha=0.7, cmap=plt.cm.get_cmap(cm_type))
+                     marker='.', s=12, alpha=0.6, cmap=plt.cm.get_cmap(cm_type))
+                     #marker='.', s=45, alpha=0.6, cmap=plt.cm.get_cmap(cm_type))
 
         #axis.legend(loc = 'upper left', fontsize = legend_size, frameon=False)
 
@@ -268,17 +279,17 @@ for i in range(3):
         x = np.linspace(-1, 1, 1000)
         y_stable = levy_stable.pdf(x, *params_stable)
         y_normal = norm.pdf(x, params_normal[0], params_normal[1])
-        axis.plot(x, y_normal, linewidth=1.8*1.8, c="tab:green", linestyle='solid', label = 'Normal')
-        axis.plot(x, y_stable, linewidth=1.8*1.8, c="tab:orange", linestyle='dashed', label = 'Stable')
+        axis.plot(x, y_normal, linewidth=1.8*1.8, c=c_ls_1[0], linestyle='solid', label = 'Normal')
+        axis.plot(x, y_stable, linewidth=1.8*1.8, c=c_ls_1[1], linestyle='dashed', label = 'Stable')
         axis.legend(loc = 'upper left', fontsize = legend_size, frameon=False)
         # inset plot for the tail
         #axis_inset = plt.axes([1 - 1.25/10, 1 - 0.85/3, 1.1/9, 1.6/10], xscale='log', yscale='log')
         axis_inset = plt.axes([1.75/10, 1 - 0.85/3, inset_width, inset_height], xscale='log', yscale='log')
         #lb, ub = 0.05, 0.1
         lb, ub = 0.06, 0.23
-        axis_inset.hist(metric, bin_ls[i], density=True)
-        axis_inset.plot(x, y_normal, linewidth=1.5*1.8, c="tab:green", linestyle='solid', label = 'Normal')
-        axis_inset.plot(x, y_stable, linewidth=1.5*1.8, c="tab:orange", linestyle='dashed', label = 'Stable')
+        axis_inset.hist(metric, bin_ls[i], color=c_hist_1, density=True)
+        axis_inset.plot(x, y_normal, linewidth=1.5*1.8, c=c_ls_1[0], linestyle='solid', label = 'Normal')
+        axis_inset.plot(x, y_stable, linewidth=1.5*1.8, c=c_ls_1[1], linestyle='dashed', label = 'Stable')
 
         axis_inset.set_xlim(lb,ub)
         #axis_inset.set_ylim(1e-1,1e1)
@@ -391,7 +402,8 @@ for i in range(3):
     # ax title
     #axis.set_title(f"{title_ls[i]}", fontsize=axis_size)
     axis.set_xlabel(f"{xlabel_ls[i]}", fontsize=axis_size)
-    if i != 2:
+    #if i != 1 or i != 2:
+    if i == 0:
         axis.set_ylabel(f"{ylabel_ls[i]}", fontsize=axis_size)
     
     #if i != 1:
@@ -415,18 +427,20 @@ fcn_add.xaxis.set_minor_locator(AutoMinorLocator())
 fcn_add.yaxis.set_minor_locator(AutoMinorLocator())
 
 for idx in range(3):
-    fcn_axs[1].plot(alphas[idx][:], linewidth=1.5*1.8, label=r'$\mathbf{{W}}^{{{}}}$'.format(idx + 1))
+    fcn_axs[1].plot(alphas[idx][:], linewidth=1.5*1.8, c=c_ls_2[idx], label=r'$\mathbf{{W}}^{{{}}}$'.format(idx + 1))
     #fcn_axs[1].plot(sigmas[idx][:], label=r'$\mathbf{W}^{{{}}}$'.format(idx + 1))
     # metrics_all['sigma'] = metrics_all['sigma']/(1/(2*784))**(1/metrics_all['alpha'])
     #fcn_axs[1].plot(sigmas[idx][:], linewidth=1.5*1.5, label=r'$W^{{{}}}$'.format(idx + 1))
     #fcn_axs[2].plot(sigmas[idx][:]/(1/(2*784))**(1/alphas[idx][:]), linewidth=1.5*1.8, label=r'$\mathbf{{W}}^{{{}}}$'.format(idx + 1))
-    fcn_add.plot(sigmas[idx][:]/(1/(2*784))**(1/alphas[idx][:]), linewidth=1.5*1.8, linestyle="--")
-fcn_axs[1].legend(loc = 'upper left', fontsize = legend_size, frameon=False)
+    fcn_add.plot(sigmas[idx][:]/(1/(2*784))**(1/alphas[idx][:]), linewidth=1.5*1.8, linestyle="--", c=c_ls_2[idx])
+# add full and dotted line labels
+fcn_axs[1].plot([],[], c='k', linewidth=1.5*1.8, linestyle="-", label=r"$\alpha$")
+fcn_axs[1].plot([],[], c='k', linewidth=1.5*1.8, linestyle="--", label=r"$D_w^{1/\alpha}$")
 
 # plot accuracy
-fcn_axs[2].plot(acc_loss['training_history'][:,1], linewidth=1.5*1.8, label="Train Acc.")
-fcn_axs[2].plot(acc_loss['testing_history'][:,1], linewidth=1.5*1.8, linestyle="--", label="Test Acc.")
-fcn_axs[2].legend(loc = 'best', fontsize = legend_size, frameon=False)
+fcn_axs[2].plot(acc_loss['training_history'][:,1], c=c_ls_3[0], linewidth=1.5*1.8, label="Train Acc.")
+fcn_axs[2].plot(acc_loss['testing_history'][:,1], c=c_ls_3[1], linewidth=1.5*1.8, linestyle="--", label="Test Acc.")
+fcn_axs[2].legend(bbox_to_anchor=(1.1,0.9), fontsize = legend_size, frameon=False)
 
 # stable fit
 #binsize = 500
@@ -434,12 +448,13 @@ binsize = 750
 #epoch = 210
 weights = weight_list[0][mlp_widx].flatten()
 
-# feature
+# featured alpha
 fcn_axs[1].plot(epoch, alphas[mlp_widx][epoch - 1], 'r.', markersize=12)
-fcn_axs[1].plot(epoch, sigmas[mlp_widx][epoch - 1]*(2*784)**(1/alphas[mlp_widx][epoch - 1]), 'r.', markersize=12, label='__nolegend__')
+# featured sigma
+#fcn_axs[1].plot(epoch, sigmas[mlp_widx][epoch - 1]*(2*784)**(1/alphas[mlp_widx][epoch - 1]), 'r.', markersize=12, label='__nolegend__')
 fcn_axs[1].legend(loc = 'upper left', fontsize = legend_size, frameon=False)
 
-fcn_axs[0].hist(weight_list[0][mlp_widx].flatten(), binsize, density=True)
+fcn_axs[0].hist(weight_list[0][mlp_widx].flatten(), binsize, color=c_hist_1, density=True)
 
 #alpha,beta,loc,scale = alphas[i//3][epoch-1],betas[i//3][epoch-1], deltas[i//3][epoch-1],sigmas[i//3][epoch-1]
 alpha,beta,loc,scale = alphas[2][epoch-1],betas[2][epoch-1], deltas[2][epoch-1],sigmas[2][epoch-1]
@@ -450,8 +465,8 @@ y_stable = levy_stable(alpha,beta,loc,scale).pdf(x)
 mu, sigma_norm = distributions.norm.fit(weights)
 y_normal = norm.pdf(x, mu, sigma_norm)
 
-fcn_axs[0].plot(x, y_normal, linewidth=1.8*1.8, c="tab:green", linestyle='solid', label = 'Normal')
-fcn_axs[0].plot(x, y_stable, linewidth=1.8*1.8, c="tab:orange", linestyle='dashed', label = 'Stable')
+fcn_axs[0].plot(x, y_normal, linewidth=1.8*1.8, c=c_ls_1[0], linestyle='solid', label = 'Normal')
+fcn_axs[0].plot(x, y_stable, linewidth=1.8*1.8, c=c_ls_1[1], linestyle='dashed', label = 'Stable')
 
 # scientific notation
 #fcn_axs[0].xaxis.get_major_formatter().set_scientific(True)
@@ -461,9 +476,9 @@ fcn_axs[0].plot(x, y_stable, linewidth=1.8*1.8, c="tab:orange", linestyle='dashe
 axis_inset = plt.axes([1.75/10, 1.25/6, inset_width, inset_height], xscale='log', yscale='log')
 #lb, ub = 0.003, 0.006
 lb, ub = 0.003, 0.0065
-axis_inset.hist(weights, binsize, density=True)
-axis_inset.plot(x, y_normal, linewidth=1.5*1.8, c="tab:green", linestyle='solid', label = 'Normal')
-axis_inset.plot(x, y_stable, linewidth=1.5*1.8, c="tab:orange", linestyle='dashed', label = 'Stable')
+axis_inset.hist(weights, binsize, color=c_hist_1, density=True)
+axis_inset.plot(x, y_normal, linewidth=1.5*1.8, c=c_ls_1[0], linestyle='solid', label = 'Normal')
+axis_inset.plot(x, y_stable, linewidth=1.5*1.8, c=c_ls_1[1], linestyle='dashed', label = 'Stable')
 
 axis_inset.set_xlim(lb,ub)
 #axis_inset.set_ylim(5e-1,1e2)
@@ -502,5 +517,5 @@ plt.tight_layout()
 
 fig1_path = "/project/PDLAI/project2_data/figure_ms"
 #fig1_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms"
-plt.savefig(f"{fig1_path}/pretrained_stablefit_torch6.pdf", bbox_inches='tight')
+plt.savefig(f"{fig1_path}/pretrained_stablefit_torch7.pdf", bbox_inches='tight')
 
