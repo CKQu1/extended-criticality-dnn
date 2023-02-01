@@ -9,7 +9,7 @@ def model_log(model_id):    # tick
         model_info = log_book.loc[log_book['model_id']==model_id]        
     else:
         #if f"{id_to_path(model_id)}"
-        print("Update model_log() function in tamsd_analysis/tamsd.py!")
+        print("Update model_log() function in path_names.py!")
         model_info = None
     #model_info = log_book.iloc[0,log_book['model_id']==model_id]
     return model_info
