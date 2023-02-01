@@ -46,7 +46,7 @@ title_size = 14.5
 tick_size = 14.5
 label_size = 14.5
 axis_size = 14.5
-legend_size = 8.5
+legend_size = 11.5
 
 #linestyle_ls = ["-", "--", ":"]
 linestyle_ls = ["--", "-"]
@@ -195,14 +195,14 @@ for eidx, epoch_plot in enumerate(epoch_plots):
     print(f"Good: {good}")
 
 # legends
-ax_legend = axs[0,2]
+ax_legend = axs[0,3]
 for gidx, g100 in enumerate(g100_ls):
-    g = int(g100/100)    
+    g = g100/100    
     ax_legend.plot([],[],label=rf"$g$ = {g}",c=c_ls[gidx])
-for aidx, alpha100 in enumerate(alpha100_ls):
-    alpha = int(alpha100/100)    
-    ax_legend.plot([],[],linestyle=linestyle_ls[aidx],c='k',label=rf'$\alpha = {alpha}$') 
-ax_legend.legend(fontsize=legend_size, loc="center left", ncol=2, frameon=False) 
+#for aidx, alpha100 in enumerate(alpha100_ls):
+#    alpha = int(alpha100/100)    
+#    ax_legend.plot([],[],linestyle=linestyle_ls[aidx],c='k',label=rf'$\alpha = {alpha}$') 
+ax_legend.legend(fontsize=legend_size, loc="center left", ncol=1, frameon=False) 
 
 plt.tight_layout()
 
