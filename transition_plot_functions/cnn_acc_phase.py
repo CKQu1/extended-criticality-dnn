@@ -8,6 +8,7 @@ sys.path.append(f'{os.getcwd()}')
 import path_names
 from os.path import join
 from path_names import root_data, id_to_path, model_log
+from path_names import get_model_id, get_alpha_g
 
 # colorbar
 cm_type1 = 'CMRmap'
@@ -21,22 +22,6 @@ net_ls = [net[0] for net in os.walk(net_path) if "epochs=" in net[0]]
 epoch_last = int(net_ls[0][net_ls[0].index("epochs=")+7:])
 print(net_path)
 print(f"Total of networks: {len(net_ls)}.")
-
-# transfer full path to model_id
-def get_model_id(full_path):
-    str_ls = full_path.split('/')[-1].split('_')
-    for s in str_ls:
-        if len(s) == 36:
-            return s    
-
-# get (alpha,g) when the pair is not saved
-def get_alpha_g(full_path):
-    str_ls = full_path.split('/')
-    str_alpha_g = str_ls[-1].split("_")
-    if str_alpha_g[2].isnumeric() and str_alpha_g[3].isnumeric():
-        return (int(str_alpha_g[2]), int(str_alpha_g[3]))
-    else:
-        return (int(str_alpha_g[1]), int(str_alpha_g[2]))
 
 tick_size = 13
 label_size = 16.5
