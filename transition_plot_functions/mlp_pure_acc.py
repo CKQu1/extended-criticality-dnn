@@ -53,15 +53,24 @@ for i in range(1,92,10):
     boundaries.append(pd.read_csv(f"{bd_path}/pow_{i}.csv"))
 
 # plot phase transition 
+"""
 tick_size = 13
 label_size = 16.5
 axis_size = 16.5
 legend_size = 14
 linewidth = 0.8
+"""
+
+title_size = 14.5
+tick_size = 14.5
+label_size = 14.5
+axis_size = 14.5
+legend_size = 8.5
 
 #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = True,sharey=True,figsize=(9.5,7.142))
 #axs = [ax1, ax2, ax3, ax4]
 
+# 2 by 1
 fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.15))
 #fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))
 axs = [ax1, ax2]
@@ -112,34 +121,27 @@ for i in range(len(axs)):
     #axs[i].yaxis.set_minor_locator(AutoMinorLocator())
 
 
-#epoch_ls = [10, 50]
-epoch_ls = [200, 500]
+epoch_ls = [10, 50]
+#epoch_ls = [200, 500]
 title_ls = [f"Epoch {epoch}" for epoch in epoch_ls]
 #label_ls = ['(a)', '(b)']
-label_ls = ['(c)', '(d)']
+#label_ls = ['(c)', '(d)']
 for i in range(len(axs)):
     # ticks
     axs[i].tick_params(axis='both',labelsize=tick_size)
     
     #axs[i].set_yticks(mult_grid)
     
-    if i == 0:
-        axs[i].set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
-
-    #axs[i].axes.xaxis.set_ticklabels([])   # delete
-
-    #if i == 2 or i == 3:
-    
-    #axs[i].set_xticks(alpha_grid)
-    #axs[i].set_xlim(0.975,2.025)
+    #if i == 0:
+    #    axs[i].set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
 
     #if i == 2 or i == 3:
     #axs[i].set_xlabel(r'$\alpha$', fontsize=axis_size)
-    axs[i].set_title(f"{title_ls[i]}", fontsize=axis_size)
+    #axs[i].set_title(f"{title_ls[i]}", fontsize=axis_size)
 
     # adding labels
-    label = label_ls[i] 
-    axs[i].text(-0.1, 1.2, '%s'%label, transform=axs[i].transAxes, fontsize=label_size, va='top', ha='right')
+    #label = label_ls[i] 
+    #axs[i].text(-0.1, 1.2, '%s'%label, transform=axs[i].transAxes, fontsize=label_size, va='top', ha='right')
 
     # setting ticks
     axs[i].tick_params(bottom=True, top=False, left=True, right=False)
@@ -253,10 +255,10 @@ cbar.ax.tick_params(labelsize=tick_size)
 print(f"Good: {good}")
 
 plt.tight_layout()
-plt.show()
+#plt.show()
 
 fig1_path = "/project/PDLAI/project2_data/figure_ms"
-#plt.savefig(f"{fig1_path}/{net_type}_grid_testacc_epoch_{epoch_ls[0]}_{epoch_ls[1]}.pdf", bbox_inches='tight')
+plt.savefig(f"{fig1_path}/{net_type}_grid_testacc_epoch_{epoch_ls[0]}_{epoch_ls[1]}.pdf", bbox_inches='tight')
 
 print("Figure 1")
 print("\n")
