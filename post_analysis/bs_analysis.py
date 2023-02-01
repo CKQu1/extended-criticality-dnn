@@ -42,13 +42,14 @@ linewidth = 0.8
 text_size = 14
 """
 
-title_size = 23.5
-tick_size = 23.5
-label_size = 23.5
-axis_size = 23.5
-legend_size = 23.5
+title_size = 14.5
+tick_size = 14.5
+label_size = 14.5
+axis_size = 14.5
+legend_size = 8.5
 
-linestyle_ls = ["-", "--", ":"]
+#linestyle_ls = ["-", "--", ":"]
+linestyle_ls = ["--", "-"]
 marker_ls = ["o","^","+"]
 label_ls = ['(a)', '(b)', '(c)', '(d)']
 
@@ -80,67 +81,40 @@ epoch_last = 650
 
 alpha100_ls = [100,200]
 g100_ls = [25,100,300]
+c_ls = ["tab:blue","tab:orange","tab:green"]
 trans_ls = np.linspace(0,1,len(g100_ls)+1)[::-1]
 
 acc_type = "test"
-#bs_ls = [2**p for p in range(3,11)]
 bs_ls = [2**p for p in range(4,11)]
 #for epoch_plot in [0,1,5,10,50,100,200,250,500,600,650]:
 #for epoch_plot in [1,5,10,20,100,250,500,650]:
-for epoch_plot in [50]:
+epoch_plots = [1, 5, 50, 100]
 
-    # set up plot
-    nrows, ncols = 1,2
-    fig, (ax1,ax2) = plt.subplots(nrows, ncols,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))
-    axs = [ax1, ax2]
-
-    for i in range(len(axs)):
-        
-        if i == 0:
-            axs[i].set_ylabel(f'{acc_type[0].upper() + acc_type[1:]} accuracy', fontsize=axis_size)
-
-        #if i == 2 or i == 3:
-        
-        #axs[i].set_xticks(alpha_grid)
-        #axs[i].set_xlim(0.975,2.025)
-        #axs[i].set_yticks(np.arange(0.4,2.01,0.4))
-
-        #if i == 2 or i == 3:
-        axs[i].set_xlabel('Batch size', fontsize=axis_size)
-        #axs[i].set_title(f"{title_ls[i]}", fontsize=axis_size)
-
-        # adding labels
-        #label = label_ls[i] 
-        #axs[i].text(-0.1, 1.2, '%s'%label, transform=axs[i].transAxes, fontsize=label_size, va='top', ha='right')       # fontweight='bold'
-
-        # setting ticks
-        axs[i].tick_params(bottom=True, top=True, left=True, right=True)
-        axs[i].tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
-
-        axs[i].tick_params(axis="x", direction="in", labelsize=axis_size - 1)
-        axs[i].tick_params(axis="y", direction="in", labelsize=axis_size - 1)
-
-        # set log axis for x
-        axs[i].set_xscale('log')
-        #axs[i].set_yscale('log')
+# set up plot
+nrows, ncols = len(alpha100_ls), len(epoch_plots)
+#fig, (ax1,ax2) = plt.subplots(nrows, ncols,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))
+fig, axs = plt.subplots(nrows, ncols,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))
+axs[0,0].set_xlim(10,1024)
+axs[0,0].set_ylim(-5,115)
+axs[0,0].set_yticks([0,25,50,75,100])
+for eidx, epoch_plot in enumerate(epoch_plots):
 
     alpha_m_ls = []
     good = 0
 
     #accs = np.zeros([len(alpha100_ls), len(bs_ls)])
     accs = np.zeros([5, len(alpha100_ls), len(bs_ls)])  # each setting was ran 5 times
-    for aidx in range(len(alpha100_ls)):
-        alpha100 = alpha100_ls[aidx]
+    for aidx, alpha100 in enumerate(alpha100_ls):
         alpha = int(alpha100/100)
-        for gidx in range(len(g100_ls)):
-            g100 = g100_ls[gidx]
+        for gidx, g100 in enumerate(g100_ls):
             g = int(g100/100)
             
             for bidx in range(len(bs_ls)):
                 bs = bs_ls[bidx]
                 #net_path = [npath for npath in net_ls if f"_{alpha100}_{g100}_" in npath and f"bs={bs}" in npath][0]
                 net_paths = [npath for npath in net_ls if f"_{alpha100}_{g100}_" in npath and f"bs={bs}" in npath]
-                print(f"alpha100 = {alpha100}, g100 = {g100}, bs = {bs} trained networks: {len(net_paths)}")
+                if eidx == 0:
+                    print(f"alpha100 = {alpha100}, g100 = {g100}, bs = {bs} trained networks: {len(net_paths)}")
                 if len(net_paths) == 0:
                     print(f"({alpha100},{g100}) not trained!")
 
@@ -169,36 +143,74 @@ for epoch_plot in [50]:
 
             acc_mean = accs[:,aidx,:].mean(0)
             acc_std = accs[:,aidx,:].std(0)
-            if aidx == 0:
-                axs[aidx].plot(bs_ls,acc_mean,marker=marker_ls[gidx],markersize=10,label=rf"$g$ = {g}",linestyle=linestyle_ls[gidx],alpha=trans_ls[gidx])
-            else:
-                axs[aidx].plot(bs_ls,acc_mean,marker=marker_ls[gidx],markersize=10,linestyle=linestyle_ls[gidx],alpha=trans_ls[gidx])
-        
-            # standard deviation
-            #axs[aidx].plot(bs_ls,acc_mean - acc_std,marker=marker_ls[gidx],markersize=10,linestyle=linestyle_ls[gidx])
-            #axs[aidx].plot(bs_ls,acc_mean + acc_std,marker=marker_ls[gidx],markersize=10,linestyle=linestyle_ls[gidx])
-            axs[aidx].errorbar(bs_ls, acc_mean, yerr=acc_std,alpha=trans_ls[gidx])
 
-    
-    axs[0].set_title(rf"$\alpha$ = {int(alpha100_ls[0]/100)}", fontsize=axis_size)
-    axs[1].set_title(rf"$\alpha$ = {int(alpha100_ls[1]/100)}", fontsize=axis_size)  
-    #axs[0].legend(fontsize=legend_size, loc="center right", frameon=False) 
+            ax = axs[aidx,eidx]
+
+            # plot settings
+            #if i == 0:
+            #    ax.set_ylabel(f'{acc_type[0].upper() + acc_type[1:]} accuracy', fontsize=axis_size)
+
+            #if i == 2 or i == 3:
+            
+            #ax.set_xticks(alpha_grid)
+            #ax.set_xlim(0.975,2.025)
+            #ax.set_yticks(np.arange(0.4,2.01,0.4))
+
+            #if i == 2 or i == 3:
+            #ax.set_xlabel('Batch size', fontsize=axis_size)
+            #ax.set_title(f"{title_ls[i]}", fontsize=axis_size)
+
+            # adding labels
+            #label = label_ls[i] 
+            #ax.text(-0.1, 1.2, '%s'%label, transform=ax.transAxes, fontsize=label_size, va='top', ha='right')       # fontweight='bold'
+
+            # setting ticks
+            ax.tick_params(bottom=True, top=False, left=True, right=False)
+            ax.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
+
+            ax.tick_params(axis="x", direction="in", labelsize=axis_size - 1)
+            ax.tick_params(axis="y", direction="in", labelsize=axis_size - 1)
+
+            # set log axis for x
+            ax.set_xscale('log')
+
+            # set invisible top and right borders
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+
+            # average accuracy
+            #ax.plot(bs_ls,acc_mean,c=c_ls[gidx],linestyle=linestyle_ls[aidx],alpha=trans_ls[gidx])
+            ax.plot(bs_ls,acc_mean,c=c_ls[gidx],linestyle=linestyle_ls[aidx])
+        
+            # accuracy standard deviation
+            #ax.errorbar(bs_ls, acc_mean, yerr=acc_std,alpha=trans_ls[gidx])
+
+            lower = acc_mean - acc_std
+            upper = acc_mean*2 - lower         
+            #ax.plot(bs_ls,lower,linewidth=0.25, alpha=1,c = c_ls[gidx])
+            #ax.plot(bs_ls,upper,linewidth=0.25, alpha=1,c = c_ls[gidx])
+            ax.fill_between(bs_ls, lower, upper, color = c_ls[gidx], alpha=0.2)   
 
     print(f"Epoch {epoch_plot}")
     print(f"Good: {good}")
-    #print("\n")
-    #print(len(net_ls))
-    #print(len(alpha_m_ls))
 
-    plt.tight_layout()
+# legends
+ax_legend = axs[0,2]
+for gidx, g100 in enumerate(g100_ls):
+    g = int(g100/100)    
+    ax_legend.plot([],[],label=rf"$g$ = {g}",c=c_ls[gidx])
+for aidx, alpha100 in enumerate(alpha100_ls):
+    alpha = int(alpha100/100)    
+    ax_legend.plot([],[],linestyle=linestyle_ls[aidx],c='k',label=rf'$\alpha = {alpha}$') 
+ax_legend.legend(fontsize=legend_size, loc="center left", ncol=2, frameon=False) 
 
-    net_type = model_info.loc[model_info.index[0],'net_type']
-    depth = int(model_info.loc[model_info.index[0],'depth'])
-    plot_path = f"{path_names.root_data}/figure_ms/{net_type}{depth}_bs"
-    if not os.path.isdir(plot_path): os.makedirs(plot_path)    
-    plt.savefig(f"{plot_path}/{net_type}{depth}_mnist_epoch={epoch_plot}_bs_analysis.pdf", bbox_inches='tight')
+plt.tight_layout()
 
-    #plt.show()
-    #plt.clf()
+net_type = model_info.loc[model_info.index[0],'net_type']
+depth = int(model_info.loc[model_info.index[0],'depth'])
+plot_path = f"{path_names.root_data}/figure_ms/{net_type}{depth}_bs"
+if not os.path.isdir(plot_path): os.makedirs(plot_path)    
+plt.savefig(f"{plot_path}/{net_type}{depth}_mnist_epoch={epoch_plots[0]}-{epoch_plots[1]}-{epoch_plots[2]}-{epoch_plots[3]}_bs_analysis.pdf", bbox_inches='tight')
 
+#plt.show()
 
