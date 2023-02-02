@@ -817,8 +817,10 @@ def train_submit(*args):
     #alpha100_ls = list(range(180,201,10))
     #g100_ls = list(range(25, 301, 25))
 
-    alpha100_ls = [100, 200]
-    g100_ls = [25,100,300]
+    #alpha100_ls = [100, 200]
+    #g100_ls = [25,100,300]
+    alpha100_ls = [100]
+    g100_ls = [25]
     optimizer_ls = ["sgd"]
     #optimizer_ls = ["adam"]
     #bs_ls = [int(2**p) for p in range(3,11)]
@@ -834,15 +836,9 @@ def train_submit(*args):
                       for g100 in g100_ls
                       for optimizer in optimizer_ls
                       for bs in bs_ls
-                      for repetition in range(5)   # delete for usual case
+                      for repetition in range(2)   # delete for usual case
                       ]
 
-    pbs_array_data = pbs_array_data[2:]
-    #print(pbs_array_data)
-    #pbs_array_data = pbs_array_data[0:1]
-
-    #pbs_array_true = pbs_array_data
-    #pbs_array_true = [("mnist", 140, 275, "sgd"), ("mnist", 180, 175, "sgd")]
     """
     pbs_array_true = []
     pbs_array_nosubmit = []
@@ -870,9 +866,9 @@ def train_submit(*args):
              P=project_ls[pidx],
              ngpus=1,
              ncpus=1,
-             walltime='2:59:59',
+             walltime='4:59:59',
              #walltime='23:59:59',
-             mem='12GB') 
+             mem='8GB') 
 
     """
     qsub(f'python {sys.argv[0]} {" ".join(args)}',    

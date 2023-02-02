@@ -5,10 +5,11 @@ import pandas as pd
 import scipy.io as sio
 import sys
 from matplotlib.ticker import AutoMinorLocator
-sys.path.append(f'{os.getcwd()}')
+sys.path.append(os.getcwd())
 import path_names
 from os.path import join
 from path_names import root_data, id_to_path, model_log
+from utils import load_transition_lines
 
 # colorbar
 #cm = cm.get_cmap('gist_heat')
@@ -38,13 +39,8 @@ axis_size = 16.5
 legend_size = 14
 linewidth = 0.8
 
-# phase boundaries
-bound1 = pd.read_csv(f"{main_path}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
-boundaries = []
-bd_path = "/project/phys_DL/phasediagram"
-for i in range(1,92,10):
-#for i in range(1,102,10):
-    boundaries.append(pd.read_csv(f"{bd_path}/pow_{i}.csv"))
+# phase transition lines
+bound1, boundaries = load_transition_lines()
 
 #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = True,sharey=True,figsize=(9.5,7.142))
 #axs = [ax1, ax2, ax3, ax4]
@@ -212,12 +208,7 @@ for t in range(len(alpha_m_ls)):
     early_mesh[x_loc,y_loc] = early_ls[t]
     #acc_mesh[y_loc,x_loc] = test_loss_ls[i]
 
-#if epoch == 650:
-#    print(acc_mesh)
-
 # plot results
-#axs[r].scatter(alpha_ls, m_ls, c=test_loss_ls, vmin=test_min, vmax=test_max,s=55, cmap=cm)
-#main_plot = axs[r].scatter(alpha_ls, m_ls, c=test_loss_ls, vmin=cmap_bd[r][0], vmax=cmap_bd[r][1],s=55, cmap=cm)
 
 test_acc_plot = axs[0].imshow(test_acc_mesh,extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], 
                               vmin=cmap_bd[0][0], vmax=cmap_bd[0][1], cmap=plt.cm.get_cmap(cm_type1), interpolation=interp, aspect='auto')

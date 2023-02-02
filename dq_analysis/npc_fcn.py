@@ -76,7 +76,6 @@ def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
 
     return net.layerwise_jacob_ls(image, post)
 
-# this actually eats up a lot of storage, don't recommend saving for too many input_idxs
 def jac_save(post, alpha100, g100, input_idxs, epoch, *args):
     import torch
     post = int(post)
@@ -287,13 +286,6 @@ def submit_preplot(*args,post=1,reig=0):
              ncpus=1,
              walltime='23:59:59',
              mem='1GB') 
-
-# ----- plot -----
-
-# phase transition plot
-def dq_plot(*args):
-
-    pass
 
 if __name__ == '__main__':
     import sys

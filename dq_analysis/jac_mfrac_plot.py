@@ -16,18 +16,23 @@ from os.path import join
 
 sys.path.append(os.getcwd())
 from path_names import root_data
+from utils import IPR, D_q
 
 plt.rcParams["font.family"] = "serif"     # set plot font globally
 #plt.switch_backend('agg')
 
-def IPR(vec, q):
-    return sum(abs(vec)**(2*q)) / sum(abs(vec)**2)**q
-
-def D_q(vec, q):
-    return np.log(IPR(vec, q)) / (1-q) / np.log(len(vec))
+global post_dict, reig_dict, c_ls
+# pre- or post-activation Jacobian
+post_dict = {0:'pre', 1:'post'}
+# left or right eigenvectors
+reig_dict = {0:'l', 1:'r'}
+# color settings
+#c_ls = ["tab:blue", "tab:orange"]
+c_ls = ["blue", "red"]
 
 # original dq_magnitude_epoch_plot.py
-def eigvec_magnitude():
+def eigvec_magnitude(post=0, reig=1):
+    post, reig = int(post), int(reig)
 
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
@@ -35,16 +40,9 @@ def eigvec_magnitude():
     main_path = join(root_data, "trained_mlps")
     path = f"{main_path}/fcn_grid/{fcn}_grid"
 
-    # post/pre-activation and right/left-eigenvectors
-    post = 0
-    reig = 1
-
     assert post == 1 or post == 0, "No such option!"
     assert reig == 1 or reig == 0, "No such option!"
-    post_dict = {0:'pre', 1:'post'}
-    reig_dict = {0:'l', 1:'r'}
 
-    #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise"
     #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
     #data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
     data_path = join(root_data, f"geometry_data/{post_dict[post]}jac_layerwise")
@@ -56,8 +54,6 @@ def eigvec_magnitude():
     label_size = 23.5 * 2.5
     axis_size = 23.5 * 2.5
     legend_size = 23.5 * 2.5
-    #c_ls = ["tab:blue", "tab:orange"]
-    c_ls = ["blue", "red"]
 
     alpha100_ls = [120,200]
     g100 = 100
@@ -88,18 +84,6 @@ def eigvec_magnitude():
                     ax.spines['top'].set_visible(False)
                     ax.spines['right'].set_visible(False)
 
-                    # ticks
-                    #axs[i].tick_params(axis='both',labelsize=tick_size)
-
-                    # ticks
-                    #if i == 0 or i == 2:
-                    #axs[i].set_xticks(np.linspace(100,600,6))
-
-                    #axs[i].tick_params(axis='both',labelsize=tick_size)
-                    
-                    #axs[i].set_yticks(mult_grid)
-                    #axs[i].set_ylim(0,3.25)
-
                     # set ticks
                     ax.set_yticks(np.arange(0,0.151,0.05))
                     ax.set_yticklabels(np.round(np.arange(0,0.151,0.05),2))
@@ -114,13 +98,8 @@ def eigvec_magnitude():
                     ax.xaxis.set_minor_locator(AutoMinorLocator())
                     ax.yaxis.set_minor_locator(AutoMinorLocator())
 
-                    # scientific notation
-                    #ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
-
                     # ----- 1. Plot individual dqs -----
                     # Figure (a) and (b): plot the D_q vs q (for different alphas same g), chosen a priori
-                    #axs[0].set_title(r"$\alpha$ = 1.2, $D_w^{1/\alpha}$ = 1.5", fontsize=label_size)
-                    #axs[1].set_title(r"$\alpha$ = 2.0, $D_w^{1/\alpha}$ = 1.5", fontsize=label_size)
 
                     DW = DW_all[layer].numpy()
                     if layer == DWs_shape[0]:
@@ -163,44 +142,27 @@ def eigvec_magnitude():
 
                     #plt.show()
 
-        #print(f"Epoch {epoch} layer {layer} done!")
         print(f"Epoch {epoch} done!")
 
+    # missing data due to simulation errors or jobs not submitted properly
     #np.savetxt("/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data", missing_data)
     #np.savetxt("/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/missing_data.txt", np.array(missing_data), fmt='%s')
 
 
 # original dq_single_epoch_plot.py
-def dq_vs_q():
+def dq_vs_q(post=0, reig=1):
+    post, reig = int(post), int(reig)
 
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
-    #main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
     main_path = join(root_data, "trained_mlps")
-
     path = f"{main_path}/fcn_grid/{fcn}_grid"
-
-    # post/pre-activation and right/left-eigenvectors
-    post = 0
-    reig = 1
 
     assert post == 1 or post == 0, "No such option!"
     assert reig == 1 or reig == 0, "No such option!"
-    post_dict = {0:'pre', 1:'post'}
-    reig_dict = {0:'l', 1:'r'}
 
-    #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise"
-    #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
     dq_path = join(root_data, f"geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}")
-
-    # new version phase boundaries
-    #bound1 = pd.read_csv(f"{main_path}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
-    bound1 = pd.read_csv(f"{root_data}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
-    boundaries = []
-    bd_path = join(root_data, "phasediagram")
-    for i in range(1,102,10):
-        boundaries.append(pd.read_csv(f"{bd_path}/pow_{i}.csv"))
 
     # ----- plot phase transition -----
 
@@ -214,8 +176,6 @@ def dq_vs_q():
     label_size = 23.5 * 2.5
     axis_size = 23.5 * 2.5
     legend_size = 23.5 * 2.5
-    #c_ls = ["tab:blue", "tab:orange"]
-    c_ls = ["blue", "red"]
 
     alpha100_ls = [120,200]
     g100 = 100
@@ -235,24 +195,8 @@ def dq_vs_q():
             #axs = [ax1, ax2, ax3, ax4]
             #fig = plt.figure(figsize=(9.5,7.142))        
 
-            # ticks
-            #ax1.set_xticks(np.arange(0,2.05,0.5))
-
-
             ax.spines['top'].set_visible(True)
             ax.spines['right'].set_visible(True)
-
-            # ticks
-            #axs[i].tick_params(axis='both',labelsize=tick_size)
-
-            # ticks
-            #if i == 0 or i == 2:
-            #axs[i].set_xticks(np.linspace(100,600,6))
-
-            #axs[i].tick_params(axis='both',labelsize=tick_size)
-            
-            #axs[i].set_yticks(mult_grid)
-            #axs[i].set_ylim(0,3.25)
 
             # set ticks
             ax.set_yticks(np.arange(0,2.1,0.5))
@@ -266,16 +210,9 @@ def dq_vs_q():
             ax.xaxis.set_minor_locator(AutoMinorLocator())
             ax.yaxis.set_minor_locator(AutoMinorLocator())
 
-            # ----- 1. Plot individual dqs -----
-            # Figure (a) and (b): plot the D_q vs q (for different alphas same g), chosen a priori
-            #axs[0].set_title(r"$\alpha$ = 1.2, $D_w^{1/\alpha}$ = 1.5", fontsize=label_size)
-            #axs[1].set_title(r"$\alpha$ = 2.0, $D_w^{1/\alpha}$ = 1.5", fontsize=label_size)
-
             ylim_lower = 1
             ylim_upper = 1
-            for f_idx in range(len(alpha100_ls)):
-            #for f_idx in range(len(extension_names)):
-                alpha100 = alpha100_ls[f_idx]
+            for f_idx, alpha100 in enumerate(alpha100_ls):
                 extension_name = f"alpha{alpha100}_g{g100}_ipidx0_ep{epoch}.txt"
                 
                 df_mean = np.loadtxt(f"{dq_path}/dqmean_{extension_name}")
@@ -320,7 +257,6 @@ def dq_vs_q():
             plt.clf()
             plt.close(fig)
 
-        #print(f"Epoch {epoch} layer {layer} done!")
         print(f"Epoch {epoch} done!")
 
     #np.savetxt("/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data", missing_data)
@@ -328,36 +264,20 @@ def dq_vs_q():
 
 
 # original d2-vs-depth.py
-def d2_vs_depth():
+def d2_vs_depth(post=0, reig=1):
 
+    post, reig = int(post), int(reig)
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
-    #main_path = "/project/PDLAI/Anomalous-diffusion-dynamics-of-SGD"
     main_path = join(root_data, "trained_mlps")
 
     path = f"{main_path}/fcn_grid/{fcn}_grid"
 
-    # post/pre-activation and right/left-eigenvectors
-    post = 0
-    reig = 1
-
     assert post == 1 or post == 0, "No such option!"
     assert reig == 1 or reig == 0, "No such option!"
-    post_dict = {0:'pre', 1:'post'}
-    reig_dict = {0:'l', 1:'r'}
 
-    #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise"
-    #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
     dq_path = join(root_data, f"geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}")
-
-    # new version phase boundaries
-    #bound1 = pd.read_csv(f"{main_path}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
-    bound1 = pd.read_csv(f"{root_data}/phase_bound/phasediagram_pow_1_line_1.csv", header=None)
-    boundaries = []
-    bd_path = join(root_data, "phasediagram")
-    for i in range(1,102,10):
-        boundaries.append(pd.read_csv(f"{bd_path}/pow_{i}.csv"))
 
     # ----- plot phase transition -----
 
@@ -366,8 +286,6 @@ def d2_vs_depth():
     label_size = 23.5 * 2.5
     axis_size = 23.5 * 2.5
     legend_size = 23.5 * 2.5
-    #c_ls = ["tab:blue", "tab:orange"]
-    c_ls = ["blue", "red"]
 
     alpha100_ls = [120,200]
     #g100 = 150
@@ -386,18 +304,6 @@ def d2_vs_depth():
         ax.spines['top'].set_visible(True)
         ax.spines['right'].set_visible(True)
 
-        # ticks
-        #axs[i].tick_params(axis='both',labelsize=tick_size)
-
-        # ticks
-        #if i == 0 or i == 2:
-        #axs[i].set_xticks(np.linspace(100,600,6))
-
-        #axs[i].tick_params(axis='both',labelsize=tick_size)
-        
-        #axs[i].set_yticks(mult_grid)
-        #axs[i].set_ylim(0,3.25)
-
         # set ticks
         ax.set_yticks(np.arange(0,2.1,0.5))
         ax.set_yticklabels(np.arange(0,2.1,0.5))
@@ -409,11 +315,6 @@ def d2_vs_depth():
         # minor ticks
         ax.xaxis.set_minor_locator(AutoMinorLocator())
         ax.yaxis.set_minor_locator(AutoMinorLocator())
-
-        # ----- 1. Plot individual dqs -----
-        # Figure (a) and (b): plot the D_q vs q (for different alphas same g), chosen a priori
-        #axs[0].set_title(r"$\alpha$ = 1.2, $D_w^{1/\alpha}$ = 1.5", fontsize=label_size)
-        #axs[1].set_title(r"$\alpha$ = 2.0, $D_w^{1/\alpha}$ = 1.5", fontsize=label_size)
 
         ylim_lower = 1
         ylim_upper = 1
@@ -457,7 +358,6 @@ def d2_vs_depth():
         #ax.legend(fontsize = legend_size, frameon=False)
         plt.tight_layout()
 
-        #fig1_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots"
         fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
         if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
         # alleviate memory
@@ -471,25 +371,18 @@ def d2_vs_depth():
 
 
 # original: d2-vs-eigvals.py
-def d2_vs_eigvals():
+def d2_vs_eigvals(post=0, reig=1):
 
+    post, reig = int(post), int(reig)
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
     main_path = join(root_data, "trained_mlps")
     path = f"{main_path}/fcn_grid/{fcn}_grid"
 
-    # post/pre-activation and right/left-eigenvectors
-    post = 0
-    reig = 1
-
     assert post == 1 or post == 0, "No such option!"
     assert reig == 1 or reig == 0, "No such option!"
-    post_dict = {0:'pre', 1:'post'}
-    reig_dict = {0:'l', 1:'r'}
 
-    #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise"
-    #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
     #data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
     data_path = join(root_data, f"geometry_data/{post_dict[post]}jac_layerwise")
 
@@ -500,9 +393,6 @@ def d2_vs_eigvals():
     label_size = 23.5 * 2.5
     axis_size = 23.5 * 2.5
     legend_size = 23.5 * 2.5
-    #c_ls = ["tab:blue", "tab:orange"]
-    c_ls = ["blue", "red"]
-
 
     alpha100_ls = [120,200]
     g100 = 100
@@ -511,9 +401,6 @@ def d2_vs_eigvals():
 
     missing_data = []
     # in the future for ipidx might be needed
-    # test first
-    #for epoch in [0,1]:
-    #    for layer in range(0,2):
     #for epoch in [0,1] + list(range(50,651,50)):   # all
     for epoch in [0,650]:
         
@@ -526,10 +413,6 @@ def d2_vs_eigvals():
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
 
-        # set ticks
-        #ax.set_yticks(np.arange(0,0.151,0.05))
-        #ax.set_yticklabels(np.round(np.arange(0,0.151,0.05),2))
-
         # label ticks
         ax.tick_params(axis='x', labelsize=axis_size - 1)
         ax.tick_params(axis='y', labelsize=axis_size - 1)
@@ -538,9 +421,7 @@ def d2_vs_eigvals():
         ax.xaxis.set_minor_locator(AutoMinorLocator())
         ax.yaxis.set_minor_locator(AutoMinorLocator())
 
-        for f_idx in range(len(alpha100_ls)):
-            #for f_idx in range(len(extension_names)):
-                alpha100 = alpha100_ls[f_idx]
+        for f_idx, alpha100 in enumerate(alpha100_ls):
                 extension_name = f"dw_alpha{alpha100}_g{g100}_ipidx0_epoch{epoch}"          
                 # load DW's
                 DW_all = torch.load(f"{data_path}/{extension_name}")
@@ -591,7 +472,7 @@ def d2_vs_eigvals():
         fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
         if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
         # alleviate memory
-        plt.savefig(f"{fig1_path}/jac_d2-vs-eigval_jac_{post_dict[post]}_{reig_dict[reig]}_alpha100={alpha100}_g100={g100}_l={layer}_epoch={epoch}.pdf", bbox_inches='tight')
+        plt.savefig(f"{fig1_path}/jac_d2-vs-eigval_{post_dict[post]}_{reig_dict[reig]}_alpha100={alpha100}_g100={g100}_l={layer}_epoch={epoch}.pdf", bbox_inches='tight')
         plt.clf()
         plt.close(fig)
 

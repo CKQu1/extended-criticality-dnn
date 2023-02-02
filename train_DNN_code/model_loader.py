@@ -1,15 +1,12 @@
 import os
 import torch, torchvision
-import train_DNN_code.models.vgg as vgg
-import train_DNN_code.models.resnet as resnet
-import train_DNN_code.models.densenet as densenet
+#import train_DNN_code.models.vgg as vgg   # removed
+#import train_DNN_code.models.resnet as resnet   # removed
+#import train_DNN_code.models.densenet as densenet   # removed
 import train_DNN_code.models.Alexnet as Alexnet
 
 # map between model name and function
 models = {
-    'fc3'                   : Alexnet.fc3,
-    'fc3_sq_mnist'          : Alexnet.fc3_sq_mnist,
-    'fc4_sq_mnist'          : Alexnet.fc4_sq_mnist,
     # FCN with square WMs (except for the last one), bias:no, activation:tanh, dataset:MNIST
     'fc3_mnist_tanh'        : Alexnet.fc3_mnist_tanh,
     'fc4_mnist_tanh'        : Alexnet.fc4_mnist_tanh,
