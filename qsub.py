@@ -43,7 +43,10 @@ import numpy as np
 import sys
 import os
 import random
+from os.path import join
 
+#project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
+project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
 
 def qsub(command, pbs_array_data, **kwargs):
     """A general PBS array job submitting function.
@@ -79,7 +82,7 @@ def qsub(command, pbs_array_data, **kwargs):
     else:
         post_command = ''
     # Create output folder.
-    if not os.path.isdir(path+'job'): os.makedirs(path+'job')
+    if not os.path.isdir(join(path,"job")): os.makedirs(join(path,"job"))
     if kwargs.get('local', False):  # Run the subjobs in the current process.
         for pbs_array_args in pbs_array_data:
             str_pbs_array_args = ' '.join(map(str, pbs_array_args))
