@@ -53,8 +53,8 @@ class FullyConnected(nn.Module):
         #def init_mat_load(self, path, init_epoch):
             with torch.no_grad():
                 widx = 0
-                if 'PDLAI' in init_path:     # (by main_last_epoch_2.py)
-                    print('PDLAI')
+                if 'fcn_grid' in init_path:     # (by main_last_epoch_2.py)
+                    print('fcn_grid')
                     w_all = sio.loadmat(f"{init_path}/model_{init_epoch}_sub_loss_w.mat")                
                     for l in modules:
                         if not isinstance(l, nn.Linear): continue
@@ -193,7 +193,7 @@ class FullyConnected(nn.Module):
             for i in range(0, len(preact_h) - 1):
                 dphi_h = self.dm(preact_h[i][0])
                 DW_l = torch.matmul(weights[i + 1], torch.diag( dphi_h ))
-                print(DW_l.shape)
+                #print(DW_l.shape)
                 DW_ls.append(DW_l)
             
         return DW_ls
