@@ -85,7 +85,7 @@ c_ls = ["tab:blue","tab:orange","tab:green"]
 trans_ls = np.linspace(0,1,len(g100_ls)+1)[::-1]
 
 acc_type = "test"
-bs_ls = [2**p for p in range(4,11)]
+bs_ls = [2**p for p in range(3,11)]
 #for epoch_plot in [0,1,5,10,50,100,200,250,500,600,650]:
 #for epoch_plot in [1,5,10,20,100,250,500,650]:
 epoch_plots = [1, 5, 50, 100]
@@ -94,7 +94,7 @@ epoch_plots = [1, 5, 50, 100]
 nrows, ncols = len(alpha100_ls), len(epoch_plots)
 #fig, (ax1,ax2) = plt.subplots(nrows, ncols,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))
 fig, axs = plt.subplots(nrows, ncols,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))
-axs[0,0].set_xlim(10,1024)
+axs[0,0].set_xlim(7.5,1024)
 axs[0,0].set_ylim(-5,115)
 axs[0,0].set_yticks([0,25,50,75,100])
 for eidx, epoch_plot in enumerate(epoch_plots):
