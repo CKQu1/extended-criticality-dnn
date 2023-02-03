@@ -10,52 +10,14 @@ from torch.autograd import Variable
 from tqdm import tqdm
 from scipy.stats import levy_stable
 
-from path_names import root_data
+from path_names import root_data, log_model, read_log()
+from utils import save_weights, get_weights, compute_dq, compute_IPR, layer_ipr, effective_dimension, store_model
 
 dev = torch.device(f"cuda:{torch.cuda.device_count()-1}"
                    if torch.cuda.is_available() else "cpu")
 print(dev)
 
-# Record relevants attributes for trained neural networks -------------------------------------------------------
-
-def log_model(log_path, model_path, file_name="net_log", local_log=True, **kwargs):    
-    fi = f"{log_path}/{file_name}.csv"
-    df = pd.DataFrame(columns = kwargs)
-    df.loc[0,:] = list(kwargs.values())
-    if local_log:
-        df.to_csv(f"{model_path}/log", index=False)
-    if os.path.isfile(fi):
-        df_og = pd.read_csv(fi)
-        # outer join
-        df = pd.concat([df_og,df], axis=0, ignore_index=True)
-    else:
-        if not os.path.isdir(f"{log_path}"): os.makedirs(log_path)
-    df.to_csv(fi, index=False)
-    print('Log saved!')
-
-def read_log():    
-    fi = join(root_data, "net_log.csv")
-    if os.path.isfile(fi):
-        df_og = pd.read_csv(fi)
-        print(df_og)
-    else:
-        raise ValueError("Network logbook has not been created yet, please train a network.")
-
 # Dataset management -------------------------------------------------------------------------------------------
-
-# save current state of model
-def save_weights(model, path):
-    weights_all = np.array([]) # save all weights vectorized 
-    for p in model.parameters():
-        weights_all = np.concatenate((weights_all, p.detach().cpu().numpy().flatten()), axis=0)
-    #np.savetxt(f"{path}", weights_all, fmt='%f')
-    # saveas .npy instead
-    np.save(f"{path}", weights_all)
-
-# get weights flatten
-def get_weights(net):
-    """ Extract parameters from net, and return a list of tensors"""
-    return [p.data for p in net.parameters()]
 
 import torchvision
 from torchvision import datasets
@@ -220,78 +182,6 @@ class Lambda(nn.Module):
     def forward(self, x):
         return self.func(x)
 
-# Extra quantities
-
-def IPR(vec,q):
-    if isinstance(vec, torch.Tensor):
-        vec = torch.abs(vec.detach().cpu())
-        ipr = torch.sum(vec**(2*q))/torch.sum(vec**2)**q
-    else:
-        vec = np.abs(vec)
-        ipr = np.sum(vec**(2*q))/np.sum(vec**2)**q
-
-    return ipr
-
-def compute_dq(vec,q):
-    if isinstance(vec, torch.Tensor):
-        return  (torch.log(IPR(vec,q))/np.log(len(vec)))/(1 - q)
-    else:
-        return  (np.log(IPR(vec,q))/np.log(len(vec)))/(1 - q)
-
-def layer_ipr(model,hidden_layer,lq_ls):
-    arr = np.zeros([len(model.sequential),len(q_ls)])
-
-    for lidx in range(len(model.sequential)):
-        """
-        hidden_layer = model.sequential[lidx](torch.Tensor(hidden_layer).to(dev))
-        hidden_layer = hidden_layer.detach().numpy()
-        hidden_layer_mean = np.mean(hidden_layer,axis=0)    # center the hidden representations
-        C = (1/hidden_layer.shape[0])*np.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*np.matmul(hidden_layer_mean.T, hidden_layer_mean)
-        arr[lidx] = np.trace(C)**2/np.trace(np.matmul(C,C))
-        """
-        with torch.no_grad():
-            hidden_layer = model.sequential[lidx](hidden_layer)
-        hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
-        C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
-        eigvals, _ = torch.eig(C)
-        arr[lidx,:] = [ IPR(eigvals[:,0],q) for q in q_ls ]
-                          
-    return arr
-
-def effective_dimension(model, hidden_layer, with_pc:bool, q_ls):    # hidden_layer is input image    
-    ed_arr = np.zeros([len(model.sequential)])
-    C_dims = np.zeros([len(model.sequential)])   # record dimension of correlation matrix
-    with torch.no_grad():
-        for lidx in range(len(model.sequential)):
-            """
-            hidden_layer = model.sequential[lidx](torch.Tensor(hidden_layer).to(dev))
-            hidden_layer = hidden_layer.detach().numpy()
-            hidden_layer_mean = np.mean(hidden_layer,axis=0)    # center the hidden representations
-            C = (1/hidden_layer.shape[0])*np.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*np.matmul(hidden_layer_mean.T, hidden_layer_mean)
-            ed_arr[lidx] = np.trace(C)**2/np.trace(np.matmul(C,C))
-            """
-            hidden_layer = model.sequential[lidx](hidden_layer)
-            hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
-            C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
-            ed_arr[lidx] = torch.trace(C)**2/torch.trace(torch.matmul(C,C))
-            C_dims[lidx] = C.shape[0]
-            # get PCs/eigenvectors for C (correlation matrix)
-            if with_pc:
-                _, eigvecs = torch.eig(C,eigenvectors=with_pc)           
-                pc_dqs = np.zeros([eigvecs.shape[1],len(q_ls)])
-
-                for eidx in range(C.shape[0]):
-                    pc_dqs[eidx,:] = [compute_dq(eigvecs[:,eidx], q) for q in q_ls]
-                if lidx == 0:
-                    pc_dqss = pc_dqs
-                else:
-                    pc_dqss = np.vstack([pc_dqss, pc_dqs])
-    
-    if not with_pc:
-        pc_dqss = None                
-                     
-    return ed_arr, C_dims, pc_dqss
-
 # Training methods ----------------------------------------------------------------------------------------
 
 def loss_batch(model, loss_func, xb, yb, opt=None, stats=True):
@@ -308,15 +198,6 @@ def loss_batch(model, loss_func, xb, yb, opt=None, stats=True):
     if stats:
         batch = model_xb.argmax(dim=1)==yb 
         return loss.item(), len(xb), torch.numel(batch.nonzero())
-
-# save weights
-def store_model(model, path ,save_type):       
-    if save_type == 'torch':
-        torch.save(model, path)        # save as torch
-    elif save_type == 'numpy':
-        save_weights(model, path)      # save as .npy (flattened)
-    else:
-        raise TypeError("save_type does not exist!")  
 
 def get_eigs(W):
     if W.shape[0] == W.shape[1]:
