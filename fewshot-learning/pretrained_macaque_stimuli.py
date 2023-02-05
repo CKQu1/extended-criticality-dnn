@@ -683,6 +683,7 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
     # Plot settings
     fig_size = (9.5 + 1.5,7.142/2)
     markers = ["o", "v", "s", "p", "*", "P", "H", "D", "d", "+", "x"]
+    transparency, lstyle = 0.4, "--"
     
     # always include D_2 in metric_0
     dq_ls = metric0.split("_") if "dq" in metric0 else []
@@ -739,8 +740,8 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
     trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
 
     # m-shot learning 
-    #ms = np.arange(1,10)
-    ms = [1,9]
+    ms = np.arange(1,10)
+    #ms = [1,9]
     for m in tqdm(ms):
 
         # --------------- Plot 1 ---------------
@@ -778,10 +779,15 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
             ax2.plot(frac_layers, np.nanmean(metric1_data,(1,2)), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
             print(f"{model_name} done!")
 
+        for ax in [ax1,ax2]:        
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+        ax1.grid(alpha=transparency,linestyle=lstyle); ax2.grid(alpha=transparency,linestyle=lstyle) 
+
         ax1.set_ylim((0,1))
         #ax2.set_ylim((0.05,0.45))
 
-        ax1.legend(frameon=False, ncol=2, fontsize=8.5)
+        ax1.legend(frameon=False, ncol=2, fontsize=9.5)
         #ax2.set_yscale('log')
         ax2.ticklabel_format(style="sci", scilimits=(0,1), axis="y" )
 
@@ -840,11 +846,15 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
             # only scatter plot the latter layers
             deep_layers = np.where(frac_layers >= 0)
             if log:
-                ax4.scatter(dq_data.mean(-1)[deep_layers], np.log(np.nanmean(metric3_data,(1,2))[deep_layers]), alpha=0.6)
+                ax4.scatter(dq_data.mean(-1)[deep_layers], np.log(np.nanmean(metric3_data,(1,2))[deep_layers]), marker=markers[nidx], alpha=0.6)
             else:
-                ax4.scatter(dq_data.mean(-1)[deep_layers], np.nanmean(metric3_data,(1,2))[deep_layers], alpha=0.6)
+                ax4.scatter(dq_data.mean(-1)[deep_layers], np.nanmean(metric3_data,(1,2))[deep_layers], marker=markers[nidx], alpha=0.6)
             print(f"{model_name} done!")
-        
+
+        for ax in [ax3,ax4]:        
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+        ax3.grid(alpha=transparency,linestyle=lstyle); ax4.grid(alpha=transparency,linestyle=lstyle) 
         #ax4.set_xlim((0,1))
         #ax4.set_ylim((0.05,0.4))
 
