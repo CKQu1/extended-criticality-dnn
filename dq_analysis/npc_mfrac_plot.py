@@ -13,38 +13,30 @@ from tqdm import tqdm
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
 
-from path_names import root_data, model_log, id_to_path
+from path_names import root_data, model_log, id_to_path, get_model_id, get_alpha_g
 
+# plot settings
 plt.rcParams["font.family"] = "serif"     # set plot font globally
 #plt.switch_backend('agg')
+global c_ls, figw, figh, axw, axh
+global title_size, tick_size, label_size, axis_size, legend_size
+title_size = 23.5 * 2
+tick_size = 23.5 * 2
+label_size = 23.5 * 2
+axis_size = 23.5 * 2
+legend_size = 23.5 * 2 - 12
+#c_ls = list(mcl.TABLEAU_COLORS.keys())
+c_ls = ["darkred", "darkblue"]
+figw, figh = 9.5, 7.142
+axw, axh = figw * 0.7, figh * 0.7
 
 """
 
 Functions for demonstrating multifractality and associated quantities of 
 the neural representation principal components (NPCs).
 Note that all the figures generated are 1 by 1, this is for the convenience of adjusting the figures to the manuscript.
-
-"""
-
-# transfer full path to model_id
-def get_model_id(full_path):
-
-    str_ls = full_path.split('/')
-
-    #return str_ls[-1].split("_")[4]
-    return str_ls[-1].split("_")[3]
-
-# get (alpha,g) when the pair is not saved
-def get_alpha_g(full_path):
-    str_ls = full_path.split('/')
-    str_alpha_g = str_ls[-1].split("_")
-    #return (int(str_alpha_g[2]), int(str_alpha_g[3]))
-    return (int(str_alpha_g[1]), int(str_alpha_g[2]))
-
-"""
-
-i_pc   : the ith PC
-pc_type: the type of input data passed into the MLPs for analysis, i.e. either train or test data
+- i_pc   : the ith PC
+- pc_type: the type of input data passed into the MLPs for analysis, i.e. either train or test data
 
 """
 
@@ -54,13 +46,6 @@ def dq_vs_q(i_pc=0, train=True):
     train = train if isinstance(train, bool) else literal_eval(train)
     pc_type = "train" if train else "test"
 
-    title_size = 23.5 * 1.5
-    tick_size = 23.5 * 1.5
-    label_size = 23.5 * 1.5
-    axis_size = 23.5 * 1.5
-    legend_size = 23.5 * 1.5 - 5
-
-    c_ls = list(mcl.TABLEAU_COLORS.keys())
     linestyle_ls = ["-", "--", ":"]
     marker_ls = ["o","^","+"]
 
@@ -89,7 +74,7 @@ def dq_vs_q(i_pc=0, train=True):
         good = 0
         for gidx in range(len(g100_ls)):
             # set up plot
-            fig, ax1 = plt.subplots(1, 1 ,figsize=(9.5,7.142))
+            fig, ax1 = plt.subplots(1, 1 ,figsize=(figw, figh))
             axs = [ax1]
 
             for i in range(len(axs)):            
@@ -192,14 +177,6 @@ def d2_vs_depth(i_pc=0, train=True):
     train = train if isinstance(train, bool) else literal_eval(train)
     pc_type = "train" if train else "test"
 
-    title_size = 23.5 * 1.5
-    tick_size = 23.5 * 1.5
-    label_size = 23.5 * 1.5
-    axis_size = 23.5 * 1.5
-    legend_size = 23.5 * 1.5 - 10
-
-    #c_ls = ["tab:blue", "tab:orange", "tab:green"]
-    c_ls = list(mcl.TABLEAU_COLORS.keys())
     linestyle_ls = ["-", "--", ":"]
 
     #selected_path = "/project/dnn_maths/project_qu3/fc10_pcdq"
@@ -227,20 +204,16 @@ def d2_vs_depth(i_pc=0, train=True):
         good = 0
 
         # set up plot
-        fig = plt.figure(figsize=(9.5,7.142))
+        fig = plt.figure(figsize=(figw, figh))
+        fig.set_size_inches(figw, figh)
 
         plt.gca().spines['right'].set_color('none')
         plt.gca().spines['top'].set_color('none')
 
-        if gidx == 0:
-            plt.ylabel(r'$D_2$', fontsize=label_size)
-
+        #if gidx == 0:
+        #    plt.ylabel(r'$D_2$', fontsize=label_size)
         #if gidx != 0:
-        plt.xlabel('Depth', fontsize=label_size)
-
-        # setting ticks
-        plt.xlim(0.8, total_depth - 0.2)
-        #plt.xticks(np.arange(0,2.1,0.5))
+        #plt.xlabel(r'$l$', fontsize=label_size)
 
         plt.tick_params(bottom=True, top=False, left=True, right=False)
         plt.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
@@ -257,6 +230,7 @@ def d2_vs_depth(i_pc=0, train=True):
 
         for epoch_plot in [0,650]:
             D2ss = np.zeros([len(alpha100_ls),len(g100_ls),total_depth])
+            D2ss_std = np.zeros([len(alpha100_ls),len(g100_ls),total_depth])
             for aidx in range(len(alpha100_ls)):
                 alpha100 = alpha100_ls[aidx]
                 alpha = int(alpha100/100)
@@ -275,7 +249,7 @@ def d2_vs_depth(i_pc=0, train=True):
                     for l in range(len(C_dims) - 1): 
                         end = start + int(C_dims[l])                            
                         D2ss[aidx,gidx,l] = np.mean(pc_dqss[start:start + 1,-1], axis=0)
-                        #D2ss_std[aidx,gidx,l] += np.mean(pc_dqss[start:start + 1,-1]**2 , axis=0)
+                        D2ss_std[aidx,gidx,l] = np.std(pc_dqss[start:start + 1,-1]**2 , axis=0)
                         start = end
                         total_layers += 1
 
@@ -293,22 +267,26 @@ def d2_vs_depth(i_pc=0, train=True):
                     #print((alpha100, g100))
                     print(net_path)
 
-                #lower = dq_mean - np.sqrt( Dqss_std[aidx,gidx,:]/total_layers - dq_mean**2 )
-                #upper = dq_mean*2 - lower       
+                lower = D2ss[aidx,gidx,::2] - D2ss_std[aidx,gidx,::2]
+                upper = D2ss[aidx,gidx,::2]*2 - lower   
+                # only includes preactivation    
+                L = len(D2ss[aidx,gidx,::2])
                 if epoch_plot == 0:  
-                    plt.plot(np.arange(1, total_depth+1) ,D2ss[aidx,gidx,:],linewidth=4.5,linestyle=linestyle_ls[1],
+                    plt.plot(np.arange(1, L+1) ,D2ss[aidx,gidx,::2],linewidth=4.5,linestyle=linestyle_ls[1],
                              alpha=1,c = c_ls[aidx])
                 else:
-                    plt.plot(np.arange(1, total_depth+1) ,D2ss[aidx,gidx,:],linewidth=4.5,linestyle=linestyle_ls[0],
+                    plt.plot(np.arange(1, L+1) ,D2ss[aidx,gidx,::2],linewidth=4.5,linestyle=linestyle_ls[0],
                              alpha=1,c = c_ls[aidx],label=rf"$\alpha$ = {alpha}")
 
                 # standard deviation
                 #plt.plot(q_ls,lower,linewidth=0.25, alpha=1,c = c_ls[aidx])
                 #plt.plot(q_ls,upper,linewidth=0.25, alpha=1,c = c_ls[aidx])
-                #plt.fill_between(q_ls, lower, upper, color = c_ls[aidx], alpha=0.2)               
+                plt.fill_between(np.arange(1, L+1), lower, upper, color = c_ls[aidx], alpha=0.2)               
 
-        plt.xticks([1,5,10,15,total_depth])
+        #plt.xticks([1,5,10,15,total_depth])
+        plt.xlim(1, L)
         plt.ylim(-0.05,1.05)
+        plt.xticks([1,int((L+1)/2),L])
         #plt.title(r"$D_w^{1 / \alpha}$" + f" = {g}", fontsize=title_size)  
         #if gidx == 0:
         #    plt.legend(fontsize=legend_size, ncol=2, loc="upper left", frameon=False) 
@@ -336,14 +314,6 @@ def d2_vs_ed(i_pc=0, train=True):
     train = train if isinstance(train, bool) else literal_eval(train)
     pc_type = "train" if train else "test"
 
-    title_size = 23.5 * 1.5
-    tick_size = 23.5 * 1.5
-    label_size = 23.5 * 1.5
-    axis_size = 23.5 * 1.5
-    legend_size = 23.5 * 1.5 - 5
-
-    #c_ls = ["tab:blue", "tab:orange", "tab:green"]
-    c_ls = list(mcl.TABLEAU_COLORS.keys())
     linestyle_ls = ["-", "--", ":"]
     marker_ls = ["o","^","+"]
     label_ls = ['(a)', '(b)', '(c)', '(d)']
@@ -376,7 +346,7 @@ def d2_vs_ed(i_pc=0, train=True):
         good = 0
         for gidx in range(len(g100_ls)):
             # set up plot
-            fig = plt.figure(figsize=(9.5,7.142))
+            fig = plt.figure(figsize=(figw, figh))
 
             plt.ylabel(r'$D_2$', fontsize=label_size)
 
@@ -471,13 +441,6 @@ def ed_vs_depth(i_pc=0, train=True):
     train = train if isinstance(train, bool) else literal_eval(train)
     pc_type = "train" if train else "test"
 
-    title_size = 23.5 * 1.5
-    tick_size = 23.5 * 1.5
-    label_size = 23.5 * 1.5
-    axis_size = 23.5 * 1.5
-    legend_size = 23.5 * 1.5
-
-    c_ls = list(mcl.TABLEAU_COLORS.keys())
     linestyle_ls = ["-", "--", ":"]
 
     #selected_path = "/project/dnn_maths/project_qu3/fc10_pcdq"
@@ -504,7 +467,7 @@ def ed_vs_depth(i_pc=0, train=True):
     good = 0
     for gidx in range(len(g100_ls)):
         # set up plot
-        fig = plt.figure(figsize=(9.5,7.142))
+        fig = plt.figure(figsize=(figw, figh))
 
         plt.gca().spines['right'].set_color('none')
         plt.gca().spines['top'].set_color('none')
@@ -512,15 +475,10 @@ def ed_vs_depth(i_pc=0, train=True):
         plt.plot([], [] ,linewidth=2.5, linestyle=linestyle_ls[1], c='k', label="Before training")
         plt.plot([], [] ,linewidth=2.5, linestyle=linestyle_ls[0], c='k', label="After training")
 
-        if gidx == 0:
-            plt.ylabel('ED', fontsize=label_size)
-
+        #if gidx == 0:
+        #    plt.ylabel('ED', fontsize=label_size)
         #if gidx != 0:
-        plt.xlabel('Depth', fontsize=label_size)
-
-        # setting ticks
-        plt.xlim(1,total_depth)
-        #plt.xticks(np.arange(0,2.1,0.5))
+        #plt.xlabel(r'$l$', fontsize=label_size)
 
         plt.tick_params(bottom=True, top=False, left=True, right=False)
         plt.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
@@ -560,11 +518,15 @@ def ed_vs_depth(i_pc=0, train=True):
                     #print((alpha100, g100))
                     print(net_path)
 
+                # preactivation only
+                L = EDs[::2, epoch_plot].shape[0]
+                plt.xlim(1,L)
+                plt.xticks([1,int((L+1)/2),L])
                 if epoch_plot == 0:
-                    plt.plot(np.arange(1,total_depth+1),EDs[:, epoch_plot],linewidth=4.5,linestyle=linestyle_ls[1],
+                    plt.plot(np.arange(1,L+1),EDs[::2, epoch_plot],linewidth=4.5,linestyle=linestyle_ls[1],
                              alpha=1,c = c_ls[aidx])
                 else:
-                    plt.plot(np.arange(1,total_depth+1),EDs[:, epoch_plot],linewidth=4.5,linestyle=linestyle_ls[0],
+                    plt.plot(np.arange(1,L+1),EDs[::2, epoch_plot],linewidth=4.5,linestyle=linestyle_ls[0],
                              alpha=1,c = c_ls[aidx],label=rf"$\alpha$ = {alpha}")
              
         if gidx == 2:
@@ -573,7 +535,7 @@ def ed_vs_depth(i_pc=0, train=True):
         print(f"Epoch {epoch_plot}")
         print(f"Good: {good}")
 
-        plt.xticks([1,5,10,15,total_depth])
+        #plt.xticks([1,5,10,15,total_depth])
         plt.tight_layout()
         #net_type = model_info.loc[model_info.index[0],'net_type']
         #depth = int(model_info.loc[model_info.index[0],'depth'])
@@ -591,14 +553,6 @@ def alpha_vs_d2(i_pc=0, train=True):
     train = train if isinstance(train, bool) else literal_eval(train)
     pc_type = "train" if train else "test"
 
-    title_size = 23.5 * 1.5
-    tick_size = 23.5 * 1.5
-    label_size = 23.5 * 1.5
-    axis_size = 23.5 * 1.5
-    legend_size = 23.5 * 1.5 - 10
-
-    #c_ls = ["tab:blue", "tab:orange", "tab:green"]
-    c_ls = list(mcl.TABLEAU_COLORS.keys())
     linestyle_ls = ["-", "--", ":"]
 
     #selected_path = "/project/dnn_maths/project_qu3/fc10_pcdq"
@@ -673,7 +627,7 @@ def alpha_vs_d2(i_pc=0, train=True):
             for l in range(total_depth):
 
                 # set up plot
-                fig = plt.figure(figsize=(9.5,7.142))
+                fig = plt.figure(figsize=(figw, figh))
 
                 plt.gca().spines['right'].set_color('none')
                 plt.gca().spines['top'].set_color('none')
