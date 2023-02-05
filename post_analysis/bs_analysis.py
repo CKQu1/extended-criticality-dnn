@@ -180,7 +180,7 @@ for eidx, epoch_plot in enumerate(epoch_plots):
 
             # average accuracy
             #ax.plot(bs_ls,acc_mean,c=c_ls[gidx],linestyle=linestyle_ls[aidx],alpha=trans_ls[gidx])
-            ax.plot(bs_ls,acc_mean,c=c_ls[gidx],linestyle=linestyle_ls[aidx])
+            ax.plot(bs_ls,acc_mean,c=c_ls[gidx],linestyle=linestyle_ls[aidx], linewidth=1.9)
         
             # accuracy standard deviation
             #ax.errorbar(bs_ls, acc_mean, yerr=acc_std,alpha=trans_ls[gidx])
