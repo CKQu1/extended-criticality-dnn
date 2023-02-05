@@ -16,10 +16,19 @@ from os.path import join
 
 sys.path.append(os.getcwd())
 from path_names import root_data
-from utils import IPR, D_q
+from pubplot import set_size
+from utils_dnn import IPR, D_q
 
 plt.rcParams["font.family"] = "serif"     # set plot font globally
 #plt.switch_backend('agg')
+global title_size, tick_size, label_size, axis_size, legend_size, axw, axh, figw, figh
+title_size = 23.5 * 1.5
+tick_size = 23.5 * 1.5
+label_size = 23.5 * 1.5
+axis_size = 23.5 * 1.5
+legend_size = 23.5 * 1.5
+figw, figh = 9.5, 7.142 - 0.25
+axw, axh = figw * 0.7, figh * 0.7
 
 global post_dict, reig_dict, c_ls
 # pre- or post-activation Jacobian
@@ -28,10 +37,10 @@ post_dict = {0:'pre', 1:'post'}
 reig_dict = {0:'l', 1:'r'}
 # color settings
 #c_ls = ["tab:blue", "tab:orange"]
-c_ls = ["blue", "red"]
+c_ls = ["darkblue", "darkred"]
 
 # original dq_magnitude_epoch_plot.py
-def eigvec_magnitude(post=0, reig=1):
+def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
     post, reig = int(post), int(reig)
 
     fcn = "fc10"
@@ -46,17 +55,6 @@ def eigvec_magnitude(post=0, reig=1):
     #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
     #data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
     data_path = join(root_data, f"geometry_data/{post_dict[post]}jac_layerwise")
-
-    # ----- plot phase transition -----
-
-    title_size = 23.5 * 2.5
-    tick_size = 23.5 * 2.5
-    label_size = 23.5 * 2.5
-    axis_size = 23.5 * 2.5
-    legend_size = 23.5 * 2.5
-
-    alpha100_ls = [120,200]
-    g100 = 100
 
     missing_data = []
     # in the future for ipidx might be needed
@@ -76,7 +74,8 @@ def eigvec_magnitude(post=0, reig=1):
                 for layer in [4]:
 
                     # set up figure
-                    fig, ax = plt.subplots(1, 1 ,figsize=(9.5,7.142))      
+                    fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))     
+                    set_size(axw, axh, ax) 
 
                     # ticks
                     #ax1.set_xticks(np.arange(0,2.05,0.5))
@@ -102,13 +101,19 @@ def eigvec_magnitude(post=0, reig=1):
                     # Figure (a) and (b): plot the D_q vs q (for different alphas same g), chosen a priori
 
                     DW = DW_all[layer].numpy()
-                    if layer == DWs_shape[0]:
-                        DW = DW[:10,:]
-                        DW = DW.T @ DW  # final DW is 10 x 784
 
                     # left eigenvector
                     if reig == 0:
                         DW = DW.T
+
+                    # this is also documented in dq_analysis/jac_fcn.py
+                    if layer == DWs_shape[0]:
+                        # old method
+                        #DW = DW[:10,:]
+                        #DW = DW.T @ DW  # final DW is 10 x 784
+                        _, eigvals, eigvecs = la.svd(DW)
+                    else:
+                        eigvals, eigvecs = la.eig(DW)
 
                     print(f"layer {layer}: {DW.shape}")
                     eigvals, eigvecs = la.eig(DW)
@@ -125,10 +130,10 @@ def eigvec_magnitude(post=0, reig=1):
                     ax.set_ylabel('Magnitude', fontsize=axis_size)
 
                     #ax.set_title(f"Layer {layer+1}, Epoch {epoch}", fontsize=title_size)
-                    if epoch == 0:
-                        ax.set_title(rf"$\alpha$ = {alpha100/100}", fontsize=title_size)
+                    #if epoch == 0:
+                    #    ax.set_title(rf"$\alpha$ = {alpha100/100}", fontsize=title_size)
 
-                    ax.legend(fontsize = legend_size, frameon=False)
+                    #ax.legend(fontsize = legend_size, frameon=False)
                     plt.tight_layout()
                     #plt.show()
 
@@ -145,12 +150,11 @@ def eigvec_magnitude(post=0, reig=1):
         print(f"Epoch {epoch} done!")
 
     # missing data due to simulation errors or jobs not submitted properly
-    #np.savetxt("/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data", missing_data)
-    #np.savetxt("/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/missing_data.txt", np.array(missing_data), fmt='%s')
+    #np.savetxt(join(root_data,"geometry_data/missing_data.txt"), np.array(missing_data), fmt='%s')
 
 
 # original dq_single_epoch_plot.py
-def dq_vs_q(post=0, reig=1):
+def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
     post, reig = int(post), int(reig)
 
     fcn = "fc10"
@@ -164,22 +168,6 @@ def dq_vs_q(post=0, reig=1):
 
     dq_path = join(root_data, f"geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}")
 
-    # ----- plot phase transition -----
-
-    #title_size = 23.5
-    #tick_size = 23.5
-    #label_size = 23.5
-    #axis_size = 23.5
-    #legend_size = 23.5
-    title_size = 23.5 * 2.5
-    tick_size = 23.5 * 2.5
-    label_size = 23.5 * 2.5
-    axis_size = 23.5 * 2.5
-    legend_size = 23.5 * 2.5
-
-    alpha100_ls = [120,200]
-    g100 = 100
-
     q_folder_idx = 25
     missing_data = []
     # in the future for ipidx might be needed
@@ -191,12 +179,13 @@ def dq_vs_q(post=0, reig=1):
         for layer in range(0,10):
 
             #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = False,sharey=False,figsize=(9.5,7.142))
-            fig, ax = plt.subplots(1, 1 ,figsize=(9.5,7.142))
+            fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))
+            set_size(axw, axh, ax)
             #axs = [ax1, ax2, ax3, ax4]
             #fig = plt.figure(figsize=(9.5,7.142))        
 
-            ax.spines['top'].set_visible(True)
-            ax.spines['right'].set_visible(True)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
 
             # set ticks
             ax.set_yticks(np.arange(0,2.1,0.5))
@@ -225,9 +214,9 @@ def dq_vs_q(post=0, reig=1):
                 upper = dq_means + dq_stds
                 
                 # averages of dq's with error bars
-                ax.plot(qs, dq_means, linewidth=2.5, alpha=1, c = c_ls[f_idx], label=rf"$\alpha$ = {round(alpha100/100,1)}")
-                ax.plot(qs, lower, linewidth=0.25, alpha=1, c = c_ls[f_idx])
-                ax.plot(qs, upper, linewidth=0.25, alpha=1, c = c_ls[f_idx])
+                ax.plot(qs, dq_means, linewidth=3.5, alpha=1, c = c_ls[f_idx], label=rf"$\alpha$ = {round(alpha100/100,1)}")
+                #ax.plot(qs, lower, linewidth=0.25, alpha=1, c = c_ls[f_idx])
+                #ax.plot(qs, upper, linewidth=0.25, alpha=1, c = c_ls[f_idx])
                 ax.fill_between(qs, lower, upper, color = c_ls[f_idx], alpha=0.2)
 
                 ylim_lower = min(ylim_lower, min(lower))
@@ -236,13 +225,14 @@ def dq_vs_q(post=0, reig=1):
                 #for q_idx in range(len(qs)):
                     #axs[f_idx].axvline(qs[q_idx], ymin=lower[q_idx]/1.1, ymax=upper[q_idx]/1.1, alpha=0.75)
 
-            ax.set_ylim(round(ylim_lower,1) - 0.05, round(ylim_upper,1) + 0.05)
+            #ax.set_ylim(round(ylim_lower,1) - 0.05, round(ylim_upper,1) + 0.05)
+            ax.set_ylim(-0.1, 1.1)
             ax.set_xlim(0,2)
 
             ax.set_xlabel(r'$q$', fontsize=axis_size)
             ax.set_ylabel(r'$D_q$', fontsize=axis_size)
 
-            ax.set_title(f"Layer {layer+1}, Epoch {epoch}", fontsize=title_size)
+            #ax.set_title(f"Layer {layer+1}, Epoch {epoch}", fontsize=title_size)
 
             #if epoch == 0:
             #    ax.legend(fontsize = legend_size, frameon=False)
@@ -264,7 +254,7 @@ def dq_vs_q(post=0, reig=1):
 
 
 # original d2-vs-depth.py
-def d2_vs_depth(post=0, reig=1):
+def d2_vs_depth(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
 
     post, reig = int(post), int(reig)
     fcn = "fc10"
@@ -279,30 +269,22 @@ def d2_vs_depth(post=0, reig=1):
 
     dq_path = join(root_data, f"geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}")
 
-    # ----- plot phase transition -----
-
-    title_size = 23.5 * 2.5
-    tick_size = 23.5 * 2.5
-    label_size = 23.5 * 2.5
-    axis_size = 23.5 * 2.5
-    legend_size = 23.5 * 2.5
-
-    alpha100_ls = [120,200]
-    #g100 = 150
-    g100 = 100
-
     missing_data = []
     # in the future for ipidx might be needed
-    depths = np.arange(9)     # not including the final layer since there are only 10 neurons
+    #depths = np.arange(9)     # not including the final layer since there are only 10 neurons
+    depths = np.arange(10)
     #for epoch in [0,1] + list(range(50,651,50)):   # all
     for epoch in [0, 650]:
 
         #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = False,sharey=False,figsize=(9.5,7.142))
-        fig, ax = plt.subplots(1, 1 ,figsize=(9.5,7.142))
-        #fig = plt.figure(figsize=(9.5,7.142))        
+        fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))
+        set_size(axw, axh, ax)
+        
+        # vertical line
+        ax.axvline(x=5, c='dimgrey',linestyle='--')     
 
-        ax.spines['top'].set_visible(True)
-        ax.spines['right'].set_visible(True)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
 
         # set ticks
         ax.set_yticks(np.arange(0,2.1,0.5))
@@ -340,20 +322,21 @@ def d2_vs_depth(post=0, reig=1):
                 
             # averages of dq's with error bars
             ax.plot(depths+1, dq_mean_layer, linewidth=2.5, alpha=1, c = c_ls[f_idx], label=rf"$\alpha$ = {round(alpha100/100,1)}")
-            ax.plot(depths+1, lower, linewidth=0.25, alpha=1, c = c_ls[f_idx])
-            ax.plot(depths+1, upper, linewidth=0.25, alpha=1, c = c_ls[f_idx])
+            #ax.plot(depths+1, lower, linewidth=0.25, alpha=1, c = c_ls[f_idx])
+            #ax.plot(depths+1, upper, linewidth=0.25, alpha=1, c = c_ls[f_idx])
             ax.fill_between(depths+1, lower, upper, color = c_ls[f_idx], alpha=0.2)
 
         ylim_lower = min(ylim_lower, min(lower))
         ylim_upper = max(ylim_upper, max(upper))
         #ax.set_ylim(round(ylim_lower,1) - 0.05, round(ylim_upper,1) + 0.05)
-        ax.set_ylim(-0.05,1.05)
+        #ax.set_ylim(-0.05,1.05)
+        ax.set_ylim(-0.1,1.1)
         ax.set_xlim(depths[0]+1,depths[-1]+1)
 
-        ax.set_xlabel('Depth', fontsize=axis_size)
+        ax.set_xlabel(r'$l$', fontsize=axis_size)
         ax.set_ylabel(r'$D_2$', fontsize=axis_size)
 
-        ax.set_title(f"Epoch {epoch}", fontsize=title_size)
+        #ax.set_title(f"Epoch {epoch}", fontsize=title_size)
 
         #ax.legend(fontsize = legend_size, frameon=False)
         plt.tight_layout()
@@ -371,7 +354,7 @@ def d2_vs_depth(post=0, reig=1):
 
 
 # original: d2-vs-eigvals.py
-def d2_vs_eigvals(post=0, reig=1):
+def d2_vs_eigvals(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
 
     post, reig = int(post), int(reig)
     fcn = "fc10"
@@ -386,16 +369,6 @@ def d2_vs_eigvals(post=0, reig=1):
     #data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
     data_path = join(root_data, f"geometry_data/{post_dict[post]}jac_layerwise")
 
-    # ----- plot phase transition -----
-
-    title_size = 23.5 * 2.5
-    tick_size = 23.5 * 2.5
-    label_size = 23.5 * 2.5
-    axis_size = 23.5 * 2.5
-    legend_size = 23.5 * 2.5
-
-    alpha100_ls = [120,200]
-    g100 = 100
     trans_ls = np.linspace(0,1,len(alpha100_ls)+1)[::-1]
     max_mag = 0     # maximum magnitude of eigenvalues
 
@@ -405,7 +378,8 @@ def d2_vs_eigvals(post=0, reig=1):
     for epoch in [0,650]:
         
         # set up figure
-        fig, ax = plt.subplots(1, 1 ,figsize=(9.5,7.142))      
+        fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))      
+        set_size(axw, axh, ax)
 
         # ticks
         #ax1.set_xticks(np.arange(0,2.05,0.5))
@@ -463,7 +437,7 @@ def d2_vs_eigvals(post=0, reig=1):
         ax.set_xticks([0,0.5,1.0,1.5])
         ax.set_xticklabels([0,0.5,1.0,1.5])
 
-        ax.set_title(f"Layer {layer+1}, Epoch {epoch}", fontsize=title_size)
+        #ax.set_title(f"Layer {layer+1}, Epoch {epoch}", fontsize=title_size)
 
         #ax.legend(fontsize = legend_size, frameon=False)
         plt.tight_layout()
