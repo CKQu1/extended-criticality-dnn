@@ -11,6 +11,7 @@ plt.switch_backend('agg')
 
 sys.path.append(os.getcwd())
 from path_names import root_data
+from utils import IPR
 
 """
 
@@ -22,29 +23,23 @@ global post_dict, reig_dict
 post_dict = {0:'pre', 1:'post'}
 reig_dict = {0:'l', 1:'r'}
 
-def IPR(vec, q):
-    return sum(abs(vec)**(2*q)) / sum(abs(vec)**2)**q
-
-def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
+def npc_layerwise(post, alpha100, g100, input_idx, epoch, *args):
     """
-    
-    computes and saves all the D^l W^l's matrix multiplication, i.e. pre- or post-activation jacobians
+
+    computes the PCs of the layerwise neural representations
     - post = 1: post-activation jacobian
            = 0: pre-activation jacobian
 
     - input_idx: the index of the image
     
     """
-    global utils, train_loader
 
     import scipy.io as sio
     import sys
     import torch
     import train_DNN_code.model_loader as model_loader
-    from net_load.get_layer import get_hidden_layers, load_weights, get_epoch_weights, layer_struct
-    #sys.path.append(os.getcwd())
-    #from utils import get_hidden_layers, load_weights, get_epoch_weights, layer_struct
     from nporch.input_loader import get_data_normalized    
+    from NetPortal.models import ModelFactory
 
     post = int(post)
     assert post == 1 or post == 0, "No such option!"
@@ -59,15 +54,18 @@ def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
     # Extract numeric arguments.
     alpha, g = int(alpha100)/100., int(g100)/100.
     input_idx = int(input_idx)
-    # load MNIST (check trainednet_grad.py)
+    # load MNIST
     image_type = 'mnist'
     trainloader , _, _ = get_data_normalized(image_type,1)      
 
     # load nets and weights
-    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"
-    w = get_epoch_weights(data_path, net_folder, epoch)
-    net = model_loader.load(f'{net_type}')
-    net = load_weights(net, w)    
+    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
+    hidden_N = [784]*L + [10]
+    kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+              "init_path": join(data_path, net_folder), "init_epoch": epoch,
+              "activation": 'tanh', "architecture": 'fc'}
+    net = ModelFactory(**kwargs)
+
     # push the image through
     image = trainloader.dataset[input_idx][0]
     num = trainloader.dataset[input_idx][1]
@@ -76,45 +74,17 @@ def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
 
     return net.layerwise_jacob_ls(image, post)
 
-def jac_save(post, alpha100, g100, input_idxs, epoch, *args):
-    import torch
-    post = int(post)
-    input_idxs = literal_eval(input_idxs)
-    assert post == 1 or post == 0, "No such option!"
-    if post == 1:
-        path = join(root_data, "geometry_data/postjac_layerwise")
-    elif post == 0:
-        path = join(root_data, "geometry_data/prejac_layerwise")
-    if not os.path.exists(f'{path}'):
-        os.makedirs(f'{path}')
-
-    if post == 1:
-        print("Computing post-activation layerwise Jacobian")
-    elif post == 0:
-        print("Computing pre-activation layerwise Jacobian")
-    for idx, input_idx in enumerate(tqdm(input_idxs)):
-        DW_ls = jac_layerwise(post, alpha100, g100, input_idx, epoch, *args)
-        DW_all = torch.ones((len(DW_ls), DW_ls[0].shape[0], DW_ls[0].shape[1]))
-        for idx in range(0, len(DW_ls)):
-            DW = DW_ls[idx]
-            DW_all[idx,:DW.shape[0],:DW.shape[1]] = DW.detach().clone()
-
-        torch.save(DW_all, f"{path}/dw_alpha{alpha100}_g{g100}_ipidx{input_idx}_epoch{epoch}")
-    print("DW_all shape: {DW_all.shape}")
-    print(f"A total of {len(input_idxs)} images computed for (alpha, g) = ({alpha100}, {g100}) at epoch {epoch}!")
-    print(f"Saved as: {path}/dw_alpha{alpha100}_g{g100}_ipidx{input_idx}_epoch{epoch}!")
-
 def submit(*args):
     from qsub import qsub, job_divider, project_ls
     input_idxs = str( list(range(1,50)) ).replace(" ", "")
     post = 0
     pbs_array_data = [(post, alpha100, g100, input_idxs, epoch)
                       for alpha100 in range(100, 201, 10)
-                      for g100 in range(25, 301, 25)
+                      for g100 in [25,100,300]
                       #for alpha100 in [100, 200]
                       #for g100 in [100]
-                      for epoch in [0,1] + list(range(50,651,50))
-                      #for epoch in [0, 100, 650]
+                      #for epoch in [0,1] + list(range(50,651,50))
+                      for epoch in [0, 1, 50, 100, 150, 200, 650]
                       ]
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
@@ -131,7 +101,7 @@ def submit(*args):
 
 # ----- preplot -----
 
-def jac_to_dq(alpha100, g100, input_idxs, epoch, post, reig, *args):
+def npc_to_dq(alpha100, g100, input_idxs, epoch, post, reig, *args):
 
     """
 
