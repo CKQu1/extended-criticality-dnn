@@ -10,8 +10,8 @@ from torch.autograd import Variable
 from tqdm import tqdm
 from scipy.stats import levy_stable
 
-from path_names import root_data, log_model, read_log()
-from utils import save_weights, get_weights, compute_dq, compute_IPR, layer_ipr, effective_dimension, store_model
+from path_names import root_data, log_model, read_log
+from utils_dnn import save_weights, get_weights, compute_dq, compute_IPR, layer_ipr, effective_dimension, store_model
 
 dev = torch.device(f"cuda:{torch.cuda.device_count()-1}"
                    if torch.cuda.is_available() else "cpu")
