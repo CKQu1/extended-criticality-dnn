@@ -7,10 +7,11 @@ from ast import literal_eval
 from os.path import join
 from tqdm import tqdm
 
-plt.switch_backend('agg')
+#plt.switch_backend('agg')
 
 sys.path.append(os.getcwd())
 from path_names import root_data
+from utils_dnn import IPR
 
 """
 
@@ -21,9 +22,6 @@ This is for computing and saving the multifractal data of the (layerwise) Jacobi
 global post_dict, reig_dict
 post_dict = {0:'pre', 1:'post'}
 reig_dict = {0:'l', 1:'r'}
-
-def IPR(vec, q):
-    return sum(abs(vec)**(2*q)) / sum(abs(vec)**2)**q
 
 def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
     """
@@ -41,10 +39,8 @@ def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
     import sys
     import torch
     import train_DNN_code.model_loader as model_loader
-    from net_load.get_layer import get_hidden_layers, load_weights, get_epoch_weights, layer_struct
-    #sys.path.append(os.getcwd())
-    #from utils import get_hidden_layers, load_weights, get_epoch_weights, layer_struct
     from nporch.input_loader import get_data_normalized    
+    from NetPortal.models import ModelFactory
 
     post = int(post)
     assert post == 1 or post == 0, "No such option!"
@@ -59,15 +55,18 @@ def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
     # Extract numeric arguments.
     alpha, g = int(alpha100)/100., int(g100)/100.
     input_idx = int(input_idx)
-    # load MNIST (check trainednet_grad.py)
+    # load MNIST
     image_type = 'mnist'
     trainloader , _, _ = get_data_normalized(image_type,1)      
 
     # load nets and weights
-    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"
-    w = get_epoch_weights(data_path, net_folder, epoch)
-    net = model_loader.load(f'{net_type}')
-    net = load_weights(net, w)    
+    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
+    hidden_N = [784]*L + [10]
+    kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+              "init_path": join(data_path, net_folder), "init_epoch": epoch,
+              "activation": 'tanh', "architecture": 'fc'}
+    net = ModelFactory(**kwargs)
+
     # push the image through
     image = trainloader.dataset[input_idx][0]
     num = trainloader.dataset[input_idx][1]
@@ -75,6 +74,113 @@ def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
     print(num)
 
     return net.layerwise_jacob_ls(image, post)
+
+# ---------- Computing D_q without saving the Jacobian ----------
+
+def jac_dq(alpha100, g100, navg, epoch, post, reig, save_fig=False, *args):
+    """
+
+    Computing the eigenvectors of the associated jacobians from jac_layerwise() (without saving), 
+    and then saving the Dq's averaged across different inputs
+
+    """
+
+    global DW_all, eigvals, eigvecs, qs, D_qs, DW
+
+    import numpy as np    
+    import random
+    import torch
+    from numpy import linalg as la
+    from tqdm import tqdm
+
+    # number of images to take average over
+    navg = int(navg)
+    # post: pre/post activation for Jacobians, reig: right or left eigenvectors
+    post, reig = int(post), int(reig)
+    assert post == 1 or post == 0, "No such option!"
+    assert reig == 1 or reig == 0, "No such option!"
+
+    main_path = join(root_data, "geometry_data")
+    save_path = f"{main_path}/dq_layerwise_navg={navg}_{post_dict[post]}_{reig_dict[reig]}"
+    if not os.path.exists(f'{save_path}'):
+        os.makedirs(f'{save_path}')   
+
+    qs = np.linspace(0,2,50)
+    input_idxs = random.sample(range(60000), navg)
+    DW_all = jac_layerwise(post, alpha100, g100, 0, epoch)  # just for getting L
+    L = len(DW_all)  
+    dq_shape = [L + 1, DW_all.shape[0], len(qs)]    # extra for storing qs
+    dq_means = np.zeros(dq_shape)
+    dq_stds = np.zeros(dq_shape)
+    for idx, input_idx in enumerate(tqdm(input_idxs)):
+        # compute DW's
+        DW_all = jac_layerwise(post, alpha100, g100, input_idx, epoch)
+        L = len(DW_all)        
+
+        for l in [0]:
+        #for l in range(L):
+            D_qss = []
+
+            DW = DW_all[l].detach().numpy()
+            # left eigenvector
+            if reig == 0:
+                DW = DW.T
+
+            if idx == len(input_idxs) - 1:
+                print(f"layer {l}: {DW.shape}")
+            # SVD if not square matrix
+            if DW.shape[0] != DW.shape[1]:
+                # old method
+                #DW = DW[:10,:]
+                #DW = DW.T @ DW  # final DW is 10 x 784
+                _, eigvals, eigvecs = la.svd(DW)
+            else:
+                eigvals, eigvecs = la.eig(DW)
+            nan_count = 0
+            for i in range(len(eigvals)):  
+                eigvec = eigvecs[:,i]
+                IPRs = np.array([IPR(eigvec ,q) for q in qs])
+                D_qs = np.log(IPRs) / (1-qs) / np.log(len(eigvec))
+                
+                if not any(np.isnan(D_qs)): D_qss.append(D_qs)
+                else: nan_count += 1  
+
+            # save D_q values individually for layers
+            """
+            result = np.transpose([qs, np.mean(D_qss, axis=0), np.std(D_qss, axis=0)])
+            outfname = f'dq_alpha{alpha100}_g{g100}_ep{epoch}_l{l}.txt'
+            outpath = f"{save_path}/{outfname}"
+            print(f'Saving {outpath}')
+            np.savetxt(outpath, result)
+            """
+
+            if l == 0:
+                dq_means = np.transpose([qs, np.mean(D_qss, axis=0)])
+                dq_stds = np.transpose([qs, np.std(D_qss, axis=0)])
+            else:
+                dq_mean = np.mean(D_qss, axis=0)
+                dq_std = np.std(D_qss, axis=0)
+                dq_mean, dq_std = np.expand_dims(dq_mean,axis=1), np.expand_dims(dq_std,axis=1)
+                dq_means = np.concatenate((dq_means, dq_mean),axis=1)
+                dq_stds = np.concatenate((dq_stds, dq_std),axis=1)
+
+            print("\n")
+            print(dq_means.shape)
+            print(dq_stds.shape)
+
+    # save D_q values
+    # mean
+    outfname = f'dqmean_alpha{alpha100}_g{g100}_ep{epoch}.txt'
+    outpath = f"{save_path}/{outfname}"
+    #print(f'Saving means: {outpath}')
+    np.savetxt(outpath, dq_means)
+    outfname = f'dqstd_alpha{alpha100}_g{g100}_ep{epoch}.txt'
+    outpath = f"{save_path}/{outfname}"
+    #print(f'Saving stds: {outpath}')
+    np.savetxt(outpath, dq_stds)
+    print(f"Conversion to Dq complete for ({alpha100}, {g100}) at epoch {epoch}!")
+
+# ---------- Saving Jacobian ----------
 
 # this actually eats up a lot of storage, don't recommend saving for too many input_idxs
 def jac_save(post, alpha100, g100, input_idxs, epoch, *args):
@@ -132,7 +238,8 @@ def submit(*args):
 
 # ----- preplot -----
 
-def jac_to_dq(alpha100, g100, input_idxs, epoch, post, reig, *args):
+# only use this when you have saved values in files
+def jac_to_dq(alpha100, g100, input_idx, epoch, post, reig, save_fig=False, *args):
 
     """
 
@@ -149,11 +256,12 @@ def jac_to_dq(alpha100, g100, input_idxs, epoch, post, reig, *args):
     post, reig = int(post), int(reig)
     assert post == 1 or post == 0, "No such option!"
     assert reig == 1 or reig == 0, "No such option!"
-    input_idxs = literal_eval(input_idxs)
+    #input_idxs = literal_eval(input_idxs)
 
-    join(root_data, "geometry_data")
+    main_path = join(root_data, "geometry_data")
     data_path = f"{main_path}/{post_dict[post]}jac_layerwise"
     save_path = f"{main_path}/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
+    print(save_path)
     fig_path = f"{main_path}/dq_layerplot_{post_dict[post]}_{reig_dict[reig]}"
     if not os.path.exists(f'{save_path}'):
         os.makedirs(f'{save_path}')   
@@ -161,53 +269,55 @@ def jac_to_dq(alpha100, g100, input_idxs, epoch, post, reig, *args):
         os.makedirs(f'{fig_path}')  
 
     qs = np.linspace(0,2,50)
+    # load DW's
+    DW_all = torch.load(f"{data_path}/dw_alpha{alpha100}_g{g100}_ipidx{input_idx}_epoch{epoch}")
+    DWs_shape = DW_all.shape
 
-    for idx, input_idx in enumerate(tqdm(input_idxs)):
-        # load DW's
-        DW_all = torch.load(f"{data_path}/dw_alpha{alpha100}_g{g100}_ipidx{input_idx}_epoch{epoch}")
-        DWs_shape = DW_all.shape
+    for l in tqdm(range(DWs_shape[0])):
+        D_qss = []
 
-        for l in tqdm(range(DWs_shape[0])):
-            D_qss = []
-
-            DW = DW_all[l].numpy()
-            if l == DWs_shape[0]:
-                DW = DW[:10,:]
-                DW = DW.T @ DW  # final DW is 10 x 784
-
-            # left eigenvector
-            if reig == 0:
-                DW = DW.T
-
-            print(f"layer {l}: {DW.shape}")
+        DW = DW_all[l].numpy()
+        # left eigenvector
+        if reig == 0:
+            DW = DW.T
+        #if idx == len(input_idxs) - 1:
+        print(f"layer {l}: {DW.shape}")
+        # SVD if not square matrix
+        if l == DWs_shape[0]:
+            # old method
+            #DW = DW[:10,:]
+            #DW = DW.T @ DW  # final DW is 10 x 784
+            _, eigvals, eigvecs = la.svd(DW)
+        else:
             eigvals, eigvecs = la.eig(DW)
-            nan_count = 0
-            for i in range(len(eigvals)):  
-                eigvec = eigvecs[:,i]
-                IPRs = np.array([IPR(eigvec ,q) for q in qs])
-                D_qs = np.log(IPRs) / (1-qs) / np.log(len(eigvec))
-                
-                if not any(np.isnan(D_qs)): D_qss.append(D_qs)
-                else: nan_count += 1  
+        nan_count = 0
+        for i in range(len(eigvals)):  
+            eigvec = eigvecs[:,i]
+            IPRs = np.array([IPR(eigvec ,q) for q in qs])
+            D_qs = np.log(IPRs) / (1-qs) / np.log(len(eigvec))
+            
+            if not any(np.isnan(D_qs)): D_qss.append(D_qs)
+            else: nan_count += 1  
 
-            # save D_q values individually for layers
-            """
-            result = np.transpose([qs, np.mean(D_qss, axis=0), np.std(D_qss, axis=0)])
-            outfname = f'dq_alpha{alpha100}_g{g100}_ep{epoch}_l{l}.txt'
-            outpath = f"{save_path}/{outfname}"
-            print(f'Saving {outpath}')
-            np.savetxt(outpath, result)
-            """
-            if l == 0:
-                dq_means = np.transpose([qs, np.mean(D_qss, axis=0)])
-                dq_stds = np.transpose([qs, np.std(D_qss, axis=0)])
-            else:
-                dq_mean = np.mean(D_qss, axis=0)
-                dq_std = np.std(D_qss, axis=0)
-                dq_mean, dq_std = np.expand_dims(dq_mean,axis=1), np.expand_dims(dq_std,axis=1)
-                dq_means = np.concatenate((dq_means, dq_mean),axis=1)
-                dq_stds = np.concatenate((dq_stds, dq_std),axis=1)
+        # save D_q values individually for layers
+        """
+        result = np.transpose([qs, np.mean(D_qss, axis=0), np.std(D_qss, axis=0)])
+        outfname = f'dq_alpha{alpha100}_g{g100}_ep{epoch}_l{l}.txt'
+        outpath = f"{save_path}/{outfname}"
+        print(f'Saving {outpath}')
+        np.savetxt(outpath, result)
+        """
+        if l == 0:
+            dq_means = np.transpose([qs, np.mean(D_qss, axis=0)])
+            dq_stds = np.transpose([qs, np.std(D_qss, axis=0)])
+        else:
+            dq_mean = np.mean(D_qss, axis=0)
+            dq_std = np.std(D_qss, axis=0)
+            dq_mean, dq_std = np.expand_dims(dq_mean,axis=1), np.expand_dims(dq_std,axis=1)
+            dq_means = np.concatenate((dq_means, dq_mean),axis=1)
+            dq_stds = np.concatenate((dq_stds, dq_std),axis=1)
 
+        if save_fig:
             # plot D_q image
             plt.errorbar(qs, np.mean(D_qss, axis=0), yerr=np.std(D_qss, axis=0))
             plt.ylim([0,1.1])
@@ -225,31 +335,33 @@ def jac_to_dq(alpha100, g100, input_idxs, epoch, post, reig, *args):
             plt.savefig(outpath)
             plt.clf()
 
-            print("\n")
-            print(dq_means.shape)
-            print(dq_stds.shape)
+        print("\n")
+        print(dq_means.shape)
+        print(dq_stds.shape)
 
-        # save D_q values
-        # mean
-        outfname = f'dqmean_alpha{alpha100}_g{g100}_ipidx{input_idx}_ep{epoch}.txt'
-        outpath = f"{save_path}/{outfname}"
-        #print(f'Saving means: {outpath}')
-        np.savetxt(outpath, dq_means)
-        outfname = f'dqstd_alpha{alpha100}_g{g100}_ipidx{input_idx}_ep{epoch}.txt'
-        outpath = f"{save_path}/{outfname}"
-        #print(f'Saving stds: {outpath}')
-        np.savetxt(outpath, dq_stds)
+    # save D_q values
+    # mean
+    outfname = f'dqmean_alpha{alpha100}_g{g100}_ipidx{input_idx}_ep{epoch}.txt'
+    outpath = f"{save_path}/{outfname}"
+    #print(f'Saving means: {outpath}')
+    np.savetxt(outpath, dq_means)
+    outfname = f'dqstd_alpha{alpha100}_g{g100}_ipidx{input_idx}_ep{epoch}.txt'
+    outpath = f"{save_path}/{outfname}"
+    #print(f'Saving stds: {outpath}')
+    np.savetxt(outpath, dq_stds)
+
     print(f"Conversion to Dq complete for ({alpha100}, {g100}) at epoch {epoch}!")
 
 
-def submit_preplot(*args,post=1,reig=0):
+def preplot_submit(*args,post=0,reig=1):
 #def submit_preplot(path):
+    global pbs_array_data, pbs_array_data_epochs
 
     post = int(post)
     assert post == 1 or post == 0, "No such option!"
     reig = int(reig)    # whether to compute for right eigenvector or not
     assert reig == 1 or reig == 0, "No such option!"
-    input_idxs = str( list(range(1,50)) ).replace(" ", "")
+    #input_idxs = str( list(range(1,50)) ).replace(" ", "")
 
     # change the path accordingly
     data_path = join(root_data, f"geometry_data/{post_dict[post]}jac_layerwise")
@@ -276,7 +388,16 @@ def submit_preplot(*args,post=1,reig=0):
     """
 
     from qsub import qsub, job_divider, project_ls
-    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    pbs_array_data = list(pbs_array_data)
+
+    # analysis on selected epochs
+    selected_epochs = ['0','1','50','100','150','200','250','650']
+    pbs_array_data_epochs = [pbs_array_data[idx] for idx in range(len(pbs_array_data)) if pbs_array_data[idx][3] in selected_epochs]
+    #pbs_array_data_epochs = pbs_array_data_epochs[0:2]    # test
+    perm, pbss = job_divider(pbs_array_data_epochs, len(project_ls))
+
+    print(len(pbs_array_data_epochs))
+    print(len(pbss))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
@@ -287,13 +408,6 @@ def submit_preplot(*args,post=1,reig=0):
              ncpus=1,
              walltime='23:59:59',
              mem='1GB') 
-
-# ----- plot -----
-
-# phase transition plot
-def dq_plot(*args):
-
-    pass
 
 if __name__ == '__main__':
     import sys
