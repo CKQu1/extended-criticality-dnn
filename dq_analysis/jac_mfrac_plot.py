@@ -26,7 +26,7 @@ title_size = 23.5 * 1.5
 tick_size = 23.5 * 1.5
 label_size = 23.5 * 1.5
 axis_size = 23.5 * 1.5
-legend_size = 23.5 * 1.5
+legend_size = 23.5 * 1.5 - 10
 figw, figh = 9.5, 7.142 - 0.25
 axw, axh = figw * 0.7, figh * 0.7
 
@@ -64,6 +64,7 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
     #for epoch in [0,1] + list(range(50,651,50)):   # all
     for epoch in [0,650]:
         #for layer in range(0,10):
+        lstyle = "--" if epoch == 0 else "-"
         for f_idx in range(len(alpha100_ls)):
             #for f_idx in range(len(extension_names)):
                 alpha100 = alpha100_ls[f_idx]
@@ -123,7 +124,7 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
                     ax.set_ylim(0,0.15)
 
                     # eigenvector corresponding to the eigenvalue with the largest magnitude
-                    ax.plot(np.abs(eigvecs[:,np.argmax(np.abs(eigvals))]), c = c_ls[f_idx], linewidth=3)
+                    ax.plot(np.abs(eigvecs[:,np.argmax(np.abs(eigvals))]), c = c_ls[f_idx], linestyle=lstyle, linewidth=3)
                     
                     #if f_idx == 1:
                     ax.set_xlabel('Site', fontsize=axis_size)
@@ -182,7 +183,8 @@ def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
             fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))
             set_size(axw, axh, ax)
             #axs = [ax1, ax2, ax3, ax4]
-            #fig = plt.figure(figsize=(9.5,7.142))        
+            #fig = plt.figure(figsize=(9.5,7.142))   
+            lstyle = "--" if epoch == 0 else "-"     
 
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
@@ -214,7 +216,7 @@ def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
                 upper = dq_means + dq_stds
                 
                 # averages of dq's with error bars
-                ax.plot(qs, dq_means, linewidth=3.5, alpha=1, c = c_ls[f_idx], label=rf"$\alpha$ = {round(alpha100/100,1)}")
+                ax.plot(qs, dq_means, linewidth=3.5, linestyle=lstyle, alpha=1, c = c_ls[f_idx], label=rf"$\alpha$ = {round(alpha100/100,1)}")
                 #ax.plot(qs, lower, linewidth=0.25, alpha=1, c = c_ls[f_idx])
                 #ax.plot(qs, upper, linewidth=0.25, alpha=1, c = c_ls[f_idx])
                 ax.fill_between(qs, lower, upper, color = c_ls[f_idx], alpha=0.2)
@@ -254,7 +256,7 @@ def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
 
 
 # original d2-vs-depth.py
-def d2_vs_depth(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
+def d2_vs_depth(alpha100_ls = [120,200], g100 = 300, post=0, reig=1):
 
     post, reig = int(post), int(reig)
     fcn = "fc10"
@@ -279,9 +281,10 @@ def d2_vs_depth(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
         #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = False,sharey=False,figsize=(9.5,7.142))
         fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))
         set_size(axw, axh, ax)
-        
+        # linestyle
+        lstyle = "--" if epoch == 0 else "-"
         # vertical line
-        ax.axvline(x=5, c='dimgrey',linestyle='--')     
+        #ax.axvline(x=5, c='dimgrey',linestyle='--')     
 
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -321,24 +324,31 @@ def d2_vs_depth(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
             upper = dq_mean_layer + dq_std_layer
                 
             # averages of dq's with error bars
-            ax.plot(depths+1, dq_mean_layer, linewidth=2.5, alpha=1, c = c_ls[f_idx], label=rf"$\alpha$ = {round(alpha100/100,1)}")
+            ax.plot(depths+1, dq_mean_layer, linewidth=3.5, linestyle=lstyle, alpha=1, c = c_ls[f_idx])
             #ax.plot(depths+1, lower, linewidth=0.25, alpha=1, c = c_ls[f_idx])
             #ax.plot(depths+1, upper, linewidth=0.25, alpha=1, c = c_ls[f_idx])
             ax.fill_between(depths+1, lower, upper, color = c_ls[f_idx], alpha=0.2)
 
+        # extra labels
+        if epoch == 0 and g100 == 25:
+            ax.plot([], [], linewidth=3.5, alpha=1, c = c_ls[0], label=rf"$\alpha$ = {round(alpha100_ls[0]/100,1)}")
+            ax.plot([], [], linewidth=3.5, alpha=1, c = c_ls[1], label=rf"$\alpha$ = {round(alpha100_ls[1]/100,1)}")
+            ax.plot([], [], linewidth=3.5, linestyle="--", c="k", label="Before training")
+            ax.plot([], [], linewidth=3.5, linestyle="-", c="k", label="After training")
+
         ylim_lower = min(ylim_lower, min(lower))
         ylim_upper = max(ylim_upper, max(upper))
         #ax.set_ylim(round(ylim_lower,1) - 0.05, round(ylim_upper,1) + 0.05)
-        #ax.set_ylim(-0.05,1.05)
         ax.set_ylim(-0.1,1.1)
         ax.set_xlim(depths[0]+1,depths[-1]+1)
+        ax.set_xticks([2,4,6,8,10])
 
-        ax.set_xlabel(r'$l$', fontsize=axis_size)
-        ax.set_ylabel(r'$D_2$', fontsize=axis_size)
+        #ax.set_xlabel(r'$l$', fontsize=axis_size)
+        #ax.set_ylabel(r'$D_2$', fontsize=axis_size)
 
         #ax.set_title(f"Epoch {epoch}", fontsize=title_size)
 
-        #ax.legend(fontsize = legend_size, frameon=False)
+        ax.legend(fontsize = legend_size, ncol=2, loc="lower left",frameon=False)
         plt.tight_layout()
 
         fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
