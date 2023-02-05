@@ -1,11 +1,13 @@
-
 import numpy as np
-from tqdm import tqdm
-
-import sys
 import os
 import re
+import sys
+from os.path import join
+from tqdm import tqdm
 
+sys.path.append(os.getcwd())
+from path_names import root_data
+from utils_dnn import load_transition_lines
 
 def SEM(N, L, N_thetas, alpha100, g100):
 # get the SEM of the manifold distances propagated through the DNN layers
@@ -43,13 +45,24 @@ def SEM_save(N, L, N_thetas,
                SEM(N, L, N_thetas, alpha100, g100))
 
 def submit(*args):
-    from qsub import qsub
+    from qsub import qsub, job_divider, project_ls
     pbs_array_data = [(alpha100, g100, rep)
                       for alpha100 in range(100, 201, 5)
                       for g100 in range(5, 301, 5)
                       for rep in range(50)
                       ]
-    qsub(f'python {sys.argv[0]} {" ".join(args)}', pbs_array_data, local=False)
+
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, "geometry_data"),
+             P=project_ls[pidx],
+             ncpus=1,
+             walltime='23:59:59',
+             mem='1GB') 
 
 # ----- preplot -----
 
@@ -71,13 +84,42 @@ def submit_preplot(path):
     # find the `alpha100`s and `g100`s of the files in the folder
     pbs_array_data = set([tuple(re.findall('\d+', fname)[:2]) for fname in os.listdir(path)
                       if all(s in fname for s in ('alpha', 'g', 'rep', 'txt'))])
-    from qsub import qsub
-    qsub(f'python {sys.argv[0]} SEM_preplot', pbs_array_data, local=False, path=path)
+    from qsub import qsub, job_divider, project_ls
+
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        # SEM_preplot as arg
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, "geometry_data"),
+             P=project_ls[pidx],
+             ncpus=1,
+             walltime='23:59:59',
+             mem='1GB') 
 
 # ----- plot -----
 
+# plot settings
+global tick_size, label_size, axis_size, legend_size, linewidth
+tick_size = 13
+label_size = 16.5
+axis_size = 16.5
+legend_size = 14
+linewidth = 0.8
+# colorbar
+interp = "quadric"
+#cm_type = 'RdGy'
+#cm_type = 'coolwarm'
+#cm_type = 'RdBu'
+cm_type = 'RdYlBu'
+
+# /project/phys_DL/dnn_project/python_random_dnn.py_SEM_save_1000_50_1000
+# path = join(root_data, "/project/phys_DL/dnn_project", "python_random_dnn.py_SEM_save_1000_50_1000")
 def SEM_plot(path='', layer=None):
-    phase_path = f"/project/phys_DL/dnn_project"
+    #phase_path = f"/project/phys_DL/dnn_project"
+    # plot settings
     fnames = [fname for fname in os.listdir(path)
               if 'rep' not in fname and fname.endswith('txt')]
     xs = []
@@ -96,16 +138,11 @@ def SEM_plot(path='', layer=None):
     import pandas as pd
     import matplotlib.pyplot as plt
     import string
+    plt.rcParams["font.family"] = "serif"     # set plot font globally
     if layer and ',' in layer:  # publication figure
-        # phase boundaries
-        boundaries = []
-#        boundaries.append(pd.read_csv(f"phasediagram/phasediagram_pow_1_line_1.csv", header=None))
-        boundaries.append(pd.read_csv(f"{phase_path}/phasediagram/ordered.csv", header=None))
-        for i in list(range(1,102,10)):
-#            boundaries.append(pd.read_csv(f"phasediagram/phasediagram_pow_{i}_line_2.csv", header=None))
-            boundaries.append(pd.read_csv(f"{phase_path}/phasediagram/pow_{i}.csv", header=None))
-        bound1 = boundaries[0]
-        #
+        # phase transition lines
+        bound1, boundaries = load_transition_lines()
+        
         layers = list(map(int, layer.split(',')))
         ncols = int(len(layers)**0.5)
         nrows = int(np.ceil(len(layers)/ncols))
@@ -116,16 +153,16 @@ def SEM_plot(path='', layer=None):
         for i, l in enumerate(layers):
             ax = axes.flat[i]
             ax.tick_params(axis='both',labelsize=tick_size)     # tick label size
-            # plot boundaries for each axs
+            # plot phase transition lines for each axs
             ax.plot(bound1.iloc[:,0], bound1.iloc[:,1], 'k')
-            for j in range(1,len(boundaries)):
+            for j in range(0,len(boundaries)):
                 bd = boundaries[j]
                 ax.plot(bd.iloc[:,0], bd.iloc[:,1], 'k--')#'k-.')
-            # plot labels
-            if not i%ncols: ax.set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
-            if i >= (nrows-1)*ncols: ax.set_xlabel(r'$\alpha$', fontsize=axis_size)
+            # plot x, y labels
+            #if not i%ncols: ax.set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
+            #if i >= (nrows-1)*ncols: ax.set_xlabel(r'$\alpha$', fontsize=axis_size)
             #ax.text(-0.1 if not i%ncols else 0.1, 1, f'({string.ascii_lowercase[i]})', transform=ax.transAxes, fontsize=label_size, va='top', ha='right')    # fontweight='bold'
-            ax.text(0.1, 1.1, f'({string.ascii_lowercase[i]})', transform=ax.transAxes, fontsize=label_size, va='top', ha='right')
+            #ax.text(0.1, 1.1, f'({string.ascii_lowercase[i]})', transform=ax.transAxes, fontsize=label_size, va='top', ha='right')
             # convert cs to a grid, assuming alphas and gs are evenly spaced
             mesh = np.zeros([len(alphas100), len(gs100)])
             for j in range(len(xs)):
@@ -139,17 +176,13 @@ def SEM_plot(path='', layer=None):
         cbar = fig.colorbar(im, ax=axes, shrink=.6)
         cbar.ax.tick_params(labelsize=tick_size)
         #plt.show()
-        fig1_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms"
+        fig1_path = join(root_data, "figure_ms")
         plt.savefig(f"{fig1_path}/random_dnn.pdf", bbox_inches='tight')
         
         return
     # debugging
-        # phase boundaries
-    boundaries = []
-    boundaries.append(pd.read_csv(f"{phase_path}/phasediagram/phasediagram_pow_1_line_1.csv", header=None))
-    for i in list(range(1,10,2)):
-        boundaries.append(pd.read_csv(f"{phase_path}/phasediagram/phasediagram_pow_{i}_line_2.csv", header=None))
-    bound1 = boundaries[0]
+    # phase boundaries
+    bound1, boundaries = load_transition_lines()
     # fig
     plt.figure()
     plt.show(block=False)
@@ -157,7 +190,7 @@ def SEM_plot(path='', layer=None):
         plt.clf()
                 # plot boundaries for each axs
         plt.plot(bound1.iloc[:,0], bound1.iloc[:,1], 'k')
-        for j in range(1,len(boundaries)):
+        for j in range(len(boundaries)):
             bd = boundaries[j]
             plt.plot(bd.iloc[:,0], bd.iloc[:,1], 'k-.')
         # convert cs to a grid, assuming alphas and gs are evenly spaced
@@ -176,9 +209,6 @@ def SEM_plot(path='', layer=None):
         plt.gcf().canvas.start_event_loop(1./30)
     plt.show()
     return cs
-
-
-
 
 
 if __name__ == '__main__':
