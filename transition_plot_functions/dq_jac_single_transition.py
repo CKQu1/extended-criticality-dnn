@@ -14,7 +14,7 @@ from mpl_toolkits.axes_grid.inset_locator import inset_axes
 plt.switch_backend('agg')
 
 # colorbar
-cm_type = 'CMRmap'
+cm_type = 'seismic'
 interp = "quadric"
 plt.rcParams["font.family"] = "serif"     # set plot font globally
 
@@ -51,13 +51,13 @@ boundaries = []
 #axis_size = 16.5
 #legend_size = 12
 
-title_size = 23.5
-tick_size = 23.5
-label_size = 23.5
-axis_size = 23.5
-legend_size = 23.5
-linewidth = 0.8
-text_size = 14
+title_size = 23.5 * 2
+tick_size = 23.5 * 2
+label_size = 23.5 * 2
+axis_size = 23.5 * 2
+legend_size = 23.5 * 2
+linewidth = 0.8 * 2
+text_size = 14 * 2
 
 mult_lower = 0.25
 mult_upper = 3
@@ -79,8 +79,10 @@ missing_data = []
 #for epoch in [0,1]:
 #    for layer in range(0,2):
 #for epoch in [0,1] + list(range(50,651,50)):   # all
+#for epoch in [0,1,50,100,650]:
 for epoch in [0,650]:
-    for layer in range(0,10):
+    #for layer in range(0,10):
+    for layer in [0,2,4]:
 
         if epoch == 0 and layer == 0:
             extension_name = f"alpha120_g150_ipidx0_ep{epoch}.txt"                
@@ -137,7 +139,8 @@ for epoch in [0,650]:
         assert len(alpha_m_ls) == len(d2_mean_ls) and len(alpha_m_ls) == len(d2_std_ls)
 
         # colorbar bound
-        cmap_bd = [[min(d2_mean_ls),max(d2_mean_ls)], [min(d2_std_ls),max(d2_std_ls)]]
+        #cmap_bd = [[min(d2_mean_ls),max(d2_mean_ls)], [min(d2_std_ls),max(d2_std_ls)]]
+        cmap_bd = [ [np.percentile(d2_mean_ls,5), np.percentile(d2_mean_ls,95)], [np.percentile(d2_std_ls,5), np.percentile(d2_std_ls,95)] ]
         #cmap_bd = [[0.5, 1], [min(d2_std_ls),max(d2_std_ls)]]
 
         mean_mesh = np.zeros((mult_N,alpha_N))
@@ -162,8 +165,9 @@ for epoch in [0,650]:
         title_names = ["mean", "standard deviation"]
         save_names = ["mean", "std"]
         metrics_all = {title_names[0]: mean_mesh, title_names[1]: std_mesh}
-        for plot_idx in range(2):
-            fig, ax = plt.subplots(1, 1,figsize=(9.5,7.142))
+        #for plot_idx in range(2): # plots mean and std 
+        for plot_idx in range(1):   # only plots mean
+            fig, ax = plt.subplots(1, 1,figsize=(9.5,7.142 - 0.5))
             # plot boundaries for each axs
             ax.plot(bound1.iloc[:,0], bound1.iloc[:,1], linewidth=2.5, color='k')
             #for j in range(len(boundaries)):
@@ -174,8 +178,8 @@ for epoch in [0,650]:
             #a_cross, m_cross = np.meshgrid(alpha_grid, mult_grid)
             #ax.plot(a_cross, m_cross, c='k', linestyle='None',marker='.',markersize=12)
                 
-            ax.set_xlabel(r'$\alpha$', fontsize=axis_size)
-            ax.set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
+            #ax.set_xlabel(r'$\alpha$', fontsize=axis_size)
+            #ax.set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
 
             # minor ticks
             ax.xaxis.set_minor_locator(AutoMinorLocator())
@@ -184,19 +188,23 @@ for epoch in [0,650]:
             # label ticks
             ax.tick_params(axis='x', labelsize=axis_size - 1)
             ax.tick_params(axis='y', labelsize=axis_size - 1)
+            ax.set_xticks([1,2,3])
+            ax.set_xticks([1.0,1.5,2.0])
 
             #-----
 
             title_name = title_names[plot_idx]
             main_plot = ax.imshow(metrics_all[title_name],extent=[alpha_lower,alpha_upper,mult_lower,mult_upper], vmin=cmap_bd[plot_idx][0], vmax=cmap_bd[plot_idx][1], 
                                   cmap=plt.cm.get_cmap(cm_type), interpolation='quadric', aspect='auto')
-            if q_folder == int(q_folder):
-                ax.set_title(rf"$D_{{{int(q_folder)}}}$ {title_name}", fontsize=label_size)
-            else:
-                ax.set_title(rf"$D_{{{round(q_folder,1)}}}$ {title_name}", fontsize=label_size)
+            #if q_folder == int(q_folder):
+            #    ax.set_title(rf"$D_{{{int(q_folder)}}}$ {title_name}", fontsize=label_size)
+            #else:
+            #    ax.set_title(rf"$D_{{{round(q_folder,1)}}}$ {title_name}", fontsize=label_size)
             cbar = plt.colorbar(main_plot,ax=ax)
             cbar.formatter.set_powerlimits((0, 0))
-            cbar.ax.tick_params(labelsize=axis_size - 3)
+            cbar.ax.tick_params(labelsize=axis_size - 1)
+            l, u = round(cmap_bd[plot_idx][0],2), round(cmap_bd[plot_idx][1],2)
+            cbar.ax.set_yticks([l, u])
             plt.tight_layout()
             plt.savefig(f"{fig1_path}/dq_jac_{save_names[plot_idx]}_transition_{post_dict[post]}_{reig_dict[reig]}_l={layer}_epoch={epoch}.pdf", bbox_inches='tight')
 
