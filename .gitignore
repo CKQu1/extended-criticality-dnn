@@ -1,3 +1,9 @@
+# Files / folders
+net_load
+nporch
+train_DNN_code
+main.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
