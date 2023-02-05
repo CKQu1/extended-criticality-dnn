@@ -9,7 +9,7 @@ sys.path.append(os.getcwd())
 import path_names
 from os.path import join
 from path_names import root_data, id_to_path, model_log
-from utils import load_transition_lines
+from utils_dnn import load_transition_lines
 
 # colorbar
 #cm = cm.get_cmap('gist_heat')
@@ -45,7 +45,7 @@ bound1, boundaries = load_transition_lines()
 #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = True,sharey=True,figsize=(9.5,7.142))
 #axs = [ax1, ax2, ax3, ax4]
 #fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))     # window size with text
-fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2))
+fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 - 0.1))
 axs = [ax1, ax2]
 
 # plot boundaries for each axs
@@ -74,6 +74,7 @@ for i in range(len(axs)):
     # network realizations
     if i == 0:
         axs[i].plot(a_cross, m_cross, c='k', linestyle='None',marker='.',markersize=5)
+    #    axs[i].grid()
 
     # major ticks
     axs[i].tick_params(bottom=True, top=True, left=True, right=True)
@@ -101,8 +102,8 @@ for i in range(len(axs)):
     #axs[i].set_yticks(mult_grid)
     #axs[i].set_ylim(0,3.25)
     
-    if i == 0:
-        axs[i].set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
+    #if i == 0:
+    #    axs[i].set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
 
     #if i == 2 or i == 3:
     
