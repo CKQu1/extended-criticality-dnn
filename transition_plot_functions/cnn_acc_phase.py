@@ -30,7 +30,7 @@ legend_size = 14
 linewidth = 0.8
 
 #fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))     # with text
-fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2))     # with text
+fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 - 0.1))     # with text
 axs = [ax1, ax2]
 
 alpha100_ls = sorted(list(set([int(get_alpha_g(net_ls[nidx])[0]) for nidx in range(len(net_ls))])))
@@ -46,8 +46,8 @@ for i in range(len(axs)):
 acc_type = "train"
 title_ls = [f'{acc_type[0].upper() + acc_type[1:]} accuracy', 'Earliest epoch reaching' + '\n' + f'{acc_type} acc. threshold ']
 for i in range(len(axs)):
-    axs[i].set_xlabel(r'$\alpha$', fontsize=axis_size)
-    if i == 0: axs[i].set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
+    #axs[i].set_xlabel(r'$\alpha$', fontsize=axis_size)
+    #if i == 0: axs[i].set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
     #axs[i].set_title(f"{title_ls[i]}", fontsize=axis_size)
     #axs[i].text(-0.1, 1.2, f'({string.ascii_lowercase[i]})', transform=axs[i].transAxes, fontsize=label_size, va='top', ha='right')   # fontweight='bold'
     # setting ticks
