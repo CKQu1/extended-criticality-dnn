@@ -1,17 +1,20 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.linalg as la
 import os
 import re
 import sys
+import torch
 from ast import literal_eval
 from os.path import join
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-plt.switch_backend('agg')
+#plt.switch_backend('agg')
 
 sys.path.append(os.getcwd())
 from path_names import root_data
-from utils import IPR
+from utils_dnn import IPR, compute_dq, effective_dimension
 
 """
 
@@ -23,7 +26,7 @@ global post_dict, reig_dict
 post_dict = {0:'pre', 1:'post'}
 reig_dict = {0:'l', 1:'r'}
 
-def npc_layerwise(post, alpha100, g100, input_idx, epoch, *args):
+def npc_layerwise(post, alpha100, g100, epochs, reig=1):
     """
 
     computes the PCs of the layerwise neural representations
@@ -33,16 +36,17 @@ def npc_layerwise(post, alpha100, g100, input_idx, epoch, *args):
     - input_idx: the index of the image
     
     """
+    global C_ls, C_dims, dqs, eigvals, eigvecs, ii, hidden_layer, ED, ED_means, net, trainloader
 
     import scipy.io as sio
     import sys
     import torch
-    import train_DNN_code.model_loader as model_loader
-    from nporch.input_loader import get_data_normalized    
     from NetPortal.models import ModelFactory
+    from train_supervised import get_data, set_data
 
     post = int(post)
     assert post == 1 or post == 0, "No such option!"
+    epochs = literal_eval(epochs) if isinstance(epochs, str) else epochs
 
     # storage of trained nets
     L = 10
@@ -53,12 +57,13 @@ def npc_layerwise(post, alpha100, g100, input_idx, epoch, *args):
 
     # Extract numeric arguments.
     alpha, g = int(alpha100)/100., int(g100)/100.
-    input_idx = int(input_idx)
     # load MNIST
     image_type = 'mnist'
-    trainloader , _, _ = get_data_normalized(image_type,1)      
+    trainloader, _ = set_data(image_type, rshape=True)
+    trainloader = DataLoader(trainloader, batch_size=512, shuffle=False)
 
     # load nets and weights
+    epoch = 0
     net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
     hidden_N = [784]*L + [10]
     kwargs = {"dims": hidden_N, "alpha": None, "g": None,
@@ -66,25 +71,199 @@ def npc_layerwise(post, alpha100, g100, input_idx, epoch, *args):
               "activation": 'tanh', "architecture": 'fc'}
     net = ModelFactory(**kwargs)
 
-    # push the image through
-    image = trainloader.dataset[input_idx][0]
-    num = trainloader.dataset[input_idx][1]
-    print(torch.sum(image))
-    print(num)
+    # compute effective dimension for a single input manifold
+    C_ls = []    # list of correlation matrices
+    C_dims = np.zeros([len(net.sequential)])   # record dimension of correlation matrix
+    l_remainder = 0 if post == 0 else 1
+    l_start = l_remainder
+    depth_idxs = list(range(l_start,len(net.sequential),2))
+    L = len(depth_idxs)
+    save_path = join(data_path, net_folder, f"ed-dq-batches_{post_dict[post]}_{reig_dict[reig]}")
+    if not os.path.isdir(save_path): os.makedirs(save_path)
+    with torch.no_grad():
+        for epoch in tqdm(epochs):
+            ED_means = np.zeros([1,L])
+            ED_stds = np.zeros([1,L])
+            D2_means = np.zeros([1,L])
+            D2_stds = np.zeros([1,L])
+            # load nets and weights
+            net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
+            hidden_N = [784]*L + [10]
+            kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+                      "init_path": join(data_path, net_folder), "init_epoch": epoch,
+                      "activation": 'tanh', "architecture": 'fc'}
+            net = ModelFactory(**kwargs)
+            # create batches and compute and mean/std over the batches
+            for batch_idx, (hidden_layer, yb) in tqdm(enumerate(trainloader)):
+                l = 0
+                for lidx in range(len(net.sequential)):
+                    hidden_layer = net.sequential[lidx](hidden_layer)
+                    hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
+                    if lidx % 2 == l_remainder:     # pre or post activation
+                        C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
+                        ED = torch.trace(C)**2/torch.trace(C@C)
+                        ED = ED.item()
+                        ED_means[0,l] += ED
+                        ED_stds[0,l] += ED**2
+                        if batch_idx == 0:
+                            C_dims[lidx] = C.shape[0]
+                        
+                        eigvals, eigvecs = la.eigh(C)
+                        ii = np.argsort(np.abs(eigvals))
+                        dqs = np.zeros(len(ii))
+                        for eidx, eigval in enumerate(eigvals):
+                            dqs[eidx] = compute_dq(eigvecs[:,eidx],2)
+                        D2_means[0,l] += dqs.mean()
+                        D2_stds[0,l] += dqs.std()
+                        
+                        l += 1
 
-    return net.layerwise_jacob_ls(image, post)
+            print(f"Batches: {batch_idx}")
+            batches = batch_idx + 1
+            for l in range(ED_means.shape[1]):
+                ED_means[0,l] /= batches
+                ED_stds[0,l] = ED_stds[0,l]/batches - ED_means[0,l]**2
+
+            D2_means /= batches
+            D2_stds /= batches
+
+            # save data
+            np.save(join(save_path, f"ED_means_{epoch}"), ED_means)
+            np.save(join(save_path, f"ED_stds_{epoch}"), ED_stds)
+            np.save(join(save_path, f"D2_means_{epoch}"), D2_means)
+            np.save(join(save_path, f"D2_stds_{epoch}"), D2_stds)
+
+    print(f"ED and D2 via method batches is saved for epochs {epochs}!")
+
+
+"""
+def npc_layerwise_2(post, alpha100, g100, total_images, epochs, reig=1):
+    
+    # computes the PCs of the layerwise neural representations
+    # - post = 1: post-activation jacobian
+    #        = 0: pre-activation jacobian
+
+    # - input_idx: the index of the image
+    
+
+    global alpha, g
+    global C_ls, C_dims, dqs, eigvals, eigvecs, ii, hidden_layer, hidden_layer_mean, ED, ED_means, net, C
+    global hidden_layer, trainloader
+
+    import scipy.io as sio
+    import sys
+    import torch    
+    from NetPortal.models import ModelFactory
+    from train_supervised import get_data, set_data
+
+    post = int(post)
+    total_images = int(total_images)
+    assert post == 1 or post == 0, "No such option!"
+
+    epochs = literal_eval(epochs) if isinstance(epochs,str) else epochs
+
+    # storage of trained nets
+    L = 10
+    total_epoch = 650
+    fcn = f"fc{L}"
+    net_type = f"{fcn}_mnist_tanh"
+    data_path = join(root_data, f"trained_mlps/fcn_grid/{fcn}_grid")
+
+    # Extract numeric arguments.
+    alpha, g = int(alpha100)/100., int(g100)/100.
+    # load MNIST
+    image_type = 'mnist'
+    trainloader, _ = set_data(image_type, rshape=True)
+    trainloader = DataLoader(trainloader, batch_size=len(trainloader), shuffle=False)
+
+    # load nets and weights
+    epoch = 0
+    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
+    hidden_N = [784]*L + [10]
+    kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+              "init_path": join(data_path, net_folder), "init_epoch": epoch,
+              "activation": 'tanh', "architecture": 'fc'}
+    net = ModelFactory(**kwargs)
+
+    # compute effective dimension for a single input manifold
+    C_ls = []    # list of correlation matrices
+    C_dims = np.zeros([len(net.sequential)])   # record dimension of correlation matrix
+    l_remainder = 0 if post == 0 else 1
+    l_start = l_remainder
+    depth_idxs = list(range(l_start,len(net.sequential),2))
+    L = len(depth_idxs)
+    save_path = join(data_path, net_folder, f"ed-dq-method2_{post_dict[post]}_{reig_dict[reig]}")
+    if not os.path.isdir(save_path): os.makedirs(save_path)
+    with torch.no_grad():
+        for epoch in epochs:
+            l = 0
+            ED_means = np.zeros([1,L])
+            ED_stds = np.zeros([1,L])
+            D2_means = np.zeros([1,L])
+            D2_stds = np.zeros([1,L])
+            # load nets and weights
+            net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
+            hidden_N = [784]*L + [10]
+            kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+                      "init_path": join(data_path, net_folder), "init_epoch": epoch,
+                      "activation": 'tanh', "architecture": 'fc'}
+            net = ModelFactory(**kwargs)
+            # push the image through
+            hidden_layer = torch.stack([trainloader.dataset[idx][0].reshape(784) for idx in range(total_images)])
+            #hidden_layer = trainloader.dataset[:total_images][0].reshape((total_images,784))
+            print(hidden_layer.shape)
+            for lidx in range(len(net.sequential)):
+                hidden_layer = net.sequential[lidx](hidden_layer)
+                hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
+                if lidx % 2 == l_remainder:     # pre or post activation
+                    C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
+                    ED = torch.trace(C)**2/torch.trace(C@C)
+                    ED = ED.item()
+                    ED_means[0,l] = ED
+                    ED_stds[0,l] = ED**2
+                    C_dims[lidx] = C.shape[0]
+                    
+                    eigvals, eigvecs = la.eigh(C)
+                    ii = np.argsort(np.abs(eigvals))
+                    dqs = np.zeros(len(ii))
+                    for eidx, eigval in enumerate(eigvals):
+                        dqs[eidx] = compute_dq(eigvecs[:,eidx],2)
+                    D2_means[0,l] = dqs.mean()
+                    D2_stds[0,l] = dqs.std()
+                    
+                    l += 1
+
+            D2_means /= total_images
+            D2_stds /= total_images
+
+            # save data
+            np.save(join(save_path, f"ED_means_{epoch}"), ED_means)
+            np.save(join(save_path, f"ED_stds_{epoch}"), ED_stds)
+            np.save(join(save_path, f"D2_means_{epoch}"), D2_means)
+            np.save(join(save_path, f"D2_stds_{epoch}"), D2_stds)
+
+    print(f"ED and D2 via method 2 is saved for {epochs}!")
+    #plt.plot(range(1,L+1), ED_means[0,:])
+    #plt.show()
+"""
+
 
 def submit(*args):
     from qsub import qsub, job_divider, project_ls
     input_idxs = str( list(range(1,50)) ).replace(" ", "")
     post = 0
-    pbs_array_data = [(post, alpha100, g100, input_idxs, epoch)
+    #epochs = [0,1] + list(range(50,651,50))
+    epochs = [0,1,50,100,150,200,250,300,650]
+    #epochs = [0,1]
+    epochs_ls = [f"[{epoch}]" for epoch in epochs]
+    pbs_array_data = [(post, alpha100, g100, epoch_ls)
                       for alpha100 in range(100, 201, 10)
-                      for g100 in [25,100,300]
-                      #for alpha100 in [100, 200]
-                      #for g100 in [100]
+                      for g100 in range(25,301,25)
+                      #for alpha100 in [200]
+                      #for g100 in [25,100,300]
                       #for epoch in [0,1] + list(range(50,651,50))
-                      for epoch in [0, 1, 50, 100, 150, 200, 650]
+                      #for epoch in [0, 1, 50, 100, 150, 200, 650]
+                      for epoch_ls in epochs_ls
                       ]
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
