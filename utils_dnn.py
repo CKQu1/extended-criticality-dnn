@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import torch
 from os.path import join
 from path_names import root_data
 
@@ -121,7 +122,9 @@ def effective_dimension(model, hidden_layer, with_pc:bool, q_ls):    # hidden_la
             C_dims[lidx] = C.shape[0]
             # get PCs/eigenvectors for C (correlation matrix)
             if with_pc:
-                _, eigvecs = torch.eig(C,eigenvectors=with_pc)           
+                C = C.numpy()
+                #_, eigvecs = torch.eig(C,eigenvectors=with_pc)  # best use torch.eigh for this 
+                _, eigvecs = np.linalg.eigh(C)         
                 pc_dqs = np.zeros([eigvecs.shape[1],len(q_ls)])
 
                 for eidx in range(C.shape[0]):
