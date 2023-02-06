@@ -611,8 +611,7 @@ def snr_components(model_name, fname, projection=True):
         print(f"SNR metrics saved in: {m_shot_path}!")
 
 def snr_submit(*args):
-    from qsub import qsub, job_divider
-    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
+    from qsub import qsub, job_divider, project_ls
 
     # get all appropriate networks
     """
@@ -629,12 +628,14 @@ def snr_submit(*args):
             models.append(model_name)
     """
     # small models
-    #models = ["alexnet", "resnet18", "resnet34", "resnet50"]
+    models = ["alexnet", "resnet18", "resnet34", "resnet50"]
     # large models
+    """
     models = ["resnet101", "resnet152", 
               "resnext50_32x4d", "resnext101_32x8d",
               "squeezenet1_0", "squeezenet1_1", 
               "wide_resnet50_2", "wide_resnet101_2"]
+    """
     
     fname = "embeddings_new/macaque/trained"
     pbs_array_data = [(model_name , fname)
@@ -663,7 +664,7 @@ def snr_submit(*args):
 # ---------------------- Plotting ----------------------
 
 # creates two plots
-def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
+def snr_metric_plot(metric0, metric1, metric2, metric3, small=True, log=True):
     import matplotlib.pyplot as plt
     import pubplot as ppt
 
@@ -679,6 +680,7 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
     Fig 2:
     Plots the a selected metric2 (based on metric_dict) vs layer and a scatter plot between SNR and D_2
     """
+    small = literal_eval(small) if isinstance(small, str) else small
 
     # Plot settings
     fig_size = (9.5 + 1.5,7.142/2)
@@ -725,24 +727,28 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
                    "wide_resnet50_2", "wide_resnet101_2", 
                    "squeezenet1_1"]
     """
-    """
-    model_names = ["alexnet", "resnet50", "resnet101", 
-                   "resnext50_32x4d", "resnext101_32x8d", 
-                   "wide_resnet50_2", "wide_resnet101_2", 
-                   "squeezenet1_1"]
-    """
-    model_names = ["resnet152", 
-              "resnext50_32x4d", "resnext101_32x8d",
-              "squeezenet1_0", "squeezenet1_1", 
-              "wide_resnet50_2", "wide_resnet101_2"]
+ 
+    if small:
+        # small models
+        model_names = ["alexnet", 
+                  "resnet18", "resnet34", "resnet50",
+                  "resnext50_32x4d",
+                  "wide_resnet50_2"]
+
+    else:
+        # large models
+        model_names = ["resnet101", "resnet152", 
+                       "resnext101_32x8d",
+                       "squeezenet1_0", "squeezenet1_1", 
+                       "wide_resnet101_2"]
 
     # transparency list
-    trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
+    trans_ls = np.linspace(0,1,len(model_names)+2)[::-1]
 
     # m-shot learning 
     ms = np.arange(1,10)
     #ms = [1,9]
-    for m in tqdm(ms):
+    for midx, m in enumerate(tqdm(ms)):
 
         # --------------- Plot 1 ---------------
         plt.rc('font', **ppt.pub_font)
@@ -777,7 +783,9 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
                 
             ax1.plot(frac_layers, metric0_data.mean(-1), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
             ax2.plot(frac_layers, np.nanmean(metric1_data,(1,2)), alpha=trans_ls[nidx], marker=markers[nidx], linestyle="-", label=model_name)
-            print(f"{model_name} done!")
+
+            if midx == 0:
+                print(f"{model_name} done!")
 
         for ax in [ax1,ax2]:        
             ax.spines['top'].set_visible(False)
@@ -798,10 +806,11 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
         #plt.show()
 
         #fig_path = "/project/dnn_maths/project_qu3/fig_path"
-        fig_path = "/project/PDLAI/project2_data/figure_ms/pretrained-fewshot"
+        fig_path = join(root_data,"figure_ms/pretrained-fewshot-small") if small else join(root_data,"figure_ms/pretrained-fewshot-large")
         if not os.path.isdir(fig_path): os.makedirs(fig_path)    
         plt.savefig(join(fig_path, f"pretrained_m={m}_{metric0}_{metric1}-vs-layer.pdf") , bbox_inches='tight')
-        print(f"Plot 1 saved!")
+        if midx == 0:
+            print(f"Plot 1 saved!")
 
         # --------------- Plot 2 ---------------
         plt.rc('font', **ppt.pub_font)
@@ -849,7 +858,8 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
                 ax4.scatter(dq_data.mean(-1)[deep_layers], np.log(np.nanmean(metric3_data,(1,2))[deep_layers]), marker=markers[nidx], alpha=0.6)
             else:
                 ax4.scatter(dq_data.mean(-1)[deep_layers], np.nanmean(metric3_data,(1,2))[deep_layers], marker=markers[nidx], alpha=0.6)
-            print(f"{model_name} done!")
+            if midx == 0:
+                print(f"{model_name} done!")
 
         for ax in [ax3,ax4]:        
             ax.spines['top'].set_visible(False)
@@ -870,7 +880,8 @@ def snr_metric_plot(metric0, metric1, metric2, metric3, log=True):
         #plt.show()
 
         plt.savefig(join(fig_path, f"pretrained_m={m}_{metric2}_{metric3}-dq_scatter.pdf") , bbox_inches='tight')
-        print(f"Plot 2 saved!")
+        if midx == 0:
+            print(f"Plot 2 saved!")
 
 
 if __name__ == '__main__':
