@@ -152,7 +152,7 @@ def pretrained_store(n_model, *args):
     except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
         print(f"{model_name} not implemented!")
 
-def pretrained_store_dnn(n_model, *args):
+def pretrained_store_dnn(n_model, pretrained=True, *args):
 
     """
     Downloading pretrained DNN from Pytorch in get_pretrained_names()
@@ -163,14 +163,14 @@ def pretrained_store_dnn(n_model, *args):
     model_ls = get_pretrained_names()
     model_name = model_ls[int(n_model)]
     try:
-        model = models.__dict__[model_name](pretrained=True)
+        model = models.__dict__[model_name](pretrained=pretrained)
 
         t1 = time.time()
         print(f"Loaded {model_name} in {t1 - t0} s")
 
         # path for saving the weights
         #main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
-        net_path = join(main_path, "pretrained_dnns", model_name)
+        net_path = join(main_path, "pretrained_dnns", model_name) if pretrained else join(main_path, "untrained_dnns", model_name)
         if not os.path.exists(net_path):
             os.makedirs(net_path)
 
