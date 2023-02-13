@@ -16,6 +16,9 @@ sys.path.append(os.getcwd())
 from path_names import root_data
 from utils_dnn import IPR, compute_dq, effective_dimension
 
+dev = torch.device(f"cuda:{torch.cuda.device_count()-1}"
+                   if torch.cuda.is_available() else "cpu")
+
 """
 
 This is for computing and saving the multifractal data of the (layerwise) Jacobian eigenvectors.
@@ -26,17 +29,21 @@ global post_dict, reig_dict
 post_dict = {0:'pre', 1:'post'}
 reig_dict = {0:'l', 1:'r'}
 
-def npc_layerwise(post, alpha100, g100, epochs, reig=1):
+def vec_angle(vec1, vec2):
+    return np.arccos( np.dot(vec1,vec2)/( np.sqrt(np.dot(vec1,vec1) * np.dot(vec2,vec2)) ) )
+
+def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
     """
 
-    computes the PCs of the layerwise neural representations
+    computes the effective dimension of PCs of the layerwise neural representations,
+    means and stds are taken across batches of images for each layer
     - post = 1: post-activation jacobian
            = 0: pre-activation jacobian
 
     - input_idx: the index of the image
     
     """
-    global C_ls, C_dims, dqs, eigvals, eigvecs, ii, hidden_layer, ED, ED_means, net, trainloader
+    global C_ls, C_dims, dqs, eigvals, eigvecs, ii, hidden_layer, ED, ED_means, ED_stds, net, trainloader,C
 
     import scipy.io as sio
     import sys
@@ -61,6 +68,7 @@ def npc_layerwise(post, alpha100, g100, epochs, reig=1):
     image_type = 'mnist'
     trainloader, _ = set_data(image_type, rshape=True)
     trainloader = DataLoader(trainloader, batch_size=512, shuffle=False)
+    #trainloader = DataLoader(trainloader, batch_size=512*16, shuffle=False)
 
     # load nets and weights
     epoch = 0
@@ -72,7 +80,6 @@ def npc_layerwise(post, alpha100, g100, epochs, reig=1):
     net = ModelFactory(**kwargs)
 
     # compute effective dimension for a single input manifold
-    C_ls = []    # list of correlation matrices
     C_dims = np.zeros([len(net.sequential)])   # record dimension of correlation matrix
     l_remainder = 0 if post == 0 else 1
     l_start = l_remainder
@@ -80,10 +87,12 @@ def npc_layerwise(post, alpha100, g100, epochs, reig=1):
     L = len(depth_idxs)
     save_path = join(data_path, net_folder, f"ed-dq-batches_{post_dict[post]}_{reig_dict[reig]}")
     if not os.path.isdir(save_path): os.makedirs(save_path)
+    print("Computation starting.")
     with torch.no_grad():
         for epoch in tqdm(epochs):
             ED_means = np.zeros([1,L])
             ED_stds = np.zeros([1,L])
+            # these record the average D2's of the top PC (i.e. the PC that corresponds to the largest eigenvalue of the covariance matrix)
             D2_means = np.zeros([1,L])
             D2_stds = np.zeros([1,L])
             # load nets and weights
@@ -109,7 +118,9 @@ def npc_layerwise(post, alpha100, g100, epochs, reig=1):
                             C_dims[lidx] = C.shape[0]
                         
                         eigvals, eigvecs = la.eigh(C)
-                        ii = np.argsort(np.abs(eigvals))
+                        ii = np.argsort(np.abs(eigvals))[::-1]
+                        eigvals = eigvals[ii]   # reorder the eigenvalues based on its magnitudes
+                        eigvecs = eigvecs[:,ii] 
                         dqs = np.zeros(len(ii))
                         for eidx, eigval in enumerate(eigvals):
                             dqs[eidx] = compute_dq(eigvecs[:,eidx],2)
@@ -118,22 +129,119 @@ def npc_layerwise(post, alpha100, g100, epochs, reig=1):
                         
                         l += 1
 
+                        #plt.plot(np.log(np.abs(eigvals)), dqs, ".-"); plt.show()
+                        #break
+
             print(f"Batches: {batch_idx}")
             batches = batch_idx + 1
             for l in range(ED_means.shape[1]):
                 ED_means[0,l] /= batches
                 ED_stds[0,l] = ED_stds[0,l]/batches - ED_means[0,l]**2
 
-            D2_means /= batches
-            D2_stds /= batches
-
             # save data
             np.save(join(save_path, f"ED_means_{epoch}"), ED_means)
             np.save(join(save_path, f"ED_stds_{epoch}"), ED_stds)
-            np.save(join(save_path, f"D2_means_{epoch}"), D2_means)
-            np.save(join(save_path, f"D2_stds_{epoch}"), D2_stds)
 
-    print(f"ED and D2 via method batches is saved for epochs {epochs}!")
+    print(f"ED via method batches is saved for epochs {epochs}!")
+
+def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
+    """
+
+    computes 1. the correlation dimension D2 of the layerwise neural representations' top eigenvectors
+    2. saves the variance explained by each PC (eigvals)
+    3. saves the angles between the top n_top PCs
+
+    - post = 1: post-activation jacobian
+           = 0: pre-activation jacobian
+
+    """
+    from torch.utils.data import TensorDataset
+
+    global C_ls, C_dims, dqs, eigvals, eigvecs, ii, hidden_layer, ED, ED_means, ED_stds, net, trainloader,C
+
+    import scipy.io as sio
+    import sys
+    import torch
+    from NetPortal.models import ModelFactory
+    from train_supervised import get_data, set_data
+
+    post = int(post)
+    assert post == 1 or post == 0, "No such option!"
+    epochs = literal_eval(epochs) if isinstance(epochs, str) else epochs
+
+    # storage of trained nets
+    L = 10
+    total_epoch = 650
+    fcn = f"fc{L}"
+    net_type = f"{fcn}_mnist_tanh"
+    data_path = join(root_data, f"trained_mlps/fcn_grid/{fcn}_grid")
+
+    # Extract numeric arguments.
+    alpha, g = int(alpha100)/100., int(g100)/100.
+    # load MNIST
+    image_type = 'mnist'
+    trainloader, _ = set_data(image_type, rshape=True)
+    trainloader = DataLoader(trainloader, batch_size=len(trainloader), shuffle=False)
+    #assert len(trainloader) == 1, "The computation of D_2 in npc_layerwise_d2() is not over the full-batch images!"
+
+    # load nets and weights
+    epoch = 0
+    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
+    hidden_N = [784]*L + [10]
+    kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+              "init_path": join(data_path, net_folder), "init_epoch": epoch,
+              "activation": 'tanh', "architecture": 'fc'}
+    net = ModelFactory(**kwargs)
+
+    n_top = 50
+    # compute effective dimension for a single input manifold
+    C_dims = np.zeros([len(net.sequential)])   # record dimension of correlation matrix
+    l_remainder = 0 if post == 0 else 1
+    l_start = l_remainder
+    depth_idxs = list(range(l_start,len(net.sequential),2))
+    L = len(depth_idxs)
+    save_path = join(data_path, net_folder, f"ed-dq-fullbatch_{post_dict[post]}_{reig_dict[reig]}")
+    if not os.path.isdir(save_path): os.makedirs(save_path)
+    print("Computation starting.")    
+    with torch.no_grad():
+        for epoch in tqdm(epochs):
+            l = 0
+            # load nets and weights
+            net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
+            hidden_N = [784]*L + [10]
+            kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+                      "init_path": join(data_path, net_folder), "init_epoch": epoch,
+                      "activation": 'tanh', "architecture": 'fc'}
+            net = ModelFactory(**kwargs)
+            # compute the associated D2 quantities over the full batch
+            hidden_layer = torch.squeeze(torch.stack([e[0] for e in trainloader]).to(dev))        
+            for lidx in range(len(net.sequential)):
+                hidden_layer = net.sequential[lidx](hidden_layer)
+                hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
+                if lidx % 2 == l_remainder:     # pre or post activation
+                    C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
+                    #print(C.shape)                    
+                    eigvals, eigvecs = la.eigh(C)
+                    ii = np.argsort(np.abs(eigvals))[::-1]
+                    eigvals = eigvals[ii]   # reorder the eigenvalues based on its magnitudes from large to small
+                    eigvecs = eigvecs[:,ii] 
+                    # for storing the overlap/angles between the top PCs (eigenvalues of the cov matrix)
+                    eigvec_angles = np.zeros([min(n_top, len(eigvals)), min(n_top, len(eigvals))])
+                    # the correlation dimension D_2 is computed for each eigenvector
+                    dqs = np.zeros(len(ii))
+                    for eidx, eigval in enumerate(eigvals):
+                        dqs[eidx] = compute_dq(eigvecs[:,eidx],2)
+                        # compute the angles between top eigenvectors
+                        for ejdx in range(eidx + 1, eigvec_angles.shape[1]):
+                            eigvec_angles[eidx, ejdx] = vec_angle(eigvecs[:,eidx], eigvecs[:,ejdx])
+
+                    # save data
+                    np.save(join(save_path, f"D2_{l}_{epoch}"), dqs)
+                    np.save(join(save_path, f"npc-eigvals_{l}_{epoch}"), eigvals)
+                    np.save(join(save_path, f"eigvec-angles_{l}_{epoch}"), eigvec_angles)
+                    l += 1
+
+    print(f"D2 for the full batch of images is saved for epochs {epochs}!")
 
 
 """
@@ -254,18 +362,17 @@ def submit(*args):
     post = 0
     #epochs = [0,1] + list(range(50,651,50))
     epochs = [0,1,50,100,150,200,250,300,650]
-    #epochs = [0,1]
-    epochs_ls = [f"[{epoch}]" for epoch in epochs]
+    perm_epoch, pbss_epoch = job_divider(epochs, 3)
+    epochs_ls = [str(epoch_ls).replace(" ", "") for epoch_ls in pbss_epoch]
     pbs_array_data = [(post, alpha100, g100, epoch_ls)
-                      for alpha100 in range(100, 201, 10)
-                      for g100 in range(25,301,25)
-                      #for alpha100 in [200]
-                      #for g100 in [25,100,300]
-                      #for epoch in [0,1] + list(range(50,651,50))
-                      #for epoch in [0, 1, 50, 100, 150, 200, 650]
+                      #for alpha100 in range(100, 201, 10)
+                      #for g100 in range(25,301,25)
+                      for alpha100 in [120,200]
+                      for g100 in [25,100,300]
                       for epoch_ls in epochs_ls
                       ]
-
+    print(f"Total jobs: {len(pbs_array_data)}")
+    print(epochs_ls)
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
