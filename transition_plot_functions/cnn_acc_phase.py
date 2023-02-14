@@ -66,7 +66,7 @@ acc_ls = []
 early_ls = []
 
 acc_mesh, early_mesh = np.zeros((len(g100_ls),len(alpha100_ls))), np.zeros((len(g100_ls),len(alpha100_ls)))
-for i in range(0,len(net_ls)):
+for i in range(len(net_ls)):
     net_path = net_ls[i]
     model_id = get_model_id(net_path)
     try:
@@ -85,20 +85,21 @@ for i in range(0,len(net_ls)):
             early_ls.append( min(good_ls) )  
 
         alpha_m_ls.append((alpha, g))
-        acc_ls.append(acc)
         good += 1     
 
     except (FileNotFoundError, OSError) as error:
         # use the following to keep track of what to re-run
 
         early_ls.append(epoch_last)
-        acc_ls.append(10)
+        acc = 10
+        
         #print((alpha100, g100))
         print(net_path)
 
+    acc_ls.append(acc)
     x_loc = int((max(g100_ls) - g100) / g100_incre)
     y_loc = int((alpha100 - min(alpha100_ls)) / alpha100_incre)
-    acc_mesh[x_loc,y_loc] = acc_ls[i]
+    acc_mesh[x_loc,y_loc] = acc
     early_mesh[x_loc,y_loc] = early_ls[i]
 
 # resnet14
