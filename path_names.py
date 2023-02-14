@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 
 root_data = "/project/PDLAI/project2_data"
