@@ -293,7 +293,7 @@ def pretrained_store_tf(n_model, *args):
     except (NotImplementedError,ValueError):
         print(f"({model_name},n_model) not implemented!")
       
-def pretrained_store_dnn_tf(n_model, *args):
+def pretrained_store_dnn_tf(n_model, pretrained=True, *args):
 
     """
     Downloading all full pretrained networks from TensorFlow pretrained CNNs in get_pretrained_names_tf()
@@ -309,8 +309,12 @@ def pretrained_store_dnn_tf(n_model, *args):
         #model = locals()["model_precursor"](pretrained=True)
         # random weights?
         model = locals()["model_precursor"]()
-        # pretrained weights on Imagenet
-        model = locals()["model_precursor"](weights='imagenet', include_top=True)
+        if pretrained:
+            # pretrained weights on Imagenet
+            model = locals()["model_precursor"](weights='imagenet', include_top=True)
+        else:
+            # random DNN
+            model = locals()["model_precursor"](weights=None, include_top=True)
 
         t1 = time.time()
         print(f"Loaded {model_name} in {t1 - t0} s")
