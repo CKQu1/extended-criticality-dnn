@@ -29,6 +29,7 @@ global post_dict, reig_dict
 post_dict = {0:'pre', 1:'post'}
 reig_dict = {0:'l', 1:'r'}
 
+# computes the angle between two vectors
 def vec_angle(vec1, vec2):
     return np.arccos( np.dot(vec1,vec2)/( np.sqrt(np.dot(vec1,vec1) * np.dot(vec2,vec2)) ) )
 
@@ -48,6 +49,8 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
     import scipy.io as sio
     import sys
     import torch
+    from sklearn.decomposition import PCA
+
     from NetPortal.models import ModelFactory
     from train_supervised import get_data, set_data
 
@@ -66,8 +69,9 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
     alpha, g = int(alpha100)/100., int(g100)/100.
     # load MNIST
     image_type = 'mnist'
+    batch_size = 1000
     trainloader, _ = set_data(image_type, rshape=True)
-    trainloader = DataLoader(trainloader, batch_size=512, shuffle=False)
+    trainloader = DataLoader(trainloader, batch_size=batch_size, shuffle=False)
     #trainloader = DataLoader(trainloader, batch_size=512*16, shuffle=False)
 
     # load nets and weights
@@ -93,8 +97,8 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
             ED_means = np.zeros([1,L])
             ED_stds = np.zeros([1,L])
             # these record the average D2's of the top PC (i.e. the PC that corresponds to the largest eigenvalue of the covariance matrix)
-            D2_means = np.zeros([1,L])
-            D2_stds = np.zeros([1,L])
+            #D2_means = np.zeros([1,L])
+            #D2_stds = np.zeros([1,L])
             # load nets and weights
             net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
             hidden_N = [784]*L + [10]
@@ -109,23 +113,39 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
                     hidden_layer = net.sequential[lidx](hidden_layer)
                     hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
                     if lidx % 2 == l_remainder:     # pre or post activation
-                        C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
-                        ED = torch.trace(C)**2/torch.trace(C@C)
-                        ED = ED.item()
+                        # covariance matrix
+                        #C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
+                        #ED = torch.trace(C)**2/torch.trace(C@C)
+                        #ED = ED.item()
+
+                        # directly use PCA
+                        hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
+                        pca = PCA()
+                        pca.fit(hidden_layer_centered.detach().numpy())
+                        eigvals = pca.explained_variance_
+                        eigvecs = pca.components_
+                        ED = np.sum(eigvals)**2/np.sum(eigvals**2)
+
                         ED_means[0,l] += ED
                         ED_stds[0,l] += ED**2
                         if batch_idx == 0:
-                            C_dims[lidx] = C.shape[0]
+                            #C_dims[lidx] = C.shape[0]
+                            C_dims[lidx] = hidden_layer.shape[1]
                         
-                        eigvals, eigvecs = la.eigh(C)
-                        ii = np.argsort(np.abs(eigvals))[::-1]
-                        eigvals = eigvals[ii]   # reorder the eigenvalues based on its magnitudes
-                        eigvecs = eigvecs[:,ii] 
-                        dqs = np.zeros(len(ii))
-                        for eidx, eigval in enumerate(eigvals):
-                            dqs[eidx] = compute_dq(eigvecs[:,eidx],2)
-                        D2_means[0,l] += dqs.mean()
-                        D2_stds[0,l] += dqs.std()
+                        # computation moved to npc_layerwise_d2()
+                        # method 1
+                        #eigvals, eigvecs = la.eigh(C)
+                        #ii = np.argsort(np.abs(eigvals))[::-1]
+                        #eigvals = eigvals[ii]   # reorder the eigenvalues based on its magnitudes
+                        #eigvecs = eigvecs[:,ii] 
+                        # dqs = np.zeros(len(ii))
+                        
+                        # method 2
+                        #dqs = np.zeros(hidden_layer.shape[1])
+                        #for eidx, eigval in enumerate(eigvals):
+                        #    dqs[eidx] = compute_dq(eigvecs[eidx,:],2)
+                        #D2_means[0,l] += dqs.mean()
+                        #D2_stds[0,l] += dqs.std()
                         
                         l += 1
 
@@ -136,7 +156,7 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
             batches = batch_idx + 1
             for l in range(ED_means.shape[1]):
                 ED_means[0,l] /= batches
-                ED_stds[0,l] = ED_stds[0,l]/batches - ED_means[0,l]**2
+                ED_stds[0,l] = np.sqrt( ED_stds[0,l]/batches - ED_means[0,l]**2 )
 
             # save data
             np.save(join(save_path, f"ED_means_{epoch}"), ED_means)
@@ -149,15 +169,15 @@ def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
 
     computes 1. the correlation dimension D2 of the layerwise neural representations' top eigenvectors
     2. saves the variance explained by each PC (eigvals)
-    3. saves the angles between the top n_top PCs
 
     - post = 1: post-activation jacobian
            = 0: pre-activation jacobian
 
     """
     from torch.utils.data import TensorDataset
+    from sklearn.decomposition import PCA
 
-    global C_ls, C_dims, dqs, eigvals, eigvecs, ii, hidden_layer, ED, ED_means, ED_stds, net, trainloader,C
+    global C_ls, C_dims, dqs, eigvals, eigvecs, hidden_layer, net, trainloader,C
 
     import scipy.io as sio
     import sys
@@ -193,7 +213,6 @@ def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
               "activation": 'tanh', "architecture": 'fc'}
     net = ModelFactory(**kwargs)
 
-    n_top = 50
     # compute effective dimension for a single input manifold
     C_dims = np.zeros([len(net.sequential)])   # record dimension of correlation matrix
     l_remainder = 0 if post == 0 else 1
@@ -219,26 +238,21 @@ def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
                 hidden_layer = net.sequential[lidx](hidden_layer)
                 hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
                 if lidx % 2 == l_remainder:     # pre or post activation
-                    C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
-                    #print(C.shape)                    
-                    eigvals, eigvecs = la.eigh(C)
-                    ii = np.argsort(np.abs(eigvals))[::-1]
-                    eigvals = eigvals[ii]   # reorder the eigenvalues based on its magnitudes from large to small
-                    eigvecs = eigvecs[:,ii] 
-                    # for storing the overlap/angles between the top PCs (eigenvalues of the cov matrix)
-                    eigvec_angles = np.zeros([min(n_top, len(eigvals)), min(n_top, len(eigvals))])
-                    # the correlation dimension D_2 is computed for each eigenvector
-                    dqs = np.zeros(len(ii))
+                    # directly use PCA
+                    hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
+                    pca = PCA()
+                    pca.fit(hidden_layer_centered.detach().numpy())
+                    eigvals = pca.explained_variance_
+                    eigvecs = pca.components_
+                    ED = np.sum(eigvals)**2/np.sum(eigvals**2)
+
+                    dqs = np.zeros(len(eigvals))
                     for eidx, eigval in enumerate(eigvals):
-                        dqs[eidx] = compute_dq(eigvecs[:,eidx],2)
-                        # compute the angles between top eigenvectors
-                        for ejdx in range(eidx + 1, eigvec_angles.shape[1]):
-                            eigvec_angles[eidx, ejdx] = vec_angle(eigvecs[:,eidx], eigvecs[:,ejdx])
+                        dqs[eidx] = compute_dq(eigvecs[eidx,:],2)
 
                     # save data
                     np.save(join(save_path, f"D2_{l}_{epoch}"), dqs)
                     np.save(join(save_path, f"npc-eigvals_{l}_{epoch}"), eigvals)
-                    np.save(join(save_path, f"eigvec-angles_{l}_{epoch}"), eigvec_angles)
                     l += 1
 
     print(f"D2 for the full batch of images is saved for epochs {epochs}!")
@@ -364,6 +378,7 @@ def submit(*args):
     epochs = [0,1,50,100,150,200,250,300,650]
     perm_epoch, pbss_epoch = job_divider(epochs, 3)
     epochs_ls = [str(epoch_ls).replace(" ", "") for epoch_ls in pbss_epoch]
+    #epochs_ls = ['[0,650]']
     pbs_array_data = [(post, alpha100, g100, epoch_ls)
                       #for alpha100 in range(100, 201, 10)
                       #for g100 in range(25,301,25)
@@ -383,9 +398,10 @@ def submit(*args):
              P=project_ls[pidx],
              ncpus=1,
              walltime='23:59:59',
-             mem='1GB') 
+             #mem='1GB')
+             mem='2GB') 
 
-# ----- preplot -----
+# ----- preplot ----- (useless from here onwards)
 
 def npc_to_dq(alpha100, g100, input_idxs, epoch, post, reig, *args):
 
