@@ -158,14 +158,16 @@ def metrics_vs_depth(post=0, epochs=[0,650]):
     plt.savefig(f"{plot_path}/{fcn}_mnist_epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf", bbox_inches='tight')
     #plt.show()
 
-def micro_stats(l, post=0, epochs=[0,650]):
+def micro_stats(metric, n_top = 20, post=0, epochs=[0,650]):
     """
 
     microscopic statistics of the covariance matrix    
 
     """    
-
-    l, post = int(l), int(post)
+    assert metric in ["var", "var_cumsum", "d2"], "metric not in list"
+    
+    post = int(post)
+    n_top = int(n_top)
     # storage of trained nets
     L = 10
     total_epoch = 650
@@ -175,48 +177,60 @@ def micro_stats(l, post=0, epochs=[0,650]):
     
     alpha100_ls = [120,200]
     g100_ls = [25,100,300]
+    layers = [0,3,6]
     ED_all = np.zeros([len(alpha100_ls), len(g100_ls)])
 
-    fig, axs = plt.subplots(2, 3, sharex = True,sharey=False,figsize=(12.5,3.1*2),constrained_layout=True)    
+    fig, axs = plt.subplots(len(layers), 3, sharex = True,sharey=False,figsize=(12.5,3.1*len(layers)),constrained_layout=True)    
     
-    n_top = 20
-    for gidx, g100 in enumerate(g100_ls):
-        alpha_m_ls = []
-        good = 0           
-        for epoch_plot in epochs:
-            for aidx, alpha100 in enumerate(alpha100_ls):               
-                # Extract numeric arguments.
-                alpha, g = int(alpha100)/100., int(g100)/100.
-                # load nets and weights
-                net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
+    for lidx, l in enumerate(layers):
+        for gidx, g100 in enumerate(g100_ls):
+            alpha_m_ls = []
+            good = 0           
+            for epoch_plot in epochs:
+                for aidx, alpha100 in enumerate(alpha100_ls):               
+                    # Extract numeric arguments.
+                    alpha, g = int(alpha100)/100., int(g100)/100.
+                    # load nets and weights
+                    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
 
-                ED_means = np.load(join(data_path, net_folder, f"ed-dq-batches_{post_dict[post]}_r", f"ED_means_{epoch_plot}.npy"))
-                # only includes preactivation
-                ED_all[aidx, gidx] = ED_means[0,l]                   
-                D2s = np.load(join(data_path, net_folder, f"ed-dq-fullbatch_{post_dict[post]}_r", f"D2_{l}_{epoch_plot}.npy"))
+                    ED_means = np.load(join(data_path, net_folder, f"ed-dq-batches_{post_dict[post]}_r", f"ED_means_{epoch_plot}.npy"))
+                    # only includes preactivation
+                    ED_all[aidx, gidx] = ED_means[0,l]                   
+                    D2s = np.load(join(data_path, net_folder, f"ed-dq-fullbatch_{post_dict[post]}_r", f"D2_{l}_{epoch_plot}.npy"))
 
-                eigvals = np.load(join(data_path, net_folder, f"ed-dq-fullbatch_{post_dict[post]}_r", f"npc-eigvals_{l}_{epoch_plot}.npy"))
-                var_percentage = eigvals/eigvals.sum()
-                var_cum = np.cumsum(var_percentage)
+                    eigvals = np.load(join(data_path, net_folder, f"ed-dq-fullbatch_{post_dict[post]}_r", f"npc-eigvals_{l}_{epoch_plot}.npy"))
+                    var_percentage = eigvals/eigvals.sum()
+                    var_cum = np.cumsum(var_percentage)
 
-                lstyle = linestyle_ls[0] if epoch_plot == 0 else linestyle_ls[1]
-                axs[0,gidx].plot(np.arange(1, len(eigvals)+1)[:n_top], var_cum[:n_top],linewidth=lwidth,linestyle=lstyle,
-                                 alpha=1, c = c_ls[aidx]) 
-                axs[1,gidx].plot(np.arange(1, len(eigvals)+1)[:n_top], D2s[:n_top],linewidth=lwidth,linestyle=lstyle,
-                                 alpha=1, c = c_ls[aidx]) 
+                    lstyle = linestyle_ls[0] if epoch_plot == 0 else linestyle_ls[1]
+                    if metric == "var_cumsum":
+                        axs[lidx,gidx].plot(np.arange(1, len(eigvals)+1)[:n_top], var_cum[:n_top],linewidth=lwidth,linestyle=lstyle,
+                                         alpha=1, c = c_ls[aidx]) 
+                    elif metric == "d2":
+                        axs[lidx,gidx].plot(np.arange(1, len(eigvals)+1)[:n_top], D2s[:n_top],linewidth=lwidth,linestyle=lstyle,
+                                         alpha=1, c = c_ls[aidx]) 
+                    elif metric == "var":
+                        axs[lidx,gidx].plot(np.arange(1, len(eigvals)+1), eigvals,linewidth=lwidth,linestyle=lstyle,
+                                         alpha=1, c = c_ls[aidx]) 
+                        axs[lidx,gidx].set_xscale('log')                        
+                        axs[lidx,gidx].set_yscale('log')
+                        # set log-log
 
-                # plot ED 
-                axs[0,gidx].plot(np.arange(1, n_top+1), [0.1]*n_top, linewidth=lwidth,linestyle="-",
-                                 alpha=1, c = "gray")
-                axs[0,gidx].axvline(x = ED_all[aidx, gidx], linewidth=lwidth-1,linestyle=lstyle,
-                                    alpha=0.75, c = c_ls[aidx], 
-                                    ymin=0.05, ymax=0.15) 
-                #axs[1,gidx].axvline(x = ED_all[aidx, gidx], linewidth=lwidth,linestyle=lstyle,
-                #                    alpha=0.4, c = c_ls[aidx]) 
+                    # plot ED 
+                    # presentation type 1
+                    #axs[0,gidx].plot(np.arange(1, n_top+1), [0.1]*n_top, linewidth=lwidth,linestyle="-",
+                    #                 alpha=1, c = "gray")
+                    #axs[0,gidx].axvline(x = ED_all[aidx, gidx], linewidth=lwidth-1,linestyle=lstyle,
+                    #                    alpha=0.75, c = c_ls[aidx], 
+                    #                    ymin=0.05, ymax=0.15) 
 
-                #mstyle = marker_ls[0] if epoch_plot == 0 else marker_ls[1]
-                #axs[0,gidx].plot([ED_all[aidx, gidx]], [1], marker=mstyle, markersize=msize, c=c_ls[aidx])
-                #axs[1,gidx].plot([ED_all[aidx, gidx]], [1], marker=mstyle, markersize=msize, c=c_ls[aidx])
+                    # presentation type 2
+                    #axs[1,gidx].axvline(x = ED_all[aidx, gidx], linewidth=lwidth,linestyle=lstyle,
+                    #                    alpha=0.4, c = c_ls[aidx]) 
+
+                    #mstyle = marker_ls[0] if epoch_plot == 0 else marker_ls[1]
+                    #axs[0,gidx].plot([ED_all[aidx, gidx]], [1], marker=mstyle, markersize=msize, c=c_ls[aidx])
+                    #axs[1,gidx].plot([ED_all[aidx, gidx]], [1], marker=mstyle, markersize=msize, c=c_ls[aidx])
 
     # adjust gaps between subplots
     plt.subplots_adjust(hspace=0.2)
@@ -229,16 +243,20 @@ def micro_stats(l, post=0, epochs=[0,650]):
     axs[legend_idx,-1].plot([], [], linewidth=lwidth, c = c_ls[1], label=rf"$\alpha$ = {alpha100_ls[1]/100}")    
     #axs[legend_idx,-1].legend(fontsize=legend_size, ncol=1, loc="lower right", frameon=False)
 
-    for row in range(2):
-        axs[row,0].set_xlim(0, n_top + 1)
-        for col in range(3):
-            # remove spines
-            axs[row,col].spines['top'].set_visible(False); axs[row,col].spines['right'].set_visible(False) 
-            # label ticks
-            axs[row,col].tick_params(axis='both', labelsize=axis_size - 1) 
-            # ylim
-            axs[row,col].set_ylim(-0.05,1.05) 
-            axs[row,col].set_yticks(np.arange(0,1.01,0.2))   
+    for row in range(len(layers)):
+        if metric != "var":
+            axs[row,0].set_xlim(0, n_top + 1)
+            for col in range(3):
+                # remove spines
+                axs[row,col].spines['top'].set_visible(False); axs[row,col].spines['right'].set_visible(False) 
+                # label ticks
+                axs[row,col].tick_params(axis='both', labelsize=axis_size - 1) 
+                # ylim
+                axs[row,col].set_ylim(-0.05,1.05) 
+                axs[row,col].set_yticks(np.arange(0,1.01,0.2))   
+        else:
+            #axs[row,0].set_xlim(0, 1000)
+            pass
 
     #plt.tight_layout()
     plot_path = join(root_data, f"figure_ms/{fcn}_npc")
@@ -249,15 +267,15 @@ def micro_stats(l, post=0, epochs=[0,650]):
     g100_str = "_".join(g100_str)
     epoch_str = [str(epoch) for epoch in epochs]
     epoch_str = "_".join(epoch_str)
-    plt.savefig(f"{plot_path}/{fcn}_mnist_layer={l}_epoch={epoch_str}_g100={g100_str}_micro_stats.pdf", bbox_inches='tight')
+    layer_str = [str(l) for l in layers]
+    layer_str = "_".join(layer_str)
+    plt.savefig(f"{plot_path}/{fcn}_mnist_layer={layer_str}_epoch={epoch_str}_g100={g100_str}_micro_stats_{metric}.pdf", bbox_inches='tight')
     #plt.show()
 
+"""
 def npc_angle(l, post=0, epochs=[0,650]):
-    """
 
-    microscopic statistics of the covariance matrix    
-
-    """    
+    ### microscopic statistics of the covariance matrix ###   
 
     global npc_angles, selected_angles, alpha, g
 
@@ -327,6 +345,7 @@ def npc_angle(l, post=0, epochs=[0,650]):
     epoch_str = "_".join(epoch_str)
     #plt.savefig(f"{plot_path}/{fcn}_mnist_layer={l}_epoch={epoch_str}_g100={g100_str}_npc_angle.pdf", bbox_inches='tight')
     plt.show()
+"""
 
 # plots either D_2 and ED_mean w.r.t. the depth
 def metric_vs_depth(metric, post=1, epochs=[0,650], method="batches"):
