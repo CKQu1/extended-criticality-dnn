@@ -215,14 +215,12 @@ def gcircle_plot(*args, cbar_separate=True):
     from matplotlib import pyplot as plt
     from matplotlib.pyplot import figure
     from matplotlib.gridspec import GridSpec
-    from matplotlib.pyplot import subplot, title, axis, xlim, ylim, gca, xticks, yticks, xlabel, ylabel, plot, legend, gcf, cm # colorbar
 
     from mpl_toolkits.axes_grid.inset_locator import inset_axes
     from mpl_toolkits.axes_grid1.inset_locator import mark_inset
-    from matplotlib.cm import coolwarm
+    from matplotlib import cm
     # colorbar
-    #cm = cm.get_cmap('plasma')
-    cm = cm.get_cmap('twilight')
+    cm_type = 'twilight'
     plt.rcParams["font.family"] = "serif"     # set plot font globally
     #plt.rcParams["font.family"] = "Helvetica"
 
@@ -323,8 +321,8 @@ def gcircle_plot(*args, cbar_separate=True):
                 #hs_proj[ii] = hs_proj[ii] * singular_values[ii, 0:3]
                 x, y ,z = hs_proj[ii, :, 0], hs_proj[ii, :, 1],hs_proj[ii, :, 2]
 
-                im = ax.scatter(x , y , z, c=thetas, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, alpha=1, cmap=cm)
-                #im = ax.scatter(x , y , z, c=z, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, cmap=cm)
+                im = ax.scatter(x , y , z, c=thetas, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, alpha=1, cmap=cm.get_cmap(cm_type))
+                #im = ax.scatter(x , y , z, c=z, vmin=cmap_bd[0], vmax=cmap_bd[1], marker='.', s=4, cmap=cm.get_cmap(cm_type))
                 # lines
                 if alpha != 2:
                     ax.plot(x , y , z,color='k', zorder=0, linewidth=0.25, alpha=.35)
@@ -334,7 +332,8 @@ def gcircle_plot(*args, cbar_separate=True):
 
                 if fig_ii == 2:
                     #fig.text(0.07, vert_dists[f_ii], r"$D_w^{1/\alpha}$" + f" = {m}", rotation=90, va='center', fontsize=label_size - 2)
-                    fig.text(0.07, vert_dists[f_ii], "Layer {fname}".format(fname=layer_ii[k]), rotation=90, va='center', fontsize=label_size - 3)
+                    #fig.text(0.07, vert_dists[f_ii], "Layer {fname}".format(fname=layer_ii[k]), rotation=90, va='center', fontsize=label_size - 3)
+                    pass
 
                 #if fig_ii % 3 == 2:
                 #    #ax.set_zlabel(rf"$\alpha, m$ = {alpha}, {m}", rotation=90)
@@ -385,7 +384,7 @@ def gcircle_plot(*args, cbar_separate=True):
         # suptitle as alpha
         #fig.suptitle(rf"$\alpha$ = {alpha}", fontsize=label_size)
 
-        plt.savefig(f"{plot_path}/proj3d_single_alpha={alpha}.pdf", bbox_inches='tight')
+        plt.savefig(f"{plot_path}/proj3d_single_alpha={alpha}_layer={ii}.pdf", bbox_inches='tight')
         print(f"alpha={alpha} done!")
         #plt.savefig(f"{plot_path}/proj3d_{alpha}.pdf")
         #plt.clf()
