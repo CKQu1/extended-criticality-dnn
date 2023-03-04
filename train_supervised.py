@@ -228,7 +228,7 @@ def store_model_eigvals(model, path):
     eigvals_all = eigvals_all[:,0] + eigvals_all[:,1] * 1j
     np.save(f"{path}", eigvals_all)    
 
-# fit weight distribution for individually layers
+# fit weight distribution for fully-connected individually layers
 pconv = lambda alpha, beta, mu, sigma: (alpha, beta, mu - sigma * beta * np.tan(np.pi * alpha / 2.0), sigma)
 def stablefit_model(model):
     Ws = get_weights(model)
@@ -258,16 +258,30 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
     stablefit_epoch, stablefit_step = kwargs.get('stablefit_save') == 1, kwargs.get('stablefit_save') == 2
     eigvals_epoch, eigvals_step = kwargs.get('eigvals_save') == 1, kwargs.get('eigvals_save') == 2
 
-    params_step = np.zeros([len(train_dl),len(list(model.parameters())),4]) if stablefit_epoch else None
-    for hidden_epoch in range(hidden_epochs):
-        for batch_idx, (xb, yb) in enumerate(train_dl):
-            loss_batch(model, loss_func, xb, yb, opt, stats=False)
-            if save_step:    # needed if want to save all steps
-                store_model(model, f"{kwargs.get('epoch_path')}/weights_{batch_idx}", save_type)
-            if eigvals_step:
-                store_model_eigvals(model, f"{kwargs.get('epoch_path')}/eigvals_{batch_idx}")
-            if stablefit_step:
-                params_step[batch_idx,:,:] = stablefit_model(model)
+    if opt is not None:
+        # initialize
+        params_step = np.zeros([len(train_dl),len(list(model.parameters())),4]) if stablefit_step else None
+
+        for hidden_epoch in range(hidden_epochs):
+            for batch_idx, (xb, yb) in enumerate(train_dl):
+                # each time step of SGD
+                loss_batch(model, loss_func, xb, yb, opt, stats=False)
+                if save_step:    # needed if want to save all steps
+                    store_model(model, f"{kwargs.get('epoch_path')}/weights_{batch_idx}", save_type)
+                if eigvals_step:
+                    store_model_eigvals(model, f"{kwargs.get('epoch_path')}/eigvals_{batch_idx}")
+                if stablefit_step:
+                    params_step[batch_idx,:,:] = stablefit_model(model)
+    else:
+        # initialize
+        params_step = np.zeros([1,len(list(model.parameters())),4]) if stablefit_step else None
+
+        if save_step:    # needed if want to save all steps
+            store_model(model, f"{kwargs.get('epoch_path')}/weights_0", save_type)
+        if eigvals_step:
+            store_model_eigvals(model, f"{kwargs.get('epoch_path')}/eigvals_0")
+        if stablefit_step:
+            params_step[0,:,:] = stablefit_model(model)
 
     if save_epoch and (not save_step):    # save only the last step of each epoch
         store_model(model, f"{kwargs.get('epoch_path')}/weights", save_type)  
@@ -276,8 +290,9 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
     if stablefit_epoch and (not stablefit_step):
         params_epoch = stablefit_model(model)
 
+    # pure evaluation of train and test acc/loss
     losses, nums, corrects = zip(
-        *[loss_batch(model, loss_func, xb, yb, opt) for xb, yb in train_dl]
+        *[loss_batch(model, loss_func, xb, yb) for xb, yb in train_dl]
     )
     train_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
     train_acc = np.sum(corrects) / np.sum(nums)
@@ -319,14 +334,15 @@ import torch.nn.functional as F
 
 # maybe write a network Wrapper to include differenet kinds of attributes like ED, IPR, etc
 
-def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path,
-                 net_type = "fc", activation='tanh', hidden_structure=2, depth=10,                                     # network structure
-                 loss_func_name="cross_entropy", lr=0.001, momentum=0, weight_decay=0, num_workers=1, epochs=650,                      # training setting
-                 save_epoch=650, weight_save=1, stablefit_save=1, eigvals_save=0,                                       # save data options
+# FC10: lr=0.001, activation='tanh'
+def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                 epochs=650, net_type = "fc", activation='relu', hidden_structure=2, with_bias=False,                                    # network structure
+                 loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                      # training setting
+                 save_epoch=1, weight_save=1, stablefit_save=1, eigvals_save=0,                                       # save data options
                  with_ed=False, with_pc=False, with_ipr=False):
                  #with_ed=True, with_pc=True, with_ipr=False):                                                            # save extra data options
 
-    #global train_ds, train_dl, model
+    global stablefit_params_all, stablefit_params, model
 
     """
     Trains MLPs and saves weights along the steps of training, can add to save gradients, etc.
@@ -337,12 +353,17 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
 
     init_path = None if init_path.lower() == "none" else init_path
     init_epoch = None if init_epoch.lower() == "none" else init_epoch
-    alpha100, g100 = int(alpha100), int(g100)
-    alpha, g = int(alpha100)/100., int(g100)/100.
+    if not alpha100.lower() == "none" or not g100.lower() == "none": 
+        alpha100, g100 = int(alpha100), int(g100)
+        alpha, g = int(alpha100)/100., int(g100)/100.
+    else:
+        alpha100, g100 = None, None
+        alpha, g = None, None
     bs, lr = int(bs), float(lr)
     epochs = int(epochs)
     depth = int(depth)
     num_workers = int(num_workers)
+    with_bias = literal_eval(with_bias) if isinstance(with_bias, str) else with_bias
 
     train_ds, valid_ds = set_data(name,True)
     #N = len(train_ds[0][0])
@@ -397,13 +418,15 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
     #else:
     kwargs = {"dims": hidden_N, "alpha": alpha, "g": g,
               "init_path": None, "init_epoch": None,
-              "activation": activation, "architecture": net_type}
+              "activation": activation, "with_bias": with_bias,
+              "architecture": net_type}
     model = ModelFactory(**kwargs)
     # info
     print(f"Total layers = {depth+1}", end=' ')
     print(f"Network hidden layer structure: type {hidden_structure}" + "\n")
     print(f"Training method: {optimizer}, lr={lr}, batch_size={bs}, epochs={epochs}" + "\n")
     model.to(dev)   # move to CPU/GPU
+    print(model)
 
     print("Saving information into local model_path before training.")
     # save information to model_path locally
@@ -436,18 +459,29 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
     loss_func = F.__dict__[loss_func_name]
     epoch_path = f"{model_path}/epoch_0"
     if not os.path.isdir(epoch_path): os.makedirs(epoch_path)
-    epoch0_data, stablefit_params = train_epoch(model, loss_func, None, train_dl, valid_dl, epoch_path=epoch_path, weight_save=1, stablefit_save=1, eigvals_save=1)
+    
+    if stablefit_save > 0:
+        epoch0_data, stablefit_params = train_epoch(model, loss_func, None, train_dl, valid_dl, epoch_path=epoch_path, 
+                                                    weight_save=weight_save, stablefit_save=stablefit_save, eigvals_save=eigvals_save)
+    else:
+        epoch0_data = train_epoch(model, loss_func, None, train_dl, valid_dl, epoch_path=epoch_path, 
+                                                    weight_save=weight_save, stablefit_save=stablefit_save, eigvals_save=eigvals_save)
+
     print(epoch0_data)
     #if not os.path.isdir(f'{model_path}/epoch_0'): os.makedirs(f'{model_path}/epoch_0')
     acc_loss = pd.DataFrame(columns=['train loss', 'train acc', 'test loss', 'test acc'])
     acc_loss.loc[0,:] = epoch0_data[:-1]
 
-    if stablefit_save != 0:
+    if stablefit_save > 0:
         stablefit_params_all = []
         for widx in range(len(list(model.parameters()))):
             stablefit_params_all.append( pd.DataFrame(columns=['alpha', 'beta', 'mu', 'sigma']) )
-        for widx in range(len(list(stablefit_params_all))):
-            stablefit_params_all[widx].loc[0,:] = stablefit_params[widx,:]
+        if stablefit_save == 1:
+            for widx in range(len(stablefit_params_all)):
+                stablefit_params_all[widx].loc[0,:] = stablefit_params[widx,:]
+        elif stablefit_save == 1:
+            for widx in range(len(stablefit_params_all)):
+                stablefit_params_all[widx].loc[0,:] = stablefit_params[0,widx,:]
 
     if with_ed:
         with torch.no_grad():
@@ -487,7 +521,7 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
             
             print(final_acc)
         else:           
-            if (not os.path.isdir(epoch_path)) and stablefit_save > 0 and eigvals_save > 0: 
+            if (not os.path.isdir(epoch_path)) and (stablefit_save > 0 or eigvals_save > 0): 
                 os.makedirs(epoch_path)
                 if stablefit_save > 0:
                     final_acc, stablefit_params = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers,
@@ -503,12 +537,20 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
 
             print(final_acc)
 
+        if stablefit_save > 0:
+            print(stablefit_params)     # delete
         if stablefit_save == 1:
             for widx in range(len(stablefit_params_all)):
                 stablefit_params_all[widx].loc[epoch+1,:] = stablefit_params[widx,:]
         if stablefit_save == 2:
             for widx in range(len(stablefit_params_all)):
-                stablefit_params_all[widx].loc[ epoch*steps + 1 : (epoch+1)*steps + 1 ,:] = stablefit_params[:,widx,:]        
+                row_dict = {}
+                for param_idx, col_name in enumerate(stablefit_params_all[widx].columns):
+                    row_dict[col_name] = stablefit_params[:,widx,param_idx]
+                    #stablefit_params_all[widx].loc[ epoch*steps + 1 : (epoch+1)*steps + 1, :] = stablefit_params[:,widx,:]   
+
+                df_epoch = pd.DataFrame(row_dict)
+                stablefit_params_all[widx] = stablefit_params_all[widx].append(df_epoch,ignore_index=True)     
 
         if with_ed:
             with torch.no_grad():
@@ -558,8 +600,8 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
 
 # python torch_dnn.py train_submit_cnn train_ht_cnn
 def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, activation="tanh",                                             # network structure
-                 loss_func_name="cross_entropy", bs=128, weight_decay=0, momentum=0, num_workers=1, epochs=650,                             # training setting (weight_decay=0.0001)
-                 save_epoch=50, weight_save=1, stablefit_save=0):                                                                           # save data options
+                 loss_func_name="cross_entropy", bs=128, weight_decay=0, momentum=0, num_workers=1, epochs=500,                             # training setting (weight_decay=0.0001)
+                 save_epoch=500, weight_save=0, stablefit_save=0):                                                                           # save data options
 
     #global model, train_dl, valid_dl
 
@@ -592,7 +634,7 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
     train_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
 
     # create path
-    model_path = join(f"{path_names.cnn_path}", f"{net_type}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}")
+    model_path = join(root_data, "trained_cnns", net_type + "_new", f"{net_type}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}")
     if not os.path.isdir(model_path): os.makedirs(f'{model_path}')
 
     # log marker
@@ -611,10 +653,15 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
     print("Data loaded.")
 
     if net_type != 'resnext':
-        kwargs = {"alpha" :alpha, "g": g, "num_classes": C, "architecture": net_type, "activation": activation, "dataset": name, "fc_init": fc_init}
+        if net_type == "alexnet":
+            kwargs = {"alpha" :alpha, "g": g, "num_classes": C, "architecture": net_type, "activation": activation, "dataset": name, "fc_init": fc_init}
+        elif "van" in net_type:
+            kwargs = {"alpha" :alpha, "g": g , "fc_init": fc_init, "num_classes": C, "architecture": net_type, "dataset": name}
+        else:
+            kwargs = {"alpha" :alpha, "g": g, "num_classes": C, "architecture": net_type, "activation": activation, "dataset": name}            
         model = ModelFactory(**kwargs)
-    else:        
-        model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=False)
+    #else:        
+    #    model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=False)
     # printed info
     print(model)
     print(f"Training method: {optimizer}, lr={lr}, batch_size={bs}, epochs={epochs}" + "\n")
@@ -685,39 +732,35 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
 
 # train networks in array jobs
 def train_submit(*args):
-    from qsub import qsub, job_divider
-    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
+    from qsub import qsub, job_divider, project_ls
 
-    #dataset_ls = ["fashionmnist"]
     dataset_ls = ["mnist"]
     #dataset_ls = ["cifar10"]
 
-    #alpha100_ls = list(range(100,111,10))
-    #alpha100_ls = list(range(120,141,10))
-    #alpha100_ls = list(range(150,171,10))
-    #alpha100_ls = list(range(180,201,10))
-    #g100_ls = list(range(25, 301, 25))
-
     #alpha100_ls = [100, 200]
     #g100_ls = [25,100,300]
-    alpha100_ls = [100]
-    g100_ls = [25]
+    alpha100_ls = [None]
+    g100_ls = [None]
     optimizer_ls = ["sgd"]
     #optimizer_ls = ["adam"]
     #bs_ls = [int(2**p) for p in range(3,11)]
-    bs_ls = [8]
-    #bs_ls = [64]
-    #bs_ls = [1024]
+    bs_ls = [128]
+    lr_ls = [0.35,0.4]
+    depth_ls = [4]
+    epochs = 50
     init_path, init_epoch = None, None
-    root_path = join(root_data, "trained_mlps/bs_analysis")
+    #root_path = join(root_data, "trained_mlps/bs_analysis")
+    #root_path = join("/project/phys_DL/project2_data", "trained_nets")
+    root_path = join("/project/PDLAI/project2_data", "trained_mlps/debug")
 
-    pbs_array_data = [(name, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path)
+    pbs_array_data = [(name, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr, epochs)
                       for name in dataset_ls
                       for alpha100 in alpha100_ls
                       for g100 in g100_ls
                       for optimizer in optimizer_ls
                       for bs in bs_ls
-                      for repetition in range(2)   # delete for usual case
+                      for depth in depth_ls
+                      for lr in lr_ls
                       ]
 
     """
@@ -745,11 +788,11 @@ def train_submit(*args):
              pbs_array_true, 
              path=join(root_data, "trained_mlps"),
              P=project_ls[pidx],
-             ngpus=1,
+             #ngpus=1,
              ncpus=1,
-             walltime='4:59:59',
+             walltime='0:29:59',
              #walltime='23:59:59',
-             mem='8GB') 
+             mem='3GB') 
 
     """
     qsub(f'python {sys.argv[0]} {" ".join(args)}',    
@@ -773,18 +816,12 @@ def train_submit_cnn(*args):
     from qsub import qsub, job_divider
 
     #net_type_ls = ["alexnet", "resnet14"]
-    #alpha100_ls = list(range(100,201,10))
-
-    #alpha100_ls = list(range(100,111,10))
-    #alpha100_ls = list(range(120,131,10))
-    #alpha100_ls = list(range(140,151,10))
-    #alpha100_ls = list(range(160,171,10))
-    #alpha100_ls = list(range(180,201,10))
-    #g100_ls = list(range(25, 301, 25))
+    alpha100_ls = list(range(100,201,10))
+    g100_ls = list(range(25, 301, 25))
     #g100_ls = list(range(10, 201, 10))
 
-    alpha100_ls = [100, 200]
-    g100_ls = [25,300]
+    #alpha100_ls = [100, 200]
+    #g100_ls = [25,300]
 
     #alpha100_ls = [100] 
     #g100_ls = [25,100,300]
@@ -794,10 +831,10 @@ def train_submit_cnn(*args):
     #net_type_ls = ["van50","van100","van200"]
     #net_type_ls = ["van100"]
     #net_type_ls = ["van100nobias"]
-    #net_type_ls = ["resnet14_ht"]
+    net_type_ls = ["resnet14_ht"]
     #net_type_ls = ["alexnetold"]
     #net_type_ls = ["alexnet"]
-    net_type_ls = ["resnet34_HT", "resnet50_HT"]
+    #net_type_ls = ["resnet34_HT", "resnet50_HT"]
     #fc_init = "fc_ht"
     #fc_init = "fc_orthogonal"
     fc_init = "fc_default"
@@ -829,7 +866,7 @@ def train_submit_cnn(*args):
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path='/project/dyson/dyson_dl',
+             path=join(root_data,"trained_cnns"),
              P=project_ls[pidx],
              ngpus=1,
              ncpus=1,
