@@ -117,9 +117,12 @@ cm_type = 'RdYlBu'
 
 # /project/phys_DL/dnn_project/python_random_dnn.py_SEM_save_1000_50_1000
 # path = join(root_data, "/project/phys_DL/dnn_project", "python_random_dnn.py_SEM_save_1000_50_1000")
-def SEM_plot(path='', layer=None):
+def SEM_plot(path='', layer=None, one_row=True):
+    from ast import literal_eval
+
     #phase_path = f"/project/phys_DL/dnn_project"
     # plot settings
+    one_row = literal_eval(one_row) if isinstance(one_row,str) else one_row
     fnames = [fname for fname in os.listdir(path)
               if 'rep' not in fname and fname.endswith('txt')]
     xs = []
@@ -144,15 +147,42 @@ def SEM_plot(path='', layer=None):
         bound1, boundaries = load_transition_lines()
         
         layers = list(map(int, layer.split(',')))
-        ncols = int(len(layers)**0.5)
-        nrows = int(np.ceil(len(layers)/ncols))
-        fig, axes = plt.subplots(nrows, ncols,
-                                 constrained_layout=True,
-                                 sharex=True, sharey=True,
-                                 figsize=(9.5,7.142))       
+        # 2 by 2
+        if not one_row:
+            ncols = int(len(layers)**0.5)
+            nrows = int(np.ceil(len(layers)/ncols))
+            fig, axes = plt.subplots(nrows, ncols,
+                                     constrained_layout=True,
+                                     sharex=True, sharey=True,
+                                     figsize=(9.5,7.142))  
+        # 1 by n
+        else:
+            if len(layers) == 4:
+                nrows, ncols = 1, len(layers)  
+                fig, axes = plt.subplots(nrows, ncols,
+                                         constrained_layout=True,
+                                         sharex=True, sharey=True,
+                                         figsize=(9.5*2 - 2,7.142/2)) 
+            elif len(layers) == 3:
+                nrows, ncols = 1, len(layers)  
+                fig, axes = plt.subplots(nrows, ncols,
+                                         constrained_layout=True,
+                                         sharex=True, sharey=True,
+                                         figsize=(9.52/2*3 - 2.6,7.142/2 - 0.1)) 
+                fig.tight_layout(pad=3.4)
+  
         for i, l in enumerate(layers):
             ax = axes.flat[i]
-            ax.tick_params(axis='both',labelsize=tick_size)     # tick label size
+            if one_row:
+                #ax.tick_params(axis='both',labelsize=tick_size + 4)
+                xticks = [1.0,1.2,1.4,1.6,1.8,2.0]
+                yticks = np.arange(0,3.01,0.5)
+                ax.set_xticks(xticks); ax.set_yticks(yticks)
+                ax.set_xticklabels(xticks, fontsize=tick_size-1)
+                ax.set_yticklabels(yticks, fontsize=tick_size-1)
+            else:
+                ax.tick_params(axis='both',labelsize=tick_size)     # tick label size
+
             # plot phase transition lines for each axs
             ax.plot(bound1.iloc[:,0], bound1.iloc[:,1], 'k')
             for j in range(0,len(boundaries)):
@@ -172,13 +202,20 @@ def SEM_plot(path='', layer=None):
                         cmap=plt.cm.get_cmap(cm_type),
                         vmin=0, vmax=1
                         )
-            ax.set_title(f'Layer {l}', fontsize=label_size)
-        cbar = fig.colorbar(im, ax=axes, shrink=.6)
-        cbar.ax.tick_params(labelsize=tick_size)
+            if not one_row:
+                ax.set_title(f'Layer {l}', fontsize=label_size)
+        if not one_row:
+            cbar = fig.colorbar(im, ax=axes, shrink=.6) 
+        else:
+            cbar = fig.colorbar(im, ax=axes, shrink=1., aspect=17, pad = 0.028)
+        cbar.ax.tick_params(labelsize=tick_size-2)
         #plt.show()
         fig1_path = join(root_data, "figure_ms")
-        plt.savefig(f"{fig1_path}/random_dnn.pdf", bbox_inches='tight')
-        
+        if one_row:
+            plt.savefig(f"{fig1_path}/random_dnn_1by{len(layers)}.pdf", bbox_inches='tight')
+        else:        
+            plt.savefig(f"{fig1_path}/random_dnn.pdf", bbox_inches='tight')
+
         return
     # debugging
     # phase boundaries
