@@ -27,7 +27,7 @@ global title_size, tick_size, label_size, axis_size, legend_size
 tick_size = 18.5 * 0.8
 label_size = 18.5 * 0.8
 axis_size = 18.5 * 0.8
-legend_size = 14.1 * 1
+legend_size = 14.1 * 0.8
 lwidth = 1.8
 msize = 10
 text_size = 14
@@ -98,6 +98,10 @@ def metrics_vs_depth(post=0, epochs=[0,650]):
                         # standard deviation
                         axs[0,gidx].fill_between(np.arange(1, L+1), metric_means[0] - metric_stds[0], metric_means[0] + metric_stds[0], color = c_ls[aidx], alpha=0.2) 
 
+                        # leaving extra space for labels
+                        if gidx == len(g100_ls) - 1:
+                            axs[0,gidx].set_ylim(0,200)
+
                     elif metric_name == "D2":
                         D2_mean = []  # D2's corresponding to the eigenvector of the largest eigenvalue of the covariance matrix  
                         D2_std = []
@@ -155,7 +159,10 @@ def metrics_vs_depth(post=0, epochs=[0,650]):
     g100_str = [str(g100) for g100 in g100_ls]
     g100_str = "_".join(g100_str)
     metric_str = "_".join(metric_ls)
-    plt.savefig(f"{plot_path}/{fcn}_mnist_epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf", bbox_inches='tight')
+
+    file_full = f"{plot_path}/{fcn}_mnist_epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf"
+    print(f"Figure saved as {file_full}")
+    plt.savefig(file_full, bbox_inches='tight')
     #plt.show()
 
 def micro_stats(metric, n_top = 20, post=0, epochs=[0,650]):
