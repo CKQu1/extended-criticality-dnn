@@ -3,6 +3,8 @@ net_load
 nporch
 train_DNN_code
 main.py
+qsub.py
+plot_fc_stats.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
