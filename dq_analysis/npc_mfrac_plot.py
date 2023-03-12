@@ -26,7 +26,7 @@ label_size = 23.5 * 2
 axis_size = 23.5 * 2
 legend_size = 23.5 * 2 - 12
 #c_ls = list(mcl.TABLEAU_COLORS.keys())
-c_ls = ["darkred", "darkblue"]
+c_ls = ["darkblue", "darkred"]
 figw, figh = 9.5, 7.142
 axw, axh = figw * 0.7, figh * 0.7
 
@@ -217,7 +217,6 @@ def d2_vs_depth(i_pc=0, train=True):
 
         plt.tick_params(bottom=True, top=False, left=True, right=False)
         plt.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
-        #plt.tick_params(axis='both',labelsize=tick_size)
 
         plt.tick_params(axis="x", direction="out", labelsize=tick_size)
         plt.tick_params(axis="y", direction="out", labelsize=tick_size)            
@@ -681,7 +680,6 @@ def alpha_vs_d2(i_pc=0, train=True):
                 if not os.path.isdir(plot_path): os.makedirs(plot_path)    
                 plt.savefig(f"{plot_path}/{net_type}{depth}_mnist_epoch={epoch_plot}_g100={g100}_pcmfrac={i_pc}_{pc_type}=depth={l+1}_alpha-vs-d2.pdf", bbox_inches='tight')
                 #plt.show()
-
 
 
 if __name__ == '__main__':
