@@ -23,7 +23,7 @@ from torch.nn.modules.utils import _pair
 
 class FullyConnected(nn.Module):
 
-    def __init__(self, dims, alpha, g, init_path, init_epoch, init_type='ht', activation='tanh', with_bias=False, **pretrained):
+    def __init__(self, dims, alpha, g, init_path, init_epoch, with_bias, init_type='ht', activation='tanh', **pretrained):
         super(FullyConnected, self).__init__()
         self.activation = activation
         self.input_dim = dims[0]
@@ -32,8 +32,10 @@ class FullyConnected(nn.Module):
         self.num_classes = dims[-1]
         self.alpha, self.g = alpha, g
         self.init_type = init_type
+        self.with_bias = with_bias
 
-        self.init_supported = ['mfrac_orthogonal', 'mfrac', 'mfrac_sym', 'ht']
+        #self.init_supported = ['mfrac_orthogonal', 'mfrac', 'mfrac_sym', 'ht']
+        self.init_supported = ['ht']
         assert init_type in self.init_supported, "Initialization type does not exist!"
         
         modules = []
@@ -51,6 +53,7 @@ class FullyConnected(nn.Module):
         if init_path != None and init_epoch != None:
         # load initial matrix from trained weights of MLPs (taken from eigs_diffusion.py)
         #def init_mat_load(self, path, init_epoch):
+            print(f"Loading pretrained weights from {init_path} at epoch {init_epoch}!")
             with torch.no_grad():
                 widx = 0
                 if 'fcn_grid' in init_path:     # (by main_last_epoch_2.py)
@@ -75,6 +78,7 @@ class FullyConnected(nn.Module):
     
         else:
             if alpha != None and g != None:
+                print("Heavy-tailed initialization applied!")
                 with torch.no_grad():
                     for l in modules:
                         if not isinstance(l, nn.Linear): continue
@@ -88,6 +92,7 @@ class FullyConnected(nn.Module):
                             if with_bias == True:
                                 pass
 
+                        """
                         elif init_type == 'mfrac_orthogonal':
                             multifractal_orthogonal_(l.weight, 1, alpha, g)
 
@@ -96,6 +101,7 @@ class FullyConnected(nn.Module):
 
                         elif init_type == 'mfrac_sym':
                             pass
+                        """
 
         self.sequential = nn.Sequential(*modules)
              
@@ -1303,25 +1309,6 @@ def make_layers(depth, dataset, with_bias=False):
     return nn.Sequential(*layers), c
 
 
-def make_layers_nobias(depth):
-    assert isinstance(depth, int)
-    c = 256 if depth <= 256 else 128
-    layers = []
-    #in_channels = 3
-    in_channels = 1
-    for stride in [1, 2, 2]:
-        conv2d = nn.Conv2d(in_channels, c, kernel_size=3, padding=1, stride=stride, bias=False)
-        layers += [conv2d, nn.Tanh()]
-        in_channels = c
-    for _ in range(depth):
-        conv2d = nn.Conv2d(c, c, kernel_size=3, padding=1, bias=False)
-        layers += [conv2d, nn.Tanh()]
-    #layers += [nn.AvgPool2d(8)] # For mnist is 7
-    layers += [nn.AvgPool2d(7)]
-    return nn.Sequential(*layers), c
-
-
-
 def van5(alpha, g, dataset, **kwargs):
     model = Vanilla(*make_layers(5, dataset, with_bias=True), alpha, g, with_bias=True, **kwargs)
     return model
@@ -1360,16 +1347,12 @@ def van300(alpha, g, dataset, **kwargs):
 
 # --- no bias ----
 
-#def van100nobias(alpha, g, **kwargs):
-#    model = Vanilla_nobias(*make_layers_nobias(100), alpha, g, **kwargs)
-#    return model
-
 def van2nobias(alpha, g, dataset, **kwargs):
     model = Vanilla(*make_layers(2,dataset), alpha, g, **kwargs)
     return model
 
-def van5nobias(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(5,dataset), alpha, g, **kwargs)
+def van5nobias(**kwargs):
+    model = Vanilla(*make_layers(5,kwargs.get("dataset")), **kwargs)
     return model
 
 def van10nobias(alpha, g, dataset, **kwargs):
