@@ -123,7 +123,6 @@ END"""
 
 # ----- added by CKQu1 -----
 
-# .gitignore test
 # N is the total number of projects
 def job_divider(pbs_array: list, N: int):
     total_jobs = len(pbs_array)
