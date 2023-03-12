@@ -40,8 +40,13 @@ reig_dict = {0:'l', 1:'r'}
 c_ls = ["darkblue", "darkred"]
 
 # original dq_magnitude_epoch_plot.py
-def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
+def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, inset=True):
     post, reig = int(post), int(reig)
+
+    # re-adjusted
+    figw, figh = 9.75, 7.142 - 0.25
+    axw, axh = figw * 0.7, figh * 0.7
+    lwidth = 4.5 if not inset else 6.5
 
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
@@ -62,9 +67,11 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
     #for epoch in [0,1]:
     #    for layer in range(0,2):
     #for epoch in [0,1] + list(range(50,651,50)):   # all
-    for epoch in [0,650]:
+    #for epoch in [0,650]:
+    for epoch in [0]:
         #for layer in range(0,10):
-        lstyle = "--" if epoch == 0 else "-"
+        #lstyle = "--" if epoch == 0 else "-"
+        lstyle = "-"  
         for f_idx in range(len(alpha100_ls)):
             #for f_idx in range(len(extension_names)):
                 alpha100 = alpha100_ls[f_idx]
@@ -85,14 +92,26 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
                     ax.spines['right'].set_visible(False)
 
                     # set ticks
-                    ax.set_yticks(np.arange(0,0.151,0.05))
-                    ax.set_yticklabels(np.round(np.arange(0,0.151,0.05),2))
-                    ax.set_xticks([0,400,800])
-                    ax.set_xticklabels([0,400,800])
+                    if inset:
+                        xticks = [0,25,50,75,100]
+                        yticks = np.arange(0,0.16,.05)
+                        yticks = np.round(yticks,2)
+                    else:
+                        xticks = [0,200,400,600,800]
+                        yticks = np.arange(0,1.01,0.2)
+                        yticks = np.round(yticks,1)
+                    ax.set_xticks(xticks)
+                    ax.set_xticklabels(xticks)
+                    ax.set_yticks(yticks)
+                    ax.set_yticklabels(yticks)
 
                     # label ticks
-                    ax.tick_params(axis='x', labelsize=axis_size - 1)
-                    ax.tick_params(axis='y', labelsize=axis_size - 1)
+                    if inset:
+                        ax.tick_params(axis='x', labelsize=(axis_size - 1)*1.5)
+                        ax.tick_params(axis='y', labelsize=(axis_size - 1)*1.5)
+                    else:
+                        ax.tick_params(axis='x', labelsize=axis_size - 1)
+                        ax.tick_params(axis='y', labelsize=axis_size - 1)
 
                     # minor ticks
                     ax.xaxis.set_minor_locator(AutoMinorLocator())
@@ -116,19 +135,22 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
                     else:
                         eigvals, eigvecs = la.eig(DW)
 
-                    print(f"layer {layer}: {DW.shape}")
+                    print(f"Epoch {epoch} layer {layer}: {DW.shape}")
                     eigvals, eigvecs = la.eig(DW)
                     print(f"Max eigenvalue magnitude: {np.max(np.abs(eigvals))}.")
+                    print(f"Max eigenvector site: {np.max(np.abs(eigvecs[:,np.argmax(np.abs(eigvals))]))}")
 
-                    ax.set_xlim(0,800)
-                    ax.set_ylim(0,0.15)
+                    # x, y axis limit
+                    ax.set_xlim(0,np.max(xticks))
+                    ax.set_ylim(0,np.max(yticks))
 
                     # eigenvector corresponding to the eigenvalue with the largest magnitude
-                    ax.plot(np.abs(eigvecs[:,np.argmax(np.abs(eigvals))]), c = c_ls[f_idx], linestyle=lstyle, linewidth=3)
+                    ax.plot(np.abs(eigvecs[:,np.argmax(np.abs(eigvals))]), c = c_ls[f_idx], linestyle=lstyle, linewidth=lwidth)
                     
                     #if f_idx == 1:
-                    ax.set_xlabel('Site', fontsize=axis_size)
-                    ax.set_ylabel('Magnitude', fontsize=axis_size)
+                    if not inset:
+                        ax.set_xlabel('Site', fontsize=axis_size)
+                        ax.set_ylabel('Magnitude', fontsize=axis_size)
 
                     #ax.set_title(f"Layer {layer+1}, Epoch {epoch}", fontsize=title_size)
                     #if epoch == 0:
@@ -142,7 +164,10 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
                     fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
                     if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
                     # alleviate memory
-                    plt.savefig(f"{fig1_path}/jac_eigvec_mag_{post_dict[post]}_{reig_dict[reig]}_alpha100={alpha100}_g100={g100}_l={layer}_epoch={epoch}.pdf",             bbox_inches='tight')
+                    fig_name = f"jac_eigvec_mag_{post_dict[post]}_{reig_dict[reig]}_alpha100={alpha100}_g100={g100}_l={layer}_epoch={epoch}"
+                    if inset:
+                        fig_name += "_inset"
+                    plt.savefig(join(fig1_path, fig_name + ".pdf"), bbox_inches='tight')
                     plt.clf()
                     plt.close(fig)
 
@@ -184,7 +209,7 @@ def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
             set_size(axw, axh, ax)
             #axs = [ax1, ax2, ax3, ax4]
             #fig = plt.figure(figsize=(9.5,7.142))   
-            lstyle = "--" if epoch == 0 else "-"     
+            lstyle = "--" if epoch == 0 else "-"   
 
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
