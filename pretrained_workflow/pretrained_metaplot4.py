@@ -36,12 +36,14 @@ t0 = time.time()
 
 # colour schemes
 #cm_type = 'CMRmap'
-cm_type = 'jet'
+#cm_type = 'jet'
+cm_type = 'hot'
 c_hist_1 = "dimgrey"
 c_ls_1 = ["forestgreen", "coral"]
 c_ls_2 = ['tab:blue','tab:orange','tab:green']
 #c_ls_3 = ['dodgerblue', 'darkorange']
-c_ls_3 = ['dodgerblue', 'lightcoral']
+#c_ls_3 = ['dodgerblue', 'lightcoral']
+c_ls_3 = ["red", "blue"]
 
 inset_width, inset_height = 0.9/9, 1.4/10
 
@@ -220,7 +222,8 @@ bin_ls = [1000,250,2500]
 #xlabel_ls = [r"$\mathbf{W}^4$ entries (Alexnet)", r"$\alpha$", r"$D_w^{1/\alpha}$"]
 #xlabel_ls = [r"$\mathbf{{W}}^{{{}}}$ ".format(l + 1) + f"entries ({net.upper()})", r"$\alpha$", r"$\sigma$"]
 xlabel_ls = [r"$\mathbf{{W}}^{{{}}}$ ".format(l + 1) + f"entries ({net.upper()})", r"$\alpha$", r"$\alpha$"] 
-ylabel_ls = ["Probability Density", r"$D_w^{1/\alpha}$"]
+#ylabel_ls = ["Probability Density", r"$D_w^{1/\alpha}$"]
+ylabel_ls = ["Probability Density", r"$\sigma_w$"]
 #ylabel_ls = ["Probability Density", r"$\sigma$"]
 
 #xlim_ls = [[-0.3, 0.3], [0.5,2], [0,0.3]]
@@ -435,7 +438,7 @@ for idx in range(3):
     fcn_add.plot(sigmas[idx][:]/(1/(2*784))**(1/alphas[idx][:]), linewidth=1.5*1.8, linestyle="--", c=c_ls_2[idx])
 # add full and dotted line labels
 fcn_axs[1].plot([],[], c='k', linewidth=1.5*1.8, linestyle="-", label=r"$\alpha$")
-fcn_axs[1].plot([],[], c='k', linewidth=1.5*1.8, linestyle="--", label=r"$D_w^{1/\alpha}$")
+fcn_axs[1].plot([],[], c='k', linewidth=1.5*1.8, linestyle="--", label=r"$\sigma_w$")
 
 # plot accuracy
 fcn_axs[2].plot(acc_loss['training_history'][:,1], c=c_ls_3[0], linewidth=1.5*1.8, label="Train Acc.")
