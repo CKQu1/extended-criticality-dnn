@@ -221,7 +221,7 @@ def gcircle_plot(*args, cbar_separate=True):
     from matplotlib import cm
     # colorbar
     cm_type = 'twilight'
-    plt.rcParams["font.family"] = "serif"     # set plot font globally
+    plt.rcParams["font.family"] = 'sans-serif'     # set plot font globally
     #plt.rcParams["font.family"] = "Helvetica"
 
     tick_size = 18.5
