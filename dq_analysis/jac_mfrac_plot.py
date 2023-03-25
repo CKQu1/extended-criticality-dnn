@@ -19,7 +19,7 @@ from path_names import root_data
 from pubplot import set_size
 from utils_dnn import IPR, D_q
 
-plt.rcParams["font.family"] = "serif"     # set plot font globally
+plt.rcParams["font.family"] = "sans-serif"     # set plot font globally
 #plt.switch_backend('agg')
 global title_size, tick_size, label_size, axis_size, legend_size, axw, axh, figw, figh
 title_size = 23.5 * 1.5
@@ -40,7 +40,7 @@ reig_dict = {0:'l', 1:'r'}
 c_ls = ["darkblue", "darkred"]
 
 # original dq_magnitude_epoch_plot.py
-def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, inset=True):
+def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, inset=False):
     post, reig = int(post), int(reig)
 
     # re-adjusted
@@ -281,7 +281,7 @@ def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
 
 
 # original d2-vs-depth.py
-def d2_vs_depth(alpha100_ls = [120,200], g100 = 300, post=0, reig=1):
+def d2_vs_depth(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, appendix=True):
 
     post, reig = int(post), int(reig)
     fcn = "fc10"
@@ -309,7 +309,8 @@ def d2_vs_depth(alpha100_ls = [120,200], g100 = 300, post=0, reig=1):
         # linestyle
         lstyle = "--" if epoch == 0 else "-"
         # vertical line
-        #ax.axvline(x=5, c='dimgrey',linestyle='--')     
+        if g100 == 100:
+            ax.axvline(x=5, c='dimgrey',linestyle=':',lw=2.5)     
 
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -323,7 +324,7 @@ def d2_vs_depth(alpha100_ls = [120,200], g100 = 300, post=0, reig=1):
         ax.tick_params(axis='y', labelsize=axis_size - 1)
 
         # minor ticks
-        ax.xaxis.set_minor_locator(AutoMinorLocator())
+        #ax.xaxis.set_minor_locator(AutoMinorLocator())
         ax.yaxis.set_minor_locator(AutoMinorLocator())
 
         ylim_lower = 1
@@ -366,14 +367,24 @@ def d2_vs_depth(alpha100_ls = [120,200], g100 = 300, post=0, reig=1):
         #ax.set_ylim(round(ylim_lower,1) - 0.05, round(ylim_upper,1) + 0.05)
         ax.set_ylim(-0.1,1.1)
         ax.set_xlim(depths[0]+1,depths[-1]+1)
-        ax.set_xticks([2,4,6,8,10])
+        ax.set_xticks(list(range(1,11)))
+        xtick_ls = []
+        for num in range(1,11):
+            if num % 2 == 1:
+                xtick_ls.append(str(num))
+            else:
+                xtick_ls.append('')
+        ax.set_xticklabels(xtick_ls)
 
-        #ax.set_xlabel(r'$l$', fontsize=axis_size)
-        #ax.set_ylabel(r'$D_2$', fontsize=axis_size)
+        if not appendix:
+            ax.set_xlabel(r'Layer $l$', fontsize=axis_size)
+            ax.set_ylabel(r'$D_2$', fontsize=axis_size)
 
         #ax.set_title(f"Epoch {epoch}", fontsize=title_size)
 
-        ax.legend(fontsize = legend_size, ncol=2, loc="lower left",frameon=False)
+        # bbox_to_anchor=(-0.05, 1.2),
+        #ax.legend(fontsize = legend_size, ncol=2, loc="lower left", 
+        #          frameon=True)
         plt.tight_layout()
 
         fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
