@@ -3,7 +3,9 @@
 
 Github repository for the paper *Dynamical and computational properties of heavy-tailed deep neural networks*, currently submitted and under revision.
 
-![[phasetransition_schematic.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/phasetransition_schematic.jpg" width="750">
+</p>
 
 To install requirements:
 
