@@ -13,7 +13,7 @@ sys.path.append(f'{lib_path}')
 import path_names
 from path_names import root_data, model_log
 
-plt.rcParams["font.family"] = "serif"     # set plot font globally
+plt.rcParams["font.family"] = "sans-serif"     # set plot font globally
 plt.switch_backend('agg')
 
 """
@@ -46,7 +46,7 @@ title_size = 14.5
 tick_size = 14.5
 label_size = 14.5
 axis_size = 14.5
-legend_size = 11.5
+legend_size = 10.5
 
 #linestyle_ls = ["-", "--", ":"]
 linestyle_ls = ["--", "-"]
@@ -93,7 +93,7 @@ epoch_plots = [1, 5, 50, 100]
 # set up plot
 nrows, ncols = len(alpha100_ls), len(epoch_plots)
 #fig, (ax1,ax2) = plt.subplots(nrows, ncols,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))
-fig, axs = plt.subplots(nrows, ncols,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))
+fig, axs = plt.subplots(nrows, ncols,sharex=True,sharey=True,figsize=(9.5+1,7.142/2 + 0.75))
 axs[0,0].set_xlim(7.5,1024)
 axs[0,0].set_ylim(-5,115)
 axs[0,0].set_yticks([0,25,50,75,100])
@@ -164,15 +164,18 @@ for eidx, epoch_plot in enumerate(epoch_plots):
             #label = label_ls[i] 
             #ax.text(-0.1, 1.2, '%s'%label, transform=ax.transAxes, fontsize=label_size, va='top', ha='right')       # fontweight='bold'
 
+            # set log axis for x
+            ax.set_xscale('log')
+
             # setting ticks
+            ax.set_xticks([10,100,1000])
+            #ax.set_xticklabels([10,100,1000])
+
             ax.tick_params(bottom=True, top=False, left=True, right=False)
             ax.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
 
-            ax.tick_params(axis="x", direction="in", labelsize=axis_size - 1)
-            ax.tick_params(axis="y", direction="in", labelsize=axis_size - 1)
-
-            # set log axis for x
-            ax.set_xscale('log')
+            ax.tick_params(axis="x", direction="out", labelsize=axis_size - 1)
+            ax.tick_params(axis="y", direction="out", labelsize=axis_size - 1)
 
             # set invisible top and right borders
             ax.spines['top'].set_visible(False)
@@ -195,15 +198,18 @@ for eidx, epoch_plot in enumerate(epoch_plots):
     print(f"Good: {good}")
 
 # legends
-ax_legend = axs[0,3]
+ax_legend = axs[0,0]
+for aidx, alpha100 in enumerate(alpha100_ls):
+    alpha = int(alpha100/100)    
+    ax_legend.plot([],[],linestyle=linestyle_ls[aidx],c='k',label=rf'$\alpha = {alpha}$')
 for gidx, g100 in enumerate(g100_ls):
     g = g100/100    
     ax_legend.plot([],[],label=rf"$g$ = {g}",c=c_ls[gidx])
-#for aidx, alpha100 in enumerate(alpha100_ls):
-#    alpha = int(alpha100/100)    
-#    ax_legend.plot([],[],linestyle=linestyle_ls[aidx],c='k',label=rf'$\alpha = {alpha}$') 
-ax_legend.legend(fontsize=legend_size, loc="center left", ncol=1, frameon=False) 
+ax_legend.legend(fontsize=legend_size, loc="lower left", bbox_to_anchor=[0, 1.25],
+                 ncol=5, frameon=True) 
 
+plt.subplots_adjust(hspace=0.35)
+plt.subplots_adjust(wspace=0.4)
 plt.tight_layout()
 
 net_type = model_info.loc[model_info.index[0],'net_type']
