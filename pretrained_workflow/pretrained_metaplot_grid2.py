@@ -21,7 +21,7 @@ from matplotlib.ticker import AutoMinorLocator
 
 from pretrained_wfit import replace_name
 
-pub_font = {'family' : 'sans-serif'}
+pub_font = {'family' : 'serif'}
 plt.rc('font', **pub_font)
 
 t0 = time.time()
@@ -31,20 +31,19 @@ t0 = time.time()
 # 3 by 3 template
 
 # colour schemes
-cm_type_1 = 'coolwarm'
+#cm_type = 'CMRmap'
+#cm_type = 'jet'
+cm_type_1 = 'hot'
+#cm_type_2 = 'Spectral'
+#cm_type_2 = 'bwr'
 cm_type_2 = 'RdGy'
+c_hist_1 = "dimgrey"
 c_ls_1 = ["forestgreen", "coral"]
-#c_ls_2 = list(mcl.TABLEAU_COLORS.keys())
-#c_ls_2 = ["black", "dimgray", "darkgray"]
-#c_ls_2 = ["indianred", "limegreen", "dodgerblue"]
-c_ls_2 = ["peru", "dodgerblue", "limegreen"]
+c_ls_2 = list(mcl.TABLEAU_COLORS.keys())
 c_ls_3 = ["red", "blue"]
-#c_ls_3 = ["black", "darkgray"]
-#c_ls_3 = ["indianred", "dodgerblue"]
-c_hist_1 = "tab:blue"
-#c_hist_1 = "dimgrey"
-c_hist_2 = "dimgrey"
+markers = ["o", "x", "^"]
 
+suptitle_size = 18.5 * 2
 tick_size = 18.5 * 1.5
 label_size = 18.5 * 1.5
 axis_size = 18.5 * 1.5
@@ -63,22 +62,22 @@ params = {'legend.fontsize': legend_size,
           'ytick.labelsize': label_size}
 plt.rcParams.update(params)
 
-fig = plt.figure(figsize=(24, 25))
+fig = plt.figure(figsize=(25, 28))
 gs = mpl.gridspec.GridSpec(850, 740, wspace=0, hspace=0)   
 # main plots 
 ax1 = fig.add_subplot(gs[0:200, 0:200])
 ax2 = fig.add_subplot(gs[0:200, 260:460])
 ax3 = fig.add_subplot(gs[0:200, 520:720])
-ax4 = fig.add_subplot(gs[290:440, 100:620])
-ax5 = fig.add_subplot(gs[440:590,100:620])
-ax6 = fig.add_subplot(gs[650:, 0:200])
-ax7 = fig.add_subplot(gs[650:, 260:460])
-ax8 = fig.add_subplot(gs[650:, 520:720])
+ax4 = fig.add_subplot(gs[320:470, 100:620])
+ax6 = fig.add_subplot(gs[500:700, 0:200])
+ax7 = fig.add_subplot(gs[500:700, 260:460])
+ax8 = fig.add_subplot(gs[500:700, 520:720])
+ax5 = fig.add_subplot(gs[730:850,100:620])
 # colorbars
 ax1_cbar = fig.add_subplot(gs[0:200, 730:740])
-#ax2_cbar = fig.add_subplot(gs[650:, 210:220])
-#ax3_cbar = fig.add_subplot(gs[650:, 470:480])
-ax4_cbar = fig.add_subplot(gs[650:, 730:740])
+#ax2_cbar = fig.add_subplot(gs[500:700, 210:220])
+#ax3_cbar = fig.add_subplot(gs[500:700, 470:480])
+ax4_cbar = fig.add_subplot(gs[500:700, 730:740])
 # inset
 ax1_inset = fig.add_subplot(gs[5:81, 130:206])
 
@@ -209,8 +208,7 @@ print(f"{len(metrics_all[metric_name])}/{len(files)} of tensors are taken into a
 print("Start plotting")
 
 good = 0
-#bin_ls = [1000,250,2500]
-bin_ls = [1000,50,2500]
+bin_ls = [1000,250,2500]
 xlabel_ls = [r"$\mathbf{{W}}^{{{}}}$ ".format(l + 1) + f"entries ({net.upper()})", r"$\alpha$", r"$\alpha$"] 
 ylabel_ls = ["Probability density", "Probability density", r"$\sigma_w$"]
 #ylabel_ls = ["Probability Density", r"$\sigma$"]
@@ -242,7 +240,7 @@ for i in range(3):
     if i == 0:
         axis.hist(metric, bin_ls[i], color=c_hist_1, density=True)
     elif i == 1:
-        axis.hist(metric, bin_ls[i], color=c_hist_2, density=True)
+        axis.hist(metric, bin_ls[i], density=True)
     else:
         pretrained_acc = metrics_all['top-5']
         cmap_bd = [round(np.percentile(pretrained_acc,5)), round(np.percentile(pretrained_acc,95))]
@@ -341,8 +339,9 @@ deltas = stable_params['deltas']
 """
 
 # FC4
+
 axs_2 = [ax4, ax5]
-#fcn_add = ax4.twinx()
+fcn_add1 = ax4.twinx()
 
 # selected epochs
 init_epochs = [0,5,10]
@@ -360,23 +359,26 @@ for widx in range(3):
     sigmas = stable_params.loc[:,'sigma']
     print(f"W {widx} statistics")
     print(alphas)
-    axs_2[0].plot(alphas[selected_epochs], linewidth=lwidth, c=c_ls_2[widx], label=r'$\mathbf{{W}}^{{{}}}$'.format(widx + 1)) 
+    axs_2[0].plot(alphas[selected_epochs], linewidth=lwidth, marker=markers[widx], markersize=8.5, c=c_ls_2[widx]) 
     N_eff = np.sqrt(model_dims[widx] * model_dims[widx+1])
-    #fcn_add.plot(sigmas[selected_epochs]/(1/(2*N_eff))**(1/alphas[selected_epochs]), linewidth=lwidth, linestyle="--", c=c_ls_2[widx])
+    fcn_add1.plot(sigmas[selected_epochs]/(1/(2*N_eff))**(1/alphas[selected_epochs]), 
+                 linewidth=lwidth , marker=markers[widx], markersize=8.5, linestyle="--", c=c_ls_2[widx])
+
+    # legend
+    axs_2[0].plot([],[], marker=markers[widx], markersize=8.5, c=c_ls_2[widx], label=r'$\mathbf{{W}}^{{{}}}$'.format(widx + 1))
 
 # limit
 xlim_ls = [[min(selected_epochs),max(selected_epochs)], [min(selected_epochs),max(selected_epochs)]]
-#ylim_ls = [[0.9,2.1], [0,115]]
-ylim_ls = [[1.3,2.1], [0,115]]
+ylim_ls = [[0.9,2.1], [0,115]]
 
 # featured epochs corresponding to hidden layers
 for init_epoch in init_epochs:
-    axs_2[0].axvline(x=init_epoch, c='grey', linestyle=":", linewidth=lwidth-1)
-    #axs_2[1].axvline(x=init_epoch, ymin=-0.39, ymax=1,
-    #                 c='grey', linestyle=":", linewidth=lwidth-2,
-    #                 clip_on=False)
+    axs_2[0].axvline(x=init_epoch, ymin=-0.2, ymax=1,
+                     c='grey', linestyle=":", linewidth=lwidth-2,
+                     clip_on=False)
 
-    axs_2[1].axvline(x=init_epoch, c='grey', linestyle=":", linewidth=lwidth-1,
+    axs_2[1].axvline(x=init_epoch, ymin=0, ymax=1.3,
+                     c='grey', linestyle=":", linewidth=lwidth-2,
                      clip_on=False)
 
 for i in range(2):
@@ -386,6 +388,9 @@ for i in range(2):
     label = label_ls[i + 3] 
     #axis.text(-0.1, 1.2, '%s'%label, transform=axis.transAxes,      # fontweight='bold'
     #     fontsize=label_size, va='top', ha='right')
+
+    #axis.spines['top'].set_visible(False)
+    #axis.spines['right'].set_visible(False)  
 
     axis.tick_params(axis='x', labelsize=axis_size - 1)
     axis.tick_params(axis='y', labelsize=axis_size - 1)
@@ -399,47 +404,58 @@ for i in range(2):
 
     #if i != 1:
     axis.set_xlim(xlim_ls[i])
-    axis.set_ylim(ylim_ls[i])
+    #axis.set_ylim(ylim_ls[i])
 
     # scientific notation
     if i == 0:
         #axis.xaxis.get_major_formatter().set_scientific(True)
         axis.ticklabel_format(style='sci',axis='x', scilimits=(0,0))
-    if i == 1:
-        axis.set_xlabel(f"{xlabel_ls[i]}", fontsize=axis_size)
 
 axs_2[0].set_xticklabels([])
-#yticks = np.round(np.arange(1.0,2.1,0.25),2)
-yticks = [1.4,1.6,1.8,2.0]
+yticks = np.round(np.arange(1.0,2.1,0.25),2)
 axs_2[0].set_yticks(yticks)
 axs_2[0].set_yticklabels(yticks)
 
 axs_2[1].set_xticks(list(range(11)))
 axs_2[1].set_xticklabels(list(range(11)))
+axs_2[1].set_xlabel("Epoch")
 
 # add full and dotted line labels
-#axs_2[0].plot([],[], c='k', linewidth=lwidth, linestyle="-", label=r"$\alpha$")
-#axs_2[0].plot([],[], c='k', linewidth=lwidth, linestyle="--", label=r"$\sigma_w$")
+axs_2[0].plot([],[], c='k', linewidth=lwidth, linestyle="-", label=r"$\alpha$")
+axs_2[0].plot([],[], c='k', linewidth=lwidth, linestyle="--", label=r"$\sigma_w$")
 # legend
-axs_2[0].legend(loc='upper left', bbox_to_anchor=(1, 1), ncol=1, fontsize=legend_size, frameon=True)
+axs_2[0].legend(loc='upper left', bbox_to_anchor=(1.1, 1),
+                ncol=1, fontsize=legend_size, frameon=False)
 
-# plot accuracy
+# plot accuracy and loss
+fcn_add2 = ax5.twinx()
 acc_loss = pd.read_csv(join(fc_net_path, f"acc_loss"))
 print("Train acc")
 print(acc_loss.iloc[selected_epochs,1]*100)
 print("Test acc")
 print(acc_loss.iloc[selected_epochs,3]*100)
-axs_2[1].plot(acc_loss.iloc[selected_epochs,1]*100, c=c_ls_3[0], linewidth=lwidth, label="Train")
-axs_2[1].plot(acc_loss.iloc[selected_epochs,3]*100, c=c_ls_3[1], linewidth=lwidth, linestyle="--", label="Test")
-#axs_2[1].legend(bbox_to_anchor=(0.9,0.9), fontsize = legend_size, frameon=False)
-axs_2[1].legend(loc = 'upper left', bbox_to_anchor=(1, 1), fontsize = legend_size, frameon=True)
 
-# fcn_add setting
-#fcn_add.set_ylabel(r"$\sigma_w$", fontsize=axis_size)
-#fcn_add.tick_params(axis='x', labelsize=axis_size - 1)
-#fcn_add.tick_params(axis='y', labelsize=axis_size - 1)
-#fcn_add.xaxis.set_minor_locator(AutoMinorLocator())
-#fcn_add.yaxis.set_minor_locator(AutoMinorLocator())
+# loss
+axs_2[1].plot(acc_loss.iloc[selected_epochs,0], c=c_ls_3[0], linewidth=lwidth, label="Train")
+axs_2[1].plot(acc_loss.iloc[selected_epochs,2], c=c_ls_3[1], linewidth=lwidth, linestyle="--", label="Test")
+#axs_2[1].legend(bbox_to_anchor=(0.9,0.9), fontsize = legend_size, frameon=False)
+axs_2[1].legend(loc='upper left', bbox_to_anchor=(1.1, 1), ncol=1,
+                fontsize=legend_size, frameon=False)
+axs_2[1].set_ylabel("Loss")
+
+# accuracy
+fcn_add2.plot(acc_loss.iloc[selected_epochs,1]*100, c=c_ls_3[0], linewidth=lwidth)
+fcn_add2.plot(acc_loss.iloc[selected_epochs,3]*100, c=c_ls_3[1], linestyle="--", linewidth=lwidth)
+fcn_add2.set_ylabel("Accuracy")
+fcn_add2.set_ylim(ylim_ls[1])
+
+# fcn_add1 setting
+fcn_add1.set_ylabel(r"$\sigma_w$", fontsize=axis_size)
+fcn_add1.set_ylim(0,16)
+#fcn_add1.tick_params(axis='x', labelsize=axis_size - 1)
+#fcn_add1.tick_params(axis='y', labelsize=axis_size - 1)
+fcn_add1.xaxis.set_minor_locator(AutoMinorLocator())
+fcn_add1.yaxis.set_minor_locator(AutoMinorLocator())
 
 # print the necessary statistics (plot row 1)
 metric_name = 'alpha'
@@ -508,7 +524,6 @@ for init_idx, init_epoch in enumerate(init_epochs):
 #cbar_ticks_2 = np.round(cmap_bd,1)
 print("Plotting hidden layers!")
 
-ymax_ls = [1.2, 1.1, 1.2]
 plot_layer, post = False, False
 for init_idx, init_epoch in enumerate(init_epochs):
     kwargs["init_epoch"] = init_epoch
@@ -561,10 +576,6 @@ for init_idx, init_epoch in enumerate(init_epochs):
     im = axs_3[init_idx].imshow(quantity, 
                                 vmin=-3, vmax=3,
                                 aspect="auto", cmap=colmap) 
-
-    axs_3[init_idx].axvline(x=13.5, ymin=1, ymax=ymax_ls[init_idx],
-                     c='grey', linestyle=":", linewidth=lwidth-1,
-                     clip_on=False)
               
     #axs_3[init_idx].set_title(f"Epoch {init_epoch}")
 
@@ -587,7 +598,6 @@ axs_3[0].set_ylabel(f"Layer {l+1} (Top PC)")
 #axs_3[0].set_title("Input image")
 
 # plot settings
-#axs_3[0].set_ylabel(f"Layer {l + 1}")
 
 xyticks = np.array([0,27])
 for col in range(3):
@@ -599,6 +609,12 @@ for col in range(3):
     else:
         axs_3[col].set_yticklabels([])
 
+# suptitles
+ax2.text(.95, 1.3, "Pretrained CNNs", transform=ax2.transAxes, fontweight='bold',
+         fontsize=suptitle_size, va='top', ha='right')
+ax4.text(.735, 1.3, "Fully-connected DNNs", transform=ax4.transAxes, fontweight='bold',
+         fontsize=suptitle_size, va='top', ha='right')
+
 # -------------------- Save fig --------------------
 
 print(f"Time: {time.time() - t0}")
@@ -609,5 +625,5 @@ plt.tight_layout()
 
 fig1_path = "/project/PDLAI/project2_data/figure_ms"
 #fig1_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms"
-plt.savefig(f"{fig1_path}/pretrained_stablefit_grid.pdf", bbox_inches='tight')
+plt.savefig(f"{fig1_path}/pretrained_stablefit_grid2.pdf", bbox_inches='tight')
 
