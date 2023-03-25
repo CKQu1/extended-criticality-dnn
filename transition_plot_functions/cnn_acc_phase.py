@@ -1,3 +1,4 @@
+import cmcrameri as cmc
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -8,6 +9,7 @@ import sys
 sys.path.append(f'{os.getcwd()}')
 import path_names
 from os.path import join
+from tqdm import tqdm
 from path_names import root_data, id_to_path, model_log
 from path_names import get_model_id, get_alpha_g
 
@@ -19,18 +21,26 @@ if cm_lib == "plt":
         cmaps.append(plt.cm.get_cmap(cm_type))
 elif cm_lib == "sns":
     for cm_type in ['Spectral', 'RdBu', 'rocket_r']:
-        cmaps.append(sns.color_palette(cm_type, as_cmap=True))
+    #for cm_type in ['plasma', 'vlag', 'icefire']:
+    #for cm_type in ['batlow', 'cividis', 'thermal']:
+        #cmaps.append(sns.color_palette(cm_type, as_cmap=True))
+        #cmaps.append(sns.color_palette(cm_type))
+        cmaps.append(plt.cm.get_cmap(cm_type))
 # custom
 else:
+    """
     for cm_type in [[500,200], [600,100], [20000,25]]:
         cmaps.append(sns.diverging_palette(cm_type[0], cm_type[1], as_cmap=True))
+    """
+    #cmaps = [cmc.cm.batlow, plt.cm.get_cmap("cividis"), plt.cm.get_cmap("vlag")]
+    cmaps = [cmc.cm.fes, cmc.cm.oleron, cmc.cm.bukavu]
 
 interp = "quadric"
-plt.rcParams["font.family"] = "serif"     # set plot font globally
+plt.rcParams["font.family"] = 'sans-serif'     # set plot font globally
 # plot settings
-tick_size = 13
-label_size = 16.5
-axis_size = 16.5
+tick_size = 14.5
+label_size = 15.5
+axis_size = 15.5
 legend_size = 14
 linewidth = 0.8
 # phase diagram setting
@@ -61,7 +71,8 @@ def cnn_accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, ep
 
     #fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))     # with text
     #fig, axs = plt.subplots(1, 3,sharex = True,sharey=True,figsize=(9.5/2*3,7.142/2 - 0.1))     # without text
-    fig, axs = plt.subplots(1, 3,sharex = True,sharey=True,figsize=(8.4/2*3,7.142/2 - 0.1))     # without text
+    #fig, axs = plt.subplots(1, 3,sharex = True,sharey=True,figsize=(8.4/2*3,7.142/2 - 0.1))     # without text
+    fig, axs = plt.subplots(1, 3,sharex = True,sharey=True,figsize=(8.4/2*3+0.45,7.142/2 - 0.1))     # without text
     axs = axs.flat
 
     # plot points which computations where executed
@@ -70,6 +81,13 @@ def cnn_accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, ep
         #axs[i].plot(a_cross/100, g_cross/100, c='k', linestyle='None',marker='.',markersize=5)
         pass
 
+    xticks = [1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0]
+    xtick_ls = []
+    for xidx, xtick in enumerate(xticks):
+        if xidx % 2 == 0:
+            xtick_ls.append(str(xtick))
+        else:
+            xtick_ls.append('')
     title_ls = [f'{acc_type[0].upper() + acc_type[1:]} accuracy', 'Earliest epoch reaching' + '\n' + f'{acc_type} acc. threshold ']
     for i in range(len(axs)):
         #axs[i].set_xlabel(r'$\alpha$', fontsize=axis_size)
@@ -77,6 +95,9 @@ def cnn_accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, ep
         #axs[i].set_title(f"{title_ls[i]}", fontsize=axis_size)
         #axs[i].text(-0.1, 1.2, f'({string.ascii_lowercase[i]})', transform=axs[i].transAxes, fontsize=label_size, va='top', ha='right')   # fontweight='bold'
         # setting ticks
+        axs[i].set_xticks(xticks)
+        axs[i].set_xticklabels(xtick_ls)
+
         axs[i].tick_params(bottom=True, top=False, left=True, right=False)
         axs[i].tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
         axs[i].tick_params(axis="x", direction="out")
@@ -141,7 +162,14 @@ def cnn_accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, ep
         plot = axs[pidx].imshow(mesh_ls[pidx],extent=[min(alpha100_ls)/100,max(alpha100_ls)/100,min(g100_ls)/100,max(g100_ls)/100], 
                                 vmin=cmap_bd[pidx][0], vmax=cmap_bd[pidx][1], cmap=cmaps[pidx], 
                                 interpolation=interp, aspect='auto')
+
         cbar = plt.colorbar(plot,ax=axs[pidx])
+        if pidx == 1:
+            cbar.set_ticks(list(range(20,71,10)))
+            cbar.set_ticklabels(list(range(20,71,10)))
+        if pidx == 2:
+            cbar.set_ticks(list(range(200,451,50)))
+            cbar.set_ticklabels(list(range(200,451,50)))
         cbar.ax.tick_params(labelsize=tick_size)
 
     plt.tight_layout()
@@ -226,12 +254,13 @@ def cnn_pure_phase(acc_type="train", epoch_ls=[10,50,200]):
             cbar.ax.tick_params(labelsize=tick_size)
 
             # axis ticks
-            axis.tick_params(axis='both',labelsize=tick_size)
+            axis.tick_params(axis='both',labelsize=label_size)
 
             axis.set_xticks(xticks)
             axis.set_yticks(yticks)
 
     plt.tight_layout()
+    plt.subplots_adjust(hspace=0.25)
     #plt.show()
 
     #net_type = "alexnet"
