@@ -37,6 +37,7 @@ print("Loading data.")
 log_path = join(root_data, "fewshot-data")
 imdir = join(log_path, "image_dicarlo_hvm-public")
 imnames = np.load(join(imdir,"majaj_2015_imnames_2.npy"),allow_pickle=True)
+imnames = sorted(imnames)   # a total of 64 concepts with 50 examples each
 
 # Image preprocessing
 from torchvision import transforms
@@ -106,6 +107,71 @@ def load_model(model_name, pretrained):
     return model
 
 
+# get the direct error from few-shot learning
+def get_error(model_name, pretrained):
+
+    if 'resnet' in model_name or 'resnext' in model_name:
+        backbone = WideResNetBackbone(model, 1)
+        random_projection=False
+    elif 'vgg' in model_name:
+        backbone = VGGBackbone(model)
+    elif 'alexnet' in model_name:
+        backbone = AlexnetBackbone(model)
+    elif 'squeeze' in model_name:
+        backbone = SqueezeBackbone(model)
+    elif 'efficient' in model_name:
+        backbone = model
+        backbone.N = 1000
+        random_projection=False
+    #     backbone = EfficientNetBackbone(model)
+    backbone.to(dev).eval()
+
+    N = 2048
+    K = 64
+    P = 50
+    batch_size = 10
+    n_classes = len(imnames)
+
+    manifolds = []
+    # for class_id in tqdm(range(n_classes)):
+    for i in tqdm(range(K*P//batch_size)):
+        input_tensor = get_batch(i,batch_size)
+        with torch.no_grad():
+            output = backbone(input_tensor.cuda())
+        manifolds.append((output@O).cpu().numpy())
+    manifolds = np.stack(manifolds).reshape(K,P,N)
+
+    # Compute error
+    m = 5
+    n_avg = 50
+
+    err_all = np.zeros((len(manifolds),len(manifolds)))
+    for a in tqdm(range(len(manifolds))):
+        Xa = manifolds[a]
+        for b in range(len(manifolds)):
+            Xb = manifolds[b]
+
+            errs = []
+            for _ in range(n_avg):
+                perma = np.random.permutation(len(Xa))
+                permb = np.random.permutation(len(Xb))
+
+                xa,ya = np.split(Xa[perma],(m,))
+                xb,yb = np.split(Xb[permb],(m,))
+                w = (xa-xb).mean(0)
+                mu = (xa+xb).mean(0)/2
+
+                h = ya@w - w@mu
+                err = (h<0).mean()
+                errs.append(err)
+            err_all[a,b] = np.mean(errs)
+    np.fill_diagonal(err_all,np.nan)
+
+    # save error data
+    emb_path = join(root_data, "macaque_stimuli", model_name, "pretrained") if pretrained else join(root_data, "macaque_stimuli", model_name, "untrained")
+    np.save(join(emb_path,"err_all"), err_all)
+
+# obtain the SNR and its associated geometrical metrics
 def snr_components(model_name, pretrained):
 
     import numpy.linalg as LA
@@ -149,6 +215,9 @@ def snr_components(model_name, pretrained):
     #plt.plot(Rs.T)
     """
 
+
+    # finds out the total amount of layers needed for evaluation (this is not rlly needed as well)
+    """
     N = 2048
     batch_size = 64
 
@@ -156,8 +225,6 @@ def snr_components(model_name, pretrained):
     K = 64
     P = 50
 
-    # finds out the total amount of layers needed for evaluation (this is not rlly needed as well)
-    """
     layers = []
     for module_idx in tqdm(range(len(list(model.children())))):
         try:
@@ -198,7 +265,8 @@ def snr_components(model_name, pretrained):
     N_dq = 500
     navg_dq = 10
 
-    batch_size = 10
+    batch_size = 50
+    #batch_size = 10
     K = 64
     P = 50
 
@@ -238,7 +306,7 @@ def snr_components(model_name, pretrained):
                     N_all = output.shape[-1]
                     print(N_all)
                     
-                    if N_all > N:
+                    if N_all > N or "resnet" in model_name:
                         O = torch.randn(N_all,N) / np.sqrt(N)   # Gaussian projection
                         #O = torch.Tensor(levy_stable.rvs(alpha, 0, size=(N_all,N), scale=(0.5/N)**(1./alpha)))  # Levy projection (very expensive)
                         O = O.to(dev)
@@ -250,12 +318,13 @@ def snr_components(model_name, pretrained):
                         with torch.no_grad():
                             output = backbone(input_tensor.to(dev))                            
 
-                        if N_all > N:
+                        if N_all > N or "resnet" in model_name:
                             manifolds.append((output@O).cpu().numpy())
                         else:
                             manifolds.append(output.cpu().numpy())
 
-                    manifolds = np.stack(manifolds).reshape(K,P,N) if N_all > N else np.stack(manifolds).reshape(K,P,N_all) 
+                    #manifolds = np.stack(manifolds).reshape(K,P,N)
+                    manifolds = np.stack(manifolds).reshape(K,P,N) if (N_all > N or "resnet" in model_name) else np.stack(manifolds).reshape(K,P,N_all) 
                     manifolds_all.append(manifolds)
                     counter += 1
                     print('Batch manifolds complete!')   
@@ -278,7 +347,7 @@ def snr_components(model_name, pretrained):
                 print('Output computed')
                 N_all = output.shape[-1]
                 print(N_all)
-                if N_all > N:
+                if N_all > N or "resnet" in model_name:
                     O = torch.randn(N_all,N) / np.sqrt(N)   # Gaussin projection
                     #O = torch.Tensor(levy_stable.rvs(alpha, 0, size=(N_all,N), scale=(0.5/N)**(1./alpha)))
                     O = O.to(dev)       
@@ -290,17 +359,18 @@ def snr_components(model_name, pretrained):
                     with torch.no_grad():
                         output = backbone(input_tensor.to(dev))
 
-                    if N_all > N:
+                    if N_all > N or "resnet" in model_name:
                         manifolds.append((output@O).cpu().numpy())
                     else:
-                        manifolds.append(O.cpu().numpy())
+                        manifolds.append(output.cpu().numpy())
 
-                manifolds = np.stack(manifolds).reshape(K,P,N) if N_all > N else np.stack(manifolds).reshape(K,P,N_all)
+                #manifolds = np.stack(manifolds).reshape(K,P,N)
+                manifolds = np.stack(manifolds).reshape(K,P,N) if (N_all > N or "resnet" in model_name) else np.stack(manifolds).reshape(K,P,N_all)
                 manifolds_all.append(manifolds)
                 counter += 1
                 print('Batch manifolds complete!')
 
-        np.save(os.path.join(emb_path, f'manifolds_layerwise.npy'), manifolds_all)
+        np.save(join(emb_path, f'manifolds_layerwise.npy'), manifolds_all)
         #manifolds_all_load = manifolds_all
         print("manifolds_layerwise.npy saved!")
 
@@ -326,34 +396,34 @@ def snr_components(model_name, pretrained):
 
         Ds = np.sum(Rs**2,axis=-1)**2 / np.sum(Rs**4, axis=-1)
 
+        # ----- Overlaps -----
+        # Subspace-subspace
+        ss = []
         # Center-subspace
         csa = []
         csb = []
+
         for a in range(K):
             for b in range(K):
                 if a!=b:
+                    # Center-subspace
                     dx0 = centers[a] - centers[b]
                     dx0hat = dx0 / np.linalg.norm(dx0)
                     costheta_a = Us[a]@dx0hat
                     csa.append((costheta_a**2 * Rs[a]**2).sum() / (Rs[a]**2).sum())
                     costheta_b = Us[b]@dx0hat
                     csb.append((costheta_b**2 * Rs[b]**2).sum() / (Rs[a]**2).sum())
-                else:
-                    csa.append(np.nan)
-                    csb.append(np.nan)
-        csa = np.stack(csa).reshape(K,K)
-        csb = np.stack(csb).reshape(K,K)
 
-        # Subspace-subspace
-        ss = []
-        for a in range(K):
-            for b in range(K):
-                if a!=b:
+                    # Subspace-subspace
                     cosphi = Us[a]@Us[b].T
                     ss_overlap = (cosphi**2*Rs[a][:,None]**2*Rs[b]**2).sum() / (Rs[a]**2).sum()**2
                     ss.append(ss_overlap)
                 else:
+                    csa.append(np.nan)
+                    csb.append(np.nan)
                     ss.append(np.nan)
+        csa = np.stack(csa).reshape(K,K)
+        csb = np.stack(csb).reshape(K,K)
         ss = np.stack(ss).reshape(K,K)
 
         css = (csa + csb/m) * dist_norm**2
@@ -451,8 +521,10 @@ def snr_components(model_name, pretrained):
     # save manifolds_all dimension
     np.save( join(emb_path, "manifold_dim.npy"), np.array([len(manifolds_all), len(manifolds), manifold.shape[0], manifold.shape[1]]) )
 
+
 # get d2 from minibatch
-def snr_d2_mbatch(model_name, pretrained, n_top=100):
+# def snr_d2_mbatch(model_name, pretrained, n_top=100):
+def snr_d2_mbatch(model_name, pretrained, n_top=50):
 
     import numpy.linalg as LA
     import scipy
@@ -482,7 +554,7 @@ def snr_d2_mbatch(model_name, pretrained, n_top=100):
     else:
         print(f"Total number of modules: { len(list(model.children())) }")
 
-        batch_size = 100
+        batch_size = n_top
         N_images = len(imnames)
 
         counter = 0
@@ -575,104 +647,6 @@ def snr_d2_mbatch(model_name, pretrained, n_top=100):
         np.save(join(emb_path,f'd2smb_n_top={n_top}_layerwise.npy'), d2smb_all)   # fullbatch
         np.save(join(emb_path,f'Rsmb_n_top={n_top}_layerwise.npy'), Rsmb_all)   # fullbatch
 
-# delete later, this is because I messed up
-def snr_rsmb_mbatch(model_name, pretrained, n_top=100):
-
-    import numpy.linalg as LA
-    import scipy
-    from scipy.stats import levy_stable
-    from sklearn.decomposition import PCA
-
-    pretrained = literal_eval(pretrained) if isinstance(pretrained,str) else pretrained
-    n_top = int(n_top)
-
-    print(f"Setting up path for {model_name}.")        
-    emb_path = join(root_data, "macaque_stimuli", model_name, "pretrained") if pretrained else join(root_data, "macaque_stimuli", model_name, "untrained")
-    if not os.path.isdir(emb_path): os.makedirs(emb_path)
-
-    print("Loading model weights!")
-    model = load_model(model_name, pretrained)        
-
-    # -------------------
-
-    print(f"Total number of modules: { len(list(model.children())) }")
-
-    batch_size = 100
-    N_images = len(imnames)
-
-    counter = 0
-    d2smb_all = []    # only compute D_2's
-    Rsmb_all = []   # the corresponding singularvalues (from large to small)
-    # load full-batch input data
-    input_fbatch = get_full_batch()
-    for module_idx in tqdm(range(len(list(model.children())))):
-        try:
-            len_module = len(list(model.children())[module_idx])
-            for layer_idx in range(len_module):
-
-                print('Computing embeddings module '+str(module_idx)+', layer '+str(layer_idx) )
-
-                backbone = Backbone(model, module_idx, layer_idx).to(dev)
-                backbone.eval()
-
-                Rs = []
-                for i in tqdm(range(N_images//batch_size)):
-                    input_tensor = get_batch(i,batch_size)
-                    with torch.no_grad():
-                        output = backbone(input_tensor.to(dev))      
-                    output -= output.mean(0)                    
-                    output = output.detach().numpy()
-
-                    # scklearn PCA
-                    pca = PCA(n_top)
-                    pca.fit(output)  # fit to data
-                    Rn = pca.explained_variance_
-
-                    Rs.append(Rn)
-
-                Rs = np.stack(Rs)
-                Rsmb_all.append(Rs)
-
-                del backbone
-                counter += 1    
-                #print(f"try {counter}")
-        
-        except:
-            layer_idx = 0
-            print('Computing embeddings module '+str(module_idx)+', layer '+str(layer_idx) )
-            layer = 'layer_' + str(module_idx) + '_' + str(layer_idx)
-            
-            if "backbone" in locals():
-                del backbone
-            backbone = Backbone(model, module_idx).to(dev)
-            backbone.eval()
-
-            Rs = []
-            for i in tqdm(range(N_images//batch_size)):
-                input_tensor = get_batch(i,batch_size)
-                with torch.no_grad():
-                    output = backbone(input_tensor.to(dev))      
-                output -= output.mean(0)                    
-                output = output.detach().numpy()
-
-                # scklearn PCA
-                pca = PCA(n_top)
-                pca.fit(output)  # fit to data
-                Rn = pca.explained_variance_
-
-                Rs.append(Rn)
-
-            Rs = np.stack(Rs)
-            Rsmb_all.append(Rs)
-
-            del backbone
-            counter += 1
-            #print(f"except {counter}")
-            
-    print(f"Rsmb computation complete for {counter} layers!")
-
-    Rsmb_all = np.stack(Rsmb_all)
-    np.save(join(emb_path,f'Rsmb_n_top={n_top}_layerwise.npy'), Rsmb_all)   # minibatch
 
 # get d2 from full batch, analysis for top n_top PCs
 """
@@ -950,8 +924,6 @@ def snr_submit(*args):
 
     # get all appropriate networks
     """
-    #nets_with_backbone = ["resnet", "resnext", "vgg", "alexnet", "squeeze", "efficient"]
-    nets_with_backbone = ["resnet", "resnext", "alexnet", "squeeze", "efficient"]
     net_names = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv"))    # locally available pretrained nets
     models = []
     for model_name in net_names.loc[:, "model_name"]:
@@ -962,37 +934,29 @@ def snr_submit(*args):
         if matches > 0:
             models.append(model_name)
     """
-    # small models
-    #models = ["alexnet", "resnet18"]
-    #models = ["resnet18"]
 
-    # medium models
+    # simulation guide
     """
-    models = ["alexnet", "resnet18", "resnet34", "resnet50", 
-              "resnext50_32x4d",
-              "squeezenet1_0", "squeezenet1_1",
-              "wide_resnet50_2"]
-    """
-
-    # large models
-    # 
-    #models = ["squeezenet1_0"]
-    #models = ["resnet18", "resnext50_32x4d"]
-    """
-    models = ["resnet101", 
-              "resnext101_32x8d", 
-              "wide_resnet101_2"]
+    - SNR
+		- level 1: "alexnet" (12GB)
+		- level 2: "resnet18", "resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_1", "wide_resnet50_2" (24GB)
+		- level 3: "squeezenet1_0", "resnet101", "resnet152",  "resnext101_32x8d",  "wide_resnet101_2" (32GB)
+	- d2
+		- level 1: "alexnet", "resnet18" (8GB)
+		- level 2: "resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_0", "squeezenet1_1", "wide_resnet50_2" (16GB)
+        - level 3: "resnet101", "resnet152",  "resnext101_32x8d",  "wide_resnet101_2" (32GB)
     """
 
-    # all models
-    models = ["alexnet", 
-              "resnet18", "resnet34", "resnet50", "resnet101", "resnet152", 
-              "resnext50_32x4d", "resnext101_32x8d", 
-              "squeezenet1_0", "squeezenet1_1",
-              "wide_resnet50_2","wide_resnet101_2"]
+
+    # SNR
+    #models = ["resnet152"]
+    models = ["squeezenet1_0"]
+
+    # d2
+    #models = ["resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_0", "squeezenet1_1", "wide_resnet50_2"]
+
     
     pretrained_ls = [True, False]
-    #pretrained_ls = [True]
     pbs_array_data = [(model_name, pretrained)
                       for model_name in models
                       for pretrained in pretrained_ls
@@ -1008,18 +972,19 @@ def snr_submit(*args):
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data, "macaque_stimuli"),
+             path=join(root_data, "macaque_stimuli/new_snr"),
+             #path=join(root_data, "macaque_stimuli"),
              #path=join(root_data, "macaque_stimuli", "pure_rsmb"),
              P=project_ls[pidx],
              #ngpus=1,
              ncpus=1,
              #walltime='47:59:59',
              walltime='23:59:59',   # small/medium
-             #mem='32GB')
+             mem='32GB')
              #mem='24GB')
              #mem='20GB')
              #mem='16GB')
-             mem='8GB')
+             #mem='12GB')
              #mem='8GB') 
 
 # ---------------------- Plotting ----------------------
@@ -1032,6 +997,7 @@ def load_dict():
                    "css"        : "css_layerwise",         
                    "bias"       : "biases_layerwise",
                    "R"          : "Rsmb_n_top=100_layerwise"
+                   #"R"          : "Rsmb_n_top=50_layerwise"
                    }
 
     name_dict = {"SNR"        : "SNR",
@@ -1057,6 +1023,7 @@ def load_raw_metric(model_name, pretrained:bool, metric_name, **kwargs):
     if "d2" in metric_name:
         dq_ls = metric_name.split("_") if "d2" in metric_name else []
         dq_filename = f"d2smb_n_top=100_layerwise" if len(dq_ls) > 0 else None
+        #dq_filename = f"d2smb_n_top=50_layerwise" if len(dq_ls) > 0 else None
         metric_dict[metric_name] = dq_filename
 
     # model path
@@ -1080,7 +1047,7 @@ def load_raw_metric(model_name, pretrained:bool, metric_name, **kwargs):
 
     return metric_data
 
-# load raw metrics from network
+# load processed metrics from network
 def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
     
     pretrained = literal_eval(pretrained) if isinstance(pretrained,str) else pretrained
@@ -1095,6 +1062,9 @@ def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
     #if "d2_" not in metric_name and metric_name != "R":
     if metric_name == "SNR" or metric_name == "error":
         metric_data = load_raw_metric(model_name, pretrained, metric_name, m=m)
+    # signal is dist_norm squared
+    elif metric_name == "dist_norm":
+        metric_data = load_raw_metric(model_name, pretrained, metric_name)**2
     #cumulative variance explained by n_top PCs
     elif metric_name == "R":
         metric_R = load_raw_metric(model_name, pretrained, metric_name)
@@ -1128,7 +1098,11 @@ def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
     else:
         metric_data = load_raw_metric(model_name, pretrained, metric_name)
 
-    return metric_data
+    if model_name == "alexnet":
+        conv_idxs = [0,3,6,8,10,15,16]
+        return metric_data[conv_idxs]
+    else:
+        return metric_data
 
 # transform model string name into formal name with capitals
 def transform_model_name(s):
@@ -1142,27 +1116,54 @@ def transform_model_name(s):
             result += letter
     return result
 
+# get CI for the SNR and associated geometrical metrics
+from scipy import stats
+def get_CI(y):
+    CImin,CImax = stats.t.interval(0.95, len(y),
+                     loc=y.mean(-1), scale=stats.sem(y,axis=-1))
+    return CImin, CImax
+
+
+# general plot settings
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcl
+import pubplot as ppt
+from scipy.stats import norm
+
+tick_size = 18.5 * 0.8
+label_size = 18.5 * 0.8
+title_size = 18.5
+axis_size = 18.5 * 0.8
+legend_size = 14.1 * 0.8
+# arrow head
+prop = dict(arrowstyle="-|>,head_width=0.4,head_length=0.8",lw=2.0,
+            shrinkA=0,shrinkB=0)
+markers = ["o", "s", "v", "p", "*", "P", "H", "D", "d", "+", "x"]
+lstyle_ls = ["-", "--"]
+transparency_grid = 0.3
+lstyle_grid = "--"
+
+def get_model_names(main):
+    if not main:
+        model_names = ["squeezenet1_1","wide_resnet101_2"]
+        #model_names = ["resnet34", "wide_resnet101_2"]
+        #model_names = ["alexnet", "resnet50"]
+        #model_names = ['squeezenet1_1']
+        #model_names = ['resnet34']
+        #model_names = ['resnet50']
+        #model_names = ["squeezenet1_1"]
+        #model_names = ["resnext50_32x4d"]
+    else:
+        model_names = ["alexnet", "resnet101"]
+        #model_names = ["alexnet"]
+    return model_names
+
 # Main text plot (minibatch d2 version)
-def snr_metric_plot_1(metric_names="d2_avg,D,SNR,error", main=False, log=False, n_top=100):
-    import matplotlib.pyplot as plt
-    import matplotlib.colors as mcl
-    import pubplot as ppt
-    from scipy.stats import norm
+def snr_metric_plot(main=True, n_top=100):
+    metric_names="d2_avg,D,SNR,error"
 
-    # plot settings
+    # color
     c_ls = list(mcl.TABLEAU_COLORS.keys())
-    tick_size = 18.5 * 0.8
-    label_size = 18.5 * 0.8
-    title_size = 18.5
-    axis_size = 18.5 * 0.8
-    legend_size = 14.1 * 0.8
-    # arrow head
-    prop = dict(arrowstyle="-|>,head_width=0.4,head_length=0.8",
-                shrinkA=0,shrinkB=0)
-
-    global dq_data, dq_name, metric_dict, name_dict
-    global metric_data_all, metric_og, metric_name, var_percentage, metric_R, metric_D
-    global metric_data
 
     """
     Fig 1:
@@ -1174,13 +1175,10 @@ def snr_metric_plot_1(metric_names="d2_avg,D,SNR,error", main=False, log=False, 
     """
 
     main = literal_eval(main) if isinstance(main, str) else main
-    log = literal_eval(log) if isinstance(log, str) else log
     n_top = int(n_top)
 
     # Plot settings
     fig_size = (11/2*3,7.142+2) # 2 by 3
-    markers = ["o", "s", "v", "p", "*", "P", "H", "D", "d", "+", "x"]
-    transparency, lstyle = 0.4, "--"
 
     # load dict
     metric_dict, name_dict = load_dict()
@@ -1201,20 +1199,14 @@ def snr_metric_plot_1(metric_names="d2_avg,D,SNR,error", main=False, log=False, 
     # get available networks
     #all_models = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv")).loc[:,"model_name"]
 
-    if not main:
-        model_names = ["squeezenet1_1","wide_resnet101_2"]
-        #model_names = ["resnet50"]
-
-    else:
-        model_names = ["alexnet", "resnet101"]
+    model_names = get_model_names(main)
 
     # transparency list
     trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
 
     # need to demonstrate for pretrained and random DNNs
-    pretrained_ls = [True, False]
-    #pretrained_ls = [False]
-    lstyle_ls = ["-", "--"]
+    pretrained_ls = [False, True]
+    #pretrained_ls = [True]
 
     # m-shot learning 
     #ms = np.arange(1,11)
@@ -1237,7 +1229,8 @@ def snr_metric_plot_1(metric_names="d2_avg,D,SNR,error", main=False, log=False, 
             model_name = model_names[nidx]
 
             # fractional layer
-            total_layers = load_raw_metric(model_name, pretrained, "d2").shape[0]
+            #total_layers = load_raw_metric(model_name, pretrained, "d2").shape[0]
+            total_layers = load_processed_metric(model_name, pretrained, "dist_norm").shape[0]
             frac_layers = np.arange(0,total_layers)/(total_layers-1)
             # only scatter plot the selected layers (can modify)
             selected_layers = np.where(frac_layers >= 0)
@@ -1267,13 +1260,18 @@ def snr_metric_plot_1(metric_names="d2_avg,D,SNR,error", main=False, log=False, 
                 if metric_data.ndim == 2:
                     metric_data_mean = np.ma.masked_invalid(metric_data).mean(-1)
                     metric_data_std = np.ma.masked_invalid(metric_data).std(-1)
-                else:
+                    lower, upper = get_CI(metric_data)
+                elif metric_data.ndim == 3:
                     metric_data_mean = np.ma.masked_invalid(metric_data).mean((1,2))
                     metric_data_std = np.ma.masked_invalid(metric_data).std((1,2))
+                    lower, upper = get_CI(metric_data.reshape(-1, np.prod(metric_data.shape[1:])))
+                    
+                #print(metric_data.shape)
                 axs[metric_idx].plot(frac_layers, metric_data_mean, 
                                      c=color, alpha=trans_ls[nidx], marker=markers[nidx], linestyle=lstyle)
-                #axs[metric_idx].fill_between(frac_layers, metric_data_mean - metric_data_std, metric_data_mean + metric_data_std, 
-                #                     color=color, alpha=trans_ls[nidx] - 0.2)
+                # 95% CI
+                axs[metric_idx].fill_between(frac_layers, lower, upper, 
+                                     color=color, alpha=0.2)
 
             # --------------- Plot 2 (lower) ---------------
 
@@ -1285,35 +1283,27 @@ def snr_metric_plot_1(metric_names="d2_avg,D,SNR,error", main=False, log=False, 
                 metric_data_y = load_processed_metric(model_name, pretrained, metric_name_y, m=m, n_top=n_top)
                 # centers of error
                 error_centers[midx,nidx,pretrained_idx] = np.nanmean(metric_data_y[deep_layers,:,:].flatten())
-
-                if log:
-                    metric_data_y = np.log(metric_data_y)
                 metric_data_y = np.nanmean(metric_data_y, (1,2)) 
-
                 color = c_ls[metric_names.index(metric_name_y)] if pretrained else "gray"
-                #print(np.nanmean(locals()['metric3_data'],(1,2))[deep_layers].shape)    # delete
 
-                axis.scatter(d2_data[selected_layers].mean(-1), metric_data_y[selected_layers], 
+                # plots all layers
+                axis.scatter(d2_data.mean(-1)[selected_layers], metric_data_y[selected_layers], 
                                     c=color, marker=markers[nidx], alpha=trans_ls[nidx])
+                # plots deep layers
+                #axis.scatter(d2_data.mean(-1)[deep_layers], metric_data_y[deep_layers], 
+                #                    c='k', marker='x', alpha=trans_ls[nidx])
 
                 if pretrained_idx == len(pretrained_ls) - 1:
                     # plot centered arrows
                     color_arrow = c_ls[metric_names.index(metric_name_y)]
-                    if not log:
-                        error_center = error_centers[midx,nidx,1]
-                        error_delta = error_centers[midx,nidx,0] - error_centers[midx,nidx,1]
-                    else:
-                        error_center = np.log(error_centers[midx,nidx,1])
-                        error_delta = np.log(error_centers[midx,nidx,0]) - np.log(error_centers[midx,nidx,1])
-                    d2_center = d2_centers[nidx,1]
-                    d2_delta = d2_centers[nidx,0] - d2_centers[nidx,1]
-                    # arrow head
-                    prop = dict(arrowstyle="-|>,head_width=0.4,head_length=0.8",lw=2.0,
-                                shrinkA=0,shrinkB=0,
-                                color=color_arrow,alpha=trans_ls[nidx])
 
-                    error_y = np.log(error_centers[midx,nidx,0]) if log else error_centers[midx,nidx,0]
-                    axis.annotate("", xy=(d2_centers[nidx,0],error_y), xytext=(d2_center,error_center), arrowprops=prop)
+                    error_center = error_centers[midx,nidx,0]
+                    d2_center = d2_centers[nidx,0]
+                    # arrow head
+                    prop['color'] = color_arrow; prop['alpha'] = trans_ls[nidx]
+
+                    error_y = error_centers[midx,nidx,1]
+                    axis.annotate("", xy=(d2_centers[nidx,1],error_y), xytext=(d2_center,error_center), arrowprops=prop)
 
                     # axis labels
                     #axs[midx+2].set_title(name_dict[metric_name_y] + rf" ($m$ = {m})", fontsize=title_size)
@@ -1329,19 +1319,21 @@ def snr_metric_plot_1(metric_names="d2_avg,D,SNR,error", main=False, log=False, 
     for ax_idx, ax in enumerate(axs):        
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.grid(alpha=transparency,linestyle=lstyle)
+        ax.grid(alpha=transparency_grid,linestyle=lstyle_grid)
         if ax_idx < len(metric_names):
             ax.set_xlabel("Fractional depth", fontsize=label_size)
             ax.set_ylabel(name_dict[metric_names[ax_idx]], fontsize=label_size)
             #ax.set_title(name_dict[metric_names[ax_idx]], fontsize=title_size)
 
-        if ax_idx >= 0:
-            ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
+        # scientific notation
+        #if ax_idx >= 0:
+        #    ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
         # ticklabel size
         ax.xaxis.set_tick_params(labelsize=label_size)
         ax.yaxis.set_tick_params(labelsize=label_size)
 
-    # scatter plot arrows
+        #if ax_idx in [4,5]:
+        #    ax.set_xscale('log')
 
     # legends
     for nidx, model_name in enumerate(model_names):
@@ -1360,10 +1352,8 @@ def snr_metric_plot_1(metric_names="d2_avg,D,SNR,error", main=False, log=False, 
         axs[0].set_ylim((0.7,0.95))
     else:
         axs[0].set_ylim((0.6,1))
-    axs[0].legend(frameon=False, ncol=2, loc="upper center", 
-                  bbox_to_anchor=(0.5, 1.2), fontsize=legend_size)
-    #ax2.set_yscale('log')
-    axs[1].ticklabel_format(style="sci", scilimits=(0,1), axis="y" )
+    axs[0].legend(frameon=False, ncol=2, loc="upper left", 
+                  bbox_to_anchor=(-0.05, 1.2), fontsize=legend_size)
 
     # adjust vertical space
     plt.subplots_adjust(hspace=0.4)
@@ -1377,22 +1367,14 @@ def snr_metric_plot_1(metric_names="d2_avg,D,SNR,error", main=False, log=False, 
     fig_name = f"pretrained_m={m_featured}_metric_{net_cat}.pdf"
     print(f"Saved as {join(fig_path, fig_name)}")
     plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
-    #plt.show()
 
-# Appendix plot for other metrics corresponding to SNR
-# creates two plots
-def extra_metric_plot(metric_names="dist_norm,bias,css,d2_avg", main=False, log=True, n_top=100):
-    import matplotlib.pyplot as plt
-    import matplotlib.colors as mcl
-    import pubplot as ppt
+
+# Appendix plot for other metrics corresponding to SNR, i.e. signal (dist_norm), bias, signal-to-noise overlap (css)
+def extra_metric_plot(main=True, n_top=100):
+    metric_names="dist_norm,bias,css,d2_avg"
 
     # plot settings
     c_ls = list(mcl.TABLEAU_COLORS.keys())[4:]
-    tick_size = 18.5 * 0.8
-    label_size = 18.5 * 0.8
-    title_size = 18.5
-    axis_size = 18.5 * 0.8
-    legend_size = 14.1 * 0.8
 
     """
 
@@ -1410,30 +1392,17 @@ def extra_metric_plot(metric_names="dist_norm,bias,css,d2_avg", main=False, log=
     fig_size = (11/2*3,7.142+2)
 
     main = literal_eval(main) if isinstance(main, str) else main
-    log = literal_eval(log) if isinstance(log, str) else log
-
-    # Plot settings
-    markers = ["o", "s", "v", "p", "*", "P", "H", "D", "d", "+", "x"]
-    transparency, lstyle = 0.4, "--"
     
     # load dict
     metric_dict, name_dict = load_dict()
-
-    # get available networks
-    all_models = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv")).loc[:,"model_name"]
  
-    if main:
-        model_names = ["alexnet", "resnet101"]
-    else:
-        model_names = ["squeezenet1_1", "wide_resnet101_2"]
-        #model_names = ["resnet50"]
-
+    # model names
+    model_names = get_model_names(main)
     # transparency list
     trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
 
     # need to demonstrate for pretrained and random DNNs
-    pretrained_ls = [True, False]
-    lstyle_ls = ["-", "--"]
+    pretrained_ls = [False, True]
 
     # m-shot learning 
     ms = [5]
@@ -1453,7 +1422,7 @@ def extra_metric_plot(metric_names="dist_norm,bias,css,d2_avg", main=False, log=
                 metric_data_all = {}
                 model_name = model_names[nidx]
                 # fractional layer
-                total_layers = load_raw_metric(model_name, pretrained, "d2").shape[0]
+                total_layers = load_processed_metric(model_name, pretrained, "dist_norm").shape[0]
                 frac_layers = np.arange(0,total_layers)/(total_layers-1)
                 # only scatter plot the selected layers (can modify)
                 selected_layers = np.where(frac_layers >= 0)
@@ -1477,14 +1446,23 @@ def extra_metric_plot(metric_names="dist_norm,bias,css,d2_avg", main=False, log=
                     metric_data = metric_data_all[metric_name]
                     if metric_data.ndim == 2:
                         metric_data_mean = np.ma.masked_invalid(metric_data).mean(-1)
+                        lower, upper = get_CI(metric_data)
                     else:
                         metric_data_mean = np.ma.masked_invalid(metric_data).mean((1,2))
+                        lower, upper = get_CI(metric_data.reshape(-1, np.prod(metric_data.shape[1:])))
                     axs[metric_idx].plot(frac_layers, metric_data_mean, 
                                          c=color, alpha=trans_ls[nidx], marker=markers[nidx], linestyle=lstyle)
+                    # 95% CI
+                    axs[metric_idx].fill_between(frac_layers, lower, upper, 
+                                         color=color, alpha=0.2)
 
                     # --------------- Plot 2 ---------------
-                    axs[metric_idx+3].scatter(d2_data[selected_layers].mean(-1), metric_data_mean[selected_layers], 
+                    # all layers
+                    axs[metric_idx+3].scatter(d2_data.mean(-1)[selected_layers], metric_data_mean[selected_layers], 
                                         c=color, marker=markers[nidx], alpha=trans_ls[nidx])
+                    # deep layers
+                    #axs[metric_idx+3].scatter(d2_data.mean(-1)[deep_layers], metric_data_mean[deep_layers], 
+                    #                    c='k', marker='x', alpha=trans_ls[nidx])
 
         
         for ax_idx, ax in enumerate(axs):
@@ -1497,15 +1475,17 @@ def extra_metric_plot(metric_names="dist_norm,bias,css,d2_avg", main=False, log=
             else:
                 ax.set_xlabel(r"$D_2$")
                 ax.set_ylabel(name_dict[metric_names[ax_idx-3]],fontsize=label_size)
-            if ax_idx > 0:
-                ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
+            #if ax_idx > 0:
+            #    ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
             # make space for legend
-            if ax_idx == 0:
-                ax.set_ylim(0.17,0.242)
+            #if ax_idx == 0:
+            #    ax.set_ylim(0.17,0.242)
             # setting the bias and signal-noise-overlap to log scale
-            if ax_idx in [1,2,4,5]: 
-                ax.set_yscale('log')
-            ax.grid(alpha=transparency,linestyle=lstyle)
+            #if ax_idx in [1,2,4,5]: 
+            #    ax.set_yscale('log')
+            #if ax_idx in [3,4,5]: 
+            #    ax.set_xscale('log')
+            ax.grid(alpha=transparency_grid,linestyle=lstyle_grid)
 
         # legends
         for nidx, model_name in enumerate(model_names):
@@ -1520,7 +1500,7 @@ def extra_metric_plot(metric_names="dist_norm,bias,css,d2_avg", main=False, log=
             label = pretrained_str
             axs[0].plot([],[],c="gray", linestyle=lstyle, label=label)
 
-        axs[0].legend(frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.2),
+        axs[0].legend(frameon=False, ncol=2, loc="upper left", bbox_to_anchor=(-0.05, 1.2),
                       fontsize=legend_size)
         #ax2.set_yscale('log')
         #ax2.ticklabel_format(style="sci", scilimits=(0,1), axis="y" )
@@ -1539,24 +1519,13 @@ def extra_metric_plot(metric_names="dist_norm,bias,css,d2_avg", main=False, log=
         plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
 
 
-# Appendix plot for other networks (minibatch d2 version)
-def snr_metric_plot_2(*args, small=False, log=True, n_top = 100):
-    import matplotlib.pyplot as plt
-    import matplotlib.colors as mcl
-    import pubplot as ppt
-    c_ls = list(mcl.TABLEAU_COLORS.keys())
-    tick_size = 18.5 * 0.8
-    label_size = 18.5 * 0.8
-    title_size = 18.5
-    axis_size = 18.5 * 0.8
-    legend_size = 14.1 * 0.8
-    # arrow head
-    prop = dict(arrowstyle="-|>,head_width=0.4,head_length=0.8",
-                shrinkA=0,shrinkB=0)
+def snr_delta_plot(main=True, n_top=100):
+    metric_names="d2_avg,D,SNR,error"
 
-    global dq_data, dq_name, metric_dict, name_dict
-    global metric_data_all, metric_og, metric_name, var_percentage, metric_names, metric_R, metric_D
-    global d2_data
+
+    global metric_data_all
+    # plot settings
+    c_ls = list(mcl.TABLEAU_COLORS.keys())
 
     """
     Fig 1:
@@ -1564,22 +1533,24 @@ def snr_metric_plot_2(*args, small=False, log=True, n_top = 100):
     for dq, the pc_idx PC needs to be selected
 
     Fig 2:
-    Plots the a selected metric2 (based on metric_dict) vs layer and a scatter plot between SNR and D_2
+    Plots the scatter plot between error and D_2
     """
 
-    small = literal_eval(small) if isinstance(small, str) else small
-    log = literal_eval(log) if isinstance(log, str) else log
+    main = literal_eval(main) if isinstance(main, str) else main
     n_top = int(n_top)
 
     # Plot settings
     fig_size = (11/2*3,7.142+2) # 2 by 3
-    markers = ["o", "s", "v", "p", "*", "P", "H", "D", "d", "+", "x"]
-    transparency, lstyle = 0.4, "--"
 
     # load dict
     metric_dict, name_dict = load_dict()
 
-    metric_names = [metric_name for metric_name in args]
+    if ',' in metric_names:  # publication figure
+        metric_names = metric_names.split(',')
+    else:
+        metric_names = [metric_names]
+
+    assert len(metric_names) == 4, f"There can only be 4 metrics, you have {len(metric_names)}!"
     print(f"metric list: {metric_names}")
     for metric_name in metric_names:
         if "d2_" in metric_name:
@@ -1587,214 +1558,289 @@ def snr_metric_plot_2(*args, small=False, log=True, n_top = 100):
                 pc_idx = int(metric_name.split("_")[1])
             name_dict[metric_name] = r'$D_2$' 
 
-    # get available networks
-    #all_models = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv")).loc[:,"model_name"]
+    # model names
+    model_names = get_model_names(main)
+    # transparency list
+    trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
+    # need to demonstrate for pretrained and random DNNs
+    pretrained_ls = [False, True]
+    #pretrained_ls = [True]
 
-    if small:
-        # small models
-        """
-        model_names = ["alexnet", 
-                  "resnet18", "resnet34", "resnet50",
-                  "resnext50_32x4d",
-                  "wide_resnet50_2"]
-        """
-        model_names = ["alexnet","resnet152"]
+    # m-shot learning 
+    m_featured = 5
+    ms = [m_featured,np.inf]
 
+    d2_centers = np.zeros([len(model_names), len(pretrained_ls)])
+    error_centers = np.zeros([len(ms), len(model_names), len(pretrained_ls)])
+
+    plt.rc('font', **ppt.pub_font)
+    plt.rcParams.update(ppt.plot_sizes(False))
+    fig, axs = plt.subplots(2, 3,sharex = False,sharey=False,figsize=fig_size)
+    axs = axs.flat
+
+    for nidx in range(len(model_names)):
+        model_name = model_names[nidx]
+        metric_data_all = [{}, {}]
+        for pretrained_idx, pretrained in enumerate(pretrained_ls):
+            pretrained_str = "pretrained" if pretrained else "untrained"
+            lstyle = lstyle_ls[0] if pretrained else lstyle_ls[1]
+
+            # fractional layer
+            total_layers = load_processed_metric(model_name, pretrained, "dist_norm").shape[0]
+            frac_layers = np.arange(0,total_layers)/(total_layers-1)
+            # only scatter plot the selected layers (can modify)
+            selected_layers = np.where(frac_layers >= 0)
+            # for the error/SNR and D_2 centers
+            deep_layers = np.where(frac_layers >= 0.8)
+
+            # --------------- Plot 1 (upper) ---------------
+
+            # load all data
+            for metric_idx, metric_name in enumerate(metric_names):
+                metric_data = load_processed_metric(model_name, pretrained, metric_name, m=m_featured, n_top=n_top)
+                metric_data_all[pretrained_idx][metric_name] = metric_data
+                if "d2_" in metric_name:
+                    d2_data = metric_data
+                    # centers of D_2
+                    d2_centers[nidx,pretrained_idx] = np.nanmean(d2_data[deep_layers,:].flatten())
+                if metric_name == "error":
+                    name_dict[metric_name] = rf"{m_featured}-shot error"
+                if metric_name == "SNR":
+                    name_dict[metric_name] = rf"SNR ({m_featured}-shot)"   
+
+            for metric_idx, metric_name in enumerate(metric_names):
+                color = c_ls[metric_idx] if pretrained else "gray"
+
+                metric_data = metric_data_all[pretrained_idx][metric_name]
+                # get mean and std of metric
+                if metric_data.ndim == 2:
+                    metric_data_mean = np.ma.masked_invalid(metric_data).mean(-1)
+                    metric_data_std = np.ma.masked_invalid(metric_data).std(-1)
+                    lower, upper = get_CI(metric_data)
+                elif metric_data.ndim == 3:
+                    metric_data_mean = np.ma.masked_invalid(metric_data).mean((1,2))
+                    metric_data_std = np.ma.masked_invalid(metric_data).std((1,2))
+                    lower, upper = get_CI(metric_data.reshape(-1, np.prod(metric_data.shape[1:])))
+                    
+                #print(metric_data.shape)
+                axs[metric_idx].plot(frac_layers, metric_data_mean, 
+                                     c=color, alpha=trans_ls[nidx], marker=markers[nidx], linestyle=lstyle)
+                # 95% CI
+                axs[metric_idx].fill_between(frac_layers, lower, upper, 
+                                     color=color, alpha=0.2)
+
+            # --------------- Plot 2 (lower) ---------------
+
+            # scatter plot
+            metric_name_y = "error"
+            for midx, m in enumerate(ms):
+                if pretrained_idx == len(pretrained_ls) - 1:
+                    axis = axs[midx+4]                
+
+                    metric_data_y = load_processed_metric(model_name, pretrained, metric_name_y, m=m, n_top=n_top)
+                    # centers of error
+                    error_centers[midx,nidx,pretrained_idx] = np.nanmean(metric_data_y[deep_layers,:,:].flatten())
+                    metric_data_y = np.nanmean(metric_data_y, (1,2)) 
+                    color = c_ls[metric_names.index(metric_name_y)] if pretrained else "gray"
+
+                    d2_delta = metric_data_all[1]["d2_avg"].mean(-1) - metric_data_all[0]["d2_avg"].mean(-1)
+                    # plots all layers
+                    axis.scatter(d2_delta[selected_layers], metric_data_y[selected_layers], 
+                                 c=color, marker=markers[nidx], alpha=trans_ls[nidx])
+
+                    # axis labels
+                    axis.set_xlabel(r"$\Delta D_2$", fontsize=label_size)
+                    if m == np.inf:
+                        axis.set_ylabel(rf"$\infty$-shot error", fontsize=label_size)
+                    else:
+                        axis.set_ylabel(rf"{m}-shot error", fontsize=label_size)
+
+    print(f"{model_name} plotted!")
+
+    # --------------- Plot settings ---------------
+    for ax_idx, ax in enumerate(axs):        
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.grid(alpha=transparency_grid,linestyle=lstyle_grid)
+        if ax_idx < len(metric_names):
+            ax.set_xlabel("Fractional depth", fontsize=label_size)
+            ax.set_ylabel(name_dict[metric_names[ax_idx]], fontsize=label_size)
+            #ax.set_title(name_dict[metric_names[ax_idx]], fontsize=title_size)
+
+        # scientific notation
+        #if ax_idx >= 0:
+        #    ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
+        # ticklabel size
+        ax.xaxis.set_tick_params(labelsize=label_size)
+        ax.yaxis.set_tick_params(labelsize=label_size)
+
+        #if ax_idx in [4,5]:
+        #    ax.set_xscale('log')
+
+    # legends
+    for nidx, model_name in enumerate(model_names):
+        label = transform_model_name(model_name)
+        label = label.replace("n","N")
+        axs[0].plot([], [], c=c_ls[0], alpha=trans_ls[nidx], 
+                    marker=markers[nidx], linestyle = 'None', label=label)
+
+    for pretrained_idx, pretrained in enumerate(pretrained_ls):
+        pretrained_str = "pretrained" if pretrained else "untrained"
+        lstyle = lstyle_ls[0] if pretrained else lstyle_ls[1]
+        label = pretrained_str
+        axs[0].plot([],[],c="gray", linestyle=lstyle, label=label)
+
+    if main:
+        axs[0].set_ylim((0.7,0.95))
     else:
-        # large models
-        #model_names = ["resnet101", "resnet152", 
-        #               "resnext101_32x8d",
-        #               "squeezenet1_0", "squeezenet1_1", 
-        #               "wide_resnet101_2"]
-        #model_names = ["resnet34", "wide_resnet101_2"]
-        model_names = ["alexnet"]
+        axs[0].set_ylim((0.6,1))
+    axs[0].legend(frameon=False, ncol=2, loc="upper left", 
+                  bbox_to_anchor=(-0.05, 1.2), fontsize=legend_size)
+
+    # adjust vertical space
+    plt.subplots_adjust(hspace=0.4)
+
+    # --------------- Save figure ---------------
+    fig_path = join(root_data,"figure_ms/pretrained-fewshot-main") if main else join(root_data,"figure_ms/pretrained-fewshot-appendix")
+    if not os.path.isdir(fig_path): os.makedirs(fig_path)
+    net_cat = "_".join(model_names)
+    fig_name = f"pretrained_m={m_featured}_delta_{net_cat}.pdf"
+    print(f"Saved as {join(fig_path, fig_name)}")
+    plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
+
+
+# Appendix plot for other metrics corresponding to SNR, i.e. signal (dist_norm), bias, signal-to-noise overlap (css)
+def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100):
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcl
+    import pubplot as ppt
+
+    # plot settings
+    c_ls = list(mcl.TABLEAU_COLORS.keys())
+
+    if ',' in metric_names:  # publication figure
+        metric_names = metric_names.split(',')
+    else:
+        metric_names = [metric_names]
+    assert len(metric_names) == 7, f"There can only be 3 metrics, you have {len(metric_names)}!"
+    #fig_size = (11/2*len(metric_names),(7.142+2)/2) # 2 by 3
+    fig_size = (11/2*3,7.142+2)
+
+    # Plot settings
+    
+    # load dict
+    metric_dict, name_dict = load_dict()
+ 
+    # "resnet152"
+    model_names = ["alexnet",
+		           "resnet18", "resnet34", "resnet50", "resnet101",
+                   "resnext50_32x4d", "resnext101_32x8d",
+		           "squeezenet1_0", "squeezenet1_1",  
+                   "wide_resnet50_2", "wide_resnet101_2"]
+    #model_names = ["resnet18", "resnet34", "resnet50", "resnet101"]
 
     # transparency list
-    trans_ls = np.linspace(0,1,len(model_names)+2)[::-1]
+    trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
 
     # need to demonstrate for pretrained and random DNNs
-    pretrained_ls = [True, False]
-    #pretrained_ls = [False]
+    #pretrained_ls = [True, False]
+    pretrained_ls = [True]
     lstyle_ls = ["-", "--"]
 
     # m-shot learning 
-    #ms = np.arange(1,11)
-    ms = [1]
+    ms = [5]
 
-    d2_centers = np.zeros([len(model_names), len(pretrained_ls)])
-    SNR_centers = np.zeros([len(model_names), len(pretrained_ls)])
-    for midx, m in enumerate(tqdm(ms)):
+    for midx, m_featured in enumerate(tqdm(ms)):
         plt.rc('font', **ppt.pub_font)
         plt.rcParams.update(ppt.plot_sizes(False))
-        fig, axs = plt.subplots(2, 3,sharex = False,sharey=False,figsize=fig_size)
+        fig, axs = plt.subplots(2, 3,sharex=False,sharey=False,figsize=fig_size)
         axs = axs.flat
+
+        d2_centers = np.zeros([len(model_names), len(pretrained_ls)])
         for pretrained_idx, pretrained in enumerate(pretrained_ls):
             pretrained_str = "pretrained" if pretrained else "untrained"
             lstyle = lstyle_ls[0] if pretrained else lstyle_ls[1]
             for nidx in range(len(model_names)):
-                
+            
                 metric_data_all = {}
                 model_name = model_names[nidx]
-
                 # fractional layer
-                total_layers = load_metric(model_name, pretrained, "d2", m).shape[0]
+                total_layers = load_processed_metric(model_name, pretrained, "dist_norm").shape[0]
                 frac_layers = np.arange(0,total_layers)/(total_layers-1)
-                # only scatter plot the selecged layers (can modify)
+                # only scatter plot the selected layers (can modify)
                 selected_layers = np.where(frac_layers >= 0)
-                # for the SNR and D_2 centers
+                # for the phase centers
                 deep_layers = np.where(frac_layers >= 0.8)
-
-                # --------------- Plot 1 (upper) ---------------
 
                 # load all data
                 for metric_idx, metric_name in enumerate(metric_names):
-                    if "d2_" not in metric_name and metric_name != "R":
-                        metric_data_all[metric_name] = load_metric(model_name, pretrained, metric_name, m)
-                        # for plotting the shift in the SNR vs D_2 plot
-                        if metric_name == "SNR":
-                            SNR_centers[nidx,pretrained_idx] = np.nanmean(metric_data_all[metric_name][deep_layers,:,:].flatten())
-                    #cumulative variance explained by n_top PCs
-                    elif metric_name == "R":
-                        metric_R = load_metric(model_name, pretrained, metric_name, m)
-                        if "d2_avg" in metric_names:
-                            # (17, 32, 100)
-                            var_cum = metric_R[:,:,:n_top].cumsum(-1)/metric_R.sum(-1)[:,:,None]
-                        else:
-                            var_cum = metric_R[:,:,pc_idx]/metric_R.sum(-1)
-                        metric_data_all[metric_name] = var_cum                        
+                    metric_data = load_processed_metric(model_name, pretrained, metric_name, m=m_featured, n_top=n_top)
+                    metric_data_all[metric_name] = metric_data
+                    if "d2_" in metric_name:
+                        d2_data = metric_data
+                        # centers of D_2
+                        d2_centers[nidx,pretrained_idx] = np.nanmean(d2_data[deep_layers,:].flatten()) 
 
-                    # we are only interested in the correlation D_2 for the dqs as it reveals how localized the eigenvectors are     
-                    elif metric_name == "d2_avg":
-                        # D_2's
-                        metric_og = load_metric(model_name, pretrained, metric_name, m)
-                        # R's (eigenvalues/variance explained)     
-                        metric_R = load_metric(model_name, pretrained, "R", m)  
-                        metric_D = load_metric(model_name, pretrained, "D", m)  
-                        d2_data = np.zeros(metric_og[:,:,0].shape) 
-                        print(f"Total layers {d2_data.shape[0]}")
-                        for l in range(d2_data.shape[0]):  
-                            #n_top = round(np.nanmean(metric_D[l,:]))  
-                            n_top = round(np.ma.masked_invalid(metric_D[l:]).mean())               
-                            var_percentage = metric_R[l,:,:n_top]/metric_R[l,:,:n_top].sum(-1)[:,None]
-                            d2_data[l,:] = ( metric_og[l,:,:n_top] * var_percentage ).sum(-1)
-                        d2_name = metric_name
-                        metric_data_all[metric_name] = d2_data
-                        d2_centers[nidx,pretrained_idx] = np.nanmean(d2_data[deep_layers,:].flatten())
-                    else:
-                        metric_og = load_metric(model_name, pretrained, metric_name, m)   
-                        d2_data = metric_og[:,:,pc_idx]
-                        d2_name = metric_name
-                        metric_data_all[metric_name] = d2_data
-                        d2_centers[nidx,pretrained_idx] = np.nanmean(d2_data[deep_layers,:,:].flatten())
-                    
-                for metric_idx, metric_name in enumerate(metric_names[:5]):
-                    color = c_ls[metric_idx] if pretrained else "gray"
+                for metric_idx, metric_name in enumerate(metric_names[1:]):
+                    color = c_ls[metric_idx+1] if pretrained else "gray"
 
                     metric_data = metric_data_all[metric_name]
                     if metric_data.ndim == 2:
                         metric_data_mean = np.ma.masked_invalid(metric_data).mean(-1)
                     else:
                         metric_data_mean = np.ma.masked_invalid(metric_data).mean((1,2))
-                    axs[metric_idx].plot(frac_layers, metric_data_mean, 
-                                         c=color, alpha=trans_ls[nidx], marker=markers[nidx], linestyle=lstyle)
 
-                # --------------- Plot 2 (lower) ---------------
+                    # last layer
+                    axs[metric_idx].scatter(d2_data.mean(-1)[-1], metric_data_mean[-1], 
+                                            marker=markers[nidx], 
+                                            c=color)    # alpha=trans_ls[nidx]
 
-                # scatter plot
-                metric_name_y = metric_names[-1]
-                metric_data_y = np.nanmean(metric_data_all[metric_name_y],(1,2))
-
-                color = c_ls[metric_names.index(metric_name_y)] if pretrained else "gray"
-                #print(np.nanmean(locals()['metric3_data'],(1,2))[deep_layers].shape)    # delete
-                if log:
-                    axs[-1].scatter(d2_data[selected_layers].mean(-1), np.log(metric_data_y[selected_layers]), 
-                                    c=color, marker=markers[nidx], alpha=trans_ls[nidx])
-                else:
-                    axs[-1].scatter(d2_data[selected_layers].mean(-1), metric_data_y[selected_layers], 
-                                    c=color, marker=markers[nidx], alpha=trans_ls[nidx])
-
-                if midx == len(ms) - 1 and pretrained_idx == 0:
-                    print(f"{model_name} saved!")
-
-        # --------------- Plot settings ---------------
-        for ax_idx, ax in enumerate(axs):        
+        
+        for ax_idx, ax in enumerate(axs):
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
-            ax.grid(alpha=transparency,linestyle=lstyle)
-            if ax_idx < 5:
-                ax.set_xlabel("Fractional depth", fontsize=label_size)
-                #ax.set_ylabel(name_dict[metric_names[ax_idx]], fontsize=label_size)
-                ax.set_title(name_dict[metric_names[ax_idx]], fontsize=title_size)
-            if ax_idx == 5:
-                ax.set_title(name_dict[metric_names[ax_idx]] + rf" ($m$ = {m})", fontsize=title_size)
-            if ax_idx >= 0:
-                ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
-            # ticklabel size
-            ax.xaxis.set_tick_params(labelsize=label_size)
-            ax.yaxis.set_tick_params(labelsize=label_size)
 
-        # scatter plot
-        print(SNR_centers)
-        print(d2_centers)
-        for nidx in range(len(model_names)):
-            color = c_ls[metric_names.index(metric_name_y)]
-            if not log:
-                SNR_center = SNR_centers[nidx,1]
-                SNR_delta = SNR_centers[nidx,0] - SNR_centers[nidx,1]
-            else:
-                SNR_center = np.log(SNR_centers[nidx,1])
-                SNR_delta = np.log(SNR_centers[nidx,0]) - np.log(SNR_centers[nidx,1])
-            d2_center = d2_centers[nidx,1]
-            d2_delta = d2_centers[nidx,0] - d2_centers[nidx,1]
-            #axs[-1].arrow(d2_center, SNR_center, 
-            #              d2_delta, SNR_delta, 
-            #              alpha=trans_ls[nidx], color=color, 
-            #              linestyle="-", head_width=0, width=0.0015)
+            ax.set_xlabel(r"$D_2$")
+            ax.set_ylabel(name_dict[metric_names[ax_idx+1]],fontsize=label_size)
+            #if ax_idx > 0:
+            #    ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
+            # make space for legend
+            #if ax_idx == 0:
+            #    ax.set_ylim(0.17,0.242)
+            # setting the bias and signal-noise-overlap to log scale
 
-            # arrow head
-            prop = dict(arrowstyle="-|>,head_width=0.4,head_length=0.8",lw=2.0,
-                        shrinkA=0,shrinkB=0,
-                        color=color,alpha=trans_ls[nidx])
-
-            SNR_y = np.log(SNR_centers[nidx,0]) if log else SNR_centers[nidx,0]
-            axs[-1].annotate("", xy=(d2_centers[nidx,0],SNR_y), xytext=(d2_center,SNR_center), arrowprops=prop)
-          
-        scatter_ylabel = "log({})".format(name_dict[metric_name_y]) if log else name_dict[metric_name_y]
-        axs[-1].set_xlabel(name_dict[d2_name], fontsize=label_size)
-        axs[-1].set_ylabel(scatter_ylabel, fontsize=label_size)
+            ax.set_xscale('log')
+            ax.grid(alpha=transparency_grid,linestyle=lstyle_grid)
 
         # legends
         for nidx, model_name in enumerate(model_names):
             label = transform_model_name(model_name)
             label = label.replace("n","N")
-            axs[0].plot([], [], c=c_ls[0], alpha=trans_ls[nidx], 
+            axs[0].plot([], [], c=c_ls[0],  # alpha=trans_ls[nidx]
                         marker=markers[nidx], linestyle = 'None', label=label)
 
+        # pretrained label
+        """
         for pretrained_idx, pretrained in enumerate(pretrained_ls):
             pretrained_str = "pretrained" if pretrained else "untrained"
             lstyle = lstyle_ls[0] if pretrained else lstyle_ls[1]
             label = pretrained_str
             axs[0].plot([],[],c="gray", linestyle=lstyle, label=label)
+        """
 
-        axs[0].set_ylim((0.6,1))
-        axs[0].legend(frameon=False, ncol=2, loc="upper center", fontsize=legend_size)
-        #ax2.set_yscale('log')
-        axs[1].ticklabel_format(style="sci", scilimits=(0,1), axis="y" )
+        axs[0].legend(frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.2),
+                      fontsize=legend_size)
+        #ax2.ticklabel_format(style="sci", scilimits=(0,1), axis="y" )
+
+        #plt.show()
 
         # adjust vertical space
         plt.subplots_adjust(hspace=0.4)
 
-        """
-        ax3.set_ylabel(name_dict[metric2])
-        ax4.set_xlabel(ax3_ylabel)
-        ax4.set_ylabel(ax4_ylabel)
-        """
-        #plt.show()
-
         # --------------- Save figure ---------------
-        fig_path = join(root_data,"figure_ms/pretrained-fewshot-old-small") if small else join(root_data,"figure_ms/pretrained-fewshot-old-large")
-        if not os.path.isdir(fig_path): os.makedirs(fig_path)
-        fig_name = f"pretrained_m={m}_metric_appendix.pdf"
+        fig_path = join(root_data,"figure_ms/pretrained-fewshot-main")
+        if not os.path.isdir(fig_path): os.makedirs(fig_path)    
+        fig_name = f"pretrained_m={m_featured}_features_all.pdf"
         print(f"Saved as {join(fig_path, fig_name)}")
         plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
 
@@ -1872,7 +1918,7 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
     ms = [1]
 
     # fractional layer
-    total_layers = load_metric(model_names[0], True, "d2", 1).shape[0]
+    total_layers = load_raw_metric(model_names[0], True, "d2").shape[0]
     frac_layers = np.arange(0,total_layers)/(total_layers-1)
     # only scatter plot the selecged layers (can modify)
     selected_layers = np.where(frac_layers >= 0)
@@ -1901,24 +1947,24 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
                         metric_data_all[metric_name] = load_metric(model_name, pretrained, metric_name, m)
                     #cumulative variance explained by n_top PCs
                     elif metric_name == "R":
-                        metric_R = load_metric(model_name, pretrained, metric_name, m)
+                        metric_R = load_raw_metric(model_name, pretrained, metric_name)
                         # cumulative variance
                         metric_data_all[metric_name] = metric_R                        
 
                     # we are only interested in the correlation D_2 for the dqs as it reveals how localized the eigenvectors are     
                     else:
-                        metric_og = load_metric(model_name, pretrained, metric_name, m)   
+                        metric_og = load_raw_metric(model_name, pretrained, metric_name)   
                         d2_data = metric_og
                         d2_name = metric_name
                         metric_data_all[metric_name] = d2_data
 
-                l = 21
+                l = 10
                 # plot D_2 for each PC
                 metric_data = metric_data_all["d2"]
                 axs[0].plot(list(range(1,metric_data.shape[2]+1)), metric_data[l,:,:].mean(0), 
                                      c=color, alpha=trans_ls[nidx], marker=markers[nidx], linestyle=lstyle)
 
-                metric_D = load_metric(model_name, pretrained, "D", m)
+                metric_D = load_raw_metric(model_name, pretrained, "D")
                 print(f"ED = {metric_D[l,:].mean(-1)}, {pretrained} shape {metric_D.shape}")
 
                 # plot cumulative var
@@ -1943,7 +1989,7 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
             ax = axs[ax_idx]      
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
-            ax.grid(alpha=transparency,linestyle=lstyle)
+            ax.grid(alpha=transparency_grid,linestyle=lstyle_grid)
             if ax_idx < 5:
                 ax.set_xlabel("PC dimension", fontsize=label_size)
                 #ax.set_ylabel(name_dict[metric_names[ax_idx]], fontsize=label_size)
@@ -1974,6 +2020,8 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
         axs[0].legend(frameon=False, ncol=2, loc="upper center", fontsize=legend_size)
         #ax2.set_yscale('log')
         axs[1].ticklabel_format(style="sci", scilimits=(0,1), axis="y" )
+
+        #axs[2].set_ylim(1e-1,1e3)
 
         # adjust vertical space
         plt.subplots_adjust(hspace=0.4)
