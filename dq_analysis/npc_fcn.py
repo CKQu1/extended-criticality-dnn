@@ -70,17 +70,21 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
     # load MNIST
     image_type = 'mnist'
     batch_size = 1000
+    #batch_size = 500
     trainloader, _ = set_data(image_type, rshape=True)
-    trainloader = DataLoader(trainloader, batch_size=batch_size, shuffle=False)
+    #trainloader = DataLoader(trainloader, batch_size=batch_size, shuffle=False)
+    trainloader = DataLoader(trainloader, batch_size=batch_size, shuffle=True)
     #trainloader = DataLoader(trainloader, batch_size=512*16, shuffle=False)
 
     # load nets and weights
     epoch = 0
     net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
     hidden_N = [784]*L + [10]
+    with_bias = False
     kwargs = {"dims": hidden_N, "alpha": None, "g": None,
               "init_path": join(data_path, net_folder), "init_epoch": epoch,
-              "activation": 'tanh', "architecture": 'fc'}
+              "activation": 'tanh', "with_bias": with_bias,
+              "architecture": 'fc'}
     net = ModelFactory(**kwargs)
 
     # compute effective dimension for a single input manifold
@@ -102,9 +106,12 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
             # load nets and weights
             net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
             hidden_N = [784]*L + [10]
+            with_bias = False
             kwargs = {"dims": hidden_N, "alpha": None, "g": None,
                       "init_path": join(data_path, net_folder), "init_epoch": epoch,
-                      "activation": 'tanh', "architecture": 'fc'}
+                      "activation": 'tanh', "with_bias": with_bias,
+                      "architecture": 'fc'}
+
             net = ModelFactory(**kwargs)
             # create batches and compute and mean/std over the batches
             for batch_idx, (hidden_layer, yb) in tqdm(enumerate(trainloader)):
@@ -114,17 +121,22 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
                     hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
                     if lidx % 2 == l_remainder:     # pre or post activation
                         # covariance matrix
-                        #C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
-                        #ED = torch.trace(C)**2/torch.trace(C@C)
-                        #ED = ED.item()
+                        C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
+                        ED = torch.trace(C)**2/torch.trace(C@C)
+                        ED = ED.item()
 
                         # directly use PCA
-                        hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
-                        pca = PCA()
-                        pca.fit(hidden_layer_centered.detach().numpy())
-                        eigvals = pca.explained_variance_
-                        eigvecs = pca.components_
-                        ED = np.sum(eigvals)**2/np.sum(eigvals**2)
+                        #hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
+                        #pca = PCA()
+                        #pca.fit(hidden_layer_centered.detach().numpy())
+                        #eigvals = pca.explained_variance_
+                        #eigvecs = pca.components_
+
+                        # SVD
+                        #_, Rs, _ = np.linalg.svd(hidden_layer_centered.detach().numpy())
+                        #eigvals = np.diag(Rs)
+
+                        #ED = np.sum(eigvals)**2/np.sum(eigvals**2)
 
                         ED_means[0,l] += ED
                         ED_stds[0,l] += ED**2
@@ -157,6 +169,8 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
             for l in range(ED_means.shape[1]):
                 ED_means[0,l] /= batches
                 ED_stds[0,l] = np.sqrt( ED_stds[0,l]/batches - ED_means[0,l]**2 )
+            print(batches)  # delete
+            print(ED_means) # delete
 
             # save data
             np.save(join(save_path, f"ED_means_{epoch}"), ED_means)
@@ -208,9 +222,11 @@ def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
     epoch = 0
     net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
     hidden_N = [784]*L + [10]
+    with_bias = False
     kwargs = {"dims": hidden_N, "alpha": None, "g": None,
               "init_path": join(data_path, net_folder), "init_epoch": epoch,
-              "activation": 'tanh', "architecture": 'fc'}
+              "activation": 'tanh', "with_bias": with_bias,
+              "architecture": 'fc'}
     net = ModelFactory(**kwargs)
 
     # compute effective dimension for a single input manifold
@@ -228,9 +244,11 @@ def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
             # load nets and weights
             net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
             hidden_N = [784]*L + [10]
+            with_bias = False
             kwargs = {"dims": hidden_N, "alpha": None, "g": None,
                       "init_path": join(data_path, net_folder), "init_epoch": epoch,
-                      "activation": 'tanh', "architecture": 'fc'}
+                      "activation": 'tanh', "with_bias": with_bias,
+                      "architecture": 'fc'}
             net = ModelFactory(**kwargs)
             # compute the associated D2 quantities over the full batch
             hidden_layer = torch.squeeze(torch.stack([e[0] for e in trainloader]).to(dev))        
@@ -302,9 +320,11 @@ def npc_layerwise_2(post, alpha100, g100, total_images, epochs, reig=1):
     epoch = 0
     net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
     hidden_N = [784]*L + [10]
+    with_bias = False
     kwargs = {"dims": hidden_N, "alpha": None, "g": None,
               "init_path": join(data_path, net_folder), "init_epoch": epoch,
-              "activation": 'tanh', "architecture": 'fc'}
+              "activation": 'tanh', "with_bias": with_bias,
+              "architecture": 'fc'}
     net = ModelFactory(**kwargs)
 
     # compute effective dimension for a single input manifold
@@ -326,9 +346,11 @@ def npc_layerwise_2(post, alpha100, g100, total_images, epochs, reig=1):
             # load nets and weights
             net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
             hidden_N = [784]*L + [10]
+            with_bias = False
             kwargs = {"dims": hidden_N, "alpha": None, "g": None,
                       "init_path": join(data_path, net_folder), "init_epoch": epoch,
-                      "activation": 'tanh', "architecture": 'fc'}
+                      "activation": 'tanh', "with_bias": with_bias,
+                      "architecture": 'fc'}
             net = ModelFactory(**kwargs)
             # push the image through
             hidden_layer = torch.stack([trainloader.dataset[idx][0].reshape(784) for idx in range(total_images)])
@@ -375,7 +397,9 @@ def submit(*args):
     input_idxs = str( list(range(1,50)) ).replace(" ", "")
     post = 0
     #epochs = [0,1] + list(range(50,651,50))
-    epochs = [0,1,50,100,150,200,250,300,650]
+    #epochs = [0,1,50,100,150,200,250,300,650]
+    #epochs = [0,1,300,650]
+    epochs = [0,650]
     perm_epoch, pbss_epoch = job_divider(epochs, 3)
     epochs_ls = [str(epoch_ls).replace(" ", "") for epoch_ls in pbss_epoch]
     #epochs_ls = ['[0,650]']
@@ -383,6 +407,7 @@ def submit(*args):
                       #for alpha100 in range(100, 201, 10)
                       #for g100 in range(25,301,25)
                       for alpha100 in [120,200]
+                      #for g100 in [25,100,300]
                       for g100 in [25,100,300]
                       for epoch_ls in epochs_ls
                       ]
@@ -399,7 +424,7 @@ def submit(*args):
              ncpus=1,
              walltime='23:59:59',
              #mem='1GB')
-             mem='2GB') 
+             mem='4GB') 
 
 # ----- preplot ----- (useless from here onwards)
 
