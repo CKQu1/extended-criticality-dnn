@@ -45,6 +45,7 @@ import os
 import random
 from os.path import join
 
+#project_ls = ["PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
 project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
 #project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
 
