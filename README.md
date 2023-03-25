@@ -153,6 +153,12 @@ Plotting the results for the Jacobian eigenvectors:
 
 <img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=120_g100=100_l=4_epoch=0.jpg" width="425"/> <img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=200_g100=100_l=4_epoch=0.jpg" width="425"/> 
 
+<p align="center">
+  <img alt="Light" src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=120_g100=100_l=4_epoch=0.jpg" width="45%">
+&nbsp; &nbsp; &nbsp; &nbsp;
+  <img alt="Dark" src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=200_g100=100_l=4_epoch=0.jpg" width="45%">
+</p>
+
 `python dq_analysis/jac_mfrac_plot.py dq_vs_q`
 
 ![alt-text-1](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/dq_jac_single_pre_r_l=4_epoch=0.jpg "alpha = 1.2") ![alt-text-2](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/dq_jac_single_pre_r_l=4_epoch=650.jpg "alpha = 2.0")
