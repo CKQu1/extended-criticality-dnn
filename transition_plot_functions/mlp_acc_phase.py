@@ -1,3 +1,4 @@
+import cmcrameri as cmc
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -6,6 +7,7 @@ import scipy.io as sio
 import seaborn as sns
 import sys
 from matplotlib.ticker import AutoMinorLocator
+from tqdm import tqdm
 sys.path.append(os.getcwd())
 import path_names
 from os.path import join
@@ -20,21 +22,31 @@ if cm_lib == "plt":
         cmaps.append(plt.cm.get_cmap(cm_type))
 elif cm_lib == "sns":
     for cm_type in ['Spectral', 'RdBu', 'rocket_r']:
-        cmaps.append(sns.color_palette(cm_type, as_cmap=True))
+    #for cm_type in ['plasma', 'vlag', 'icefire']:
+    #for cm_type in ['batlow', 'cividis', 'thermal']:
+        #cmaps.append(sns.color_palette(cm_type, as_cmap=True))
+        #cmaps.append(sns.color_palette(cm_type))
+        cmaps.append(plt.cm.get_cmap(cm_type))
 # custom
 else:
+    """
     for cm_type in [[500,200], [600,100], [20000,25]]:
         cmaps.append(sns.diverging_palette(cm_type[0], cm_type[1], as_cmap=True))
+    """
+    #cmaps = [cmc.cm.batlow, plt.cm.get_cmap("cividis"), plt.cm.get_cmap("vlag")]
+    #cmaps = [cmc.cm.fes, cmc.cm.oleron, cmc.cm.bukavu]
+    #cmaps = [cmc.cm.lapaz, cmc.cm.imola, cmc.cm.acton]
 
 interp = "quadric"
+#interp = "none"
 #interp = "spline16"
 #cm = cm.get_cmap('plasma')
-plt.rcParams["font.family"] = "serif"     # set plot font globally
+plt.rcParams["font.family"] = 'sans-serif'     # set plot font globally
 
 # plot settings
-tick_size = 13
-label_size = 16.5
-axis_size = 16.5
+tick_size = 14.5
+label_size = 15.5
+axis_size = 15.5
 legend_size = 14
 linewidth = 0.8
 
@@ -68,11 +80,13 @@ def mlp_accloss_phase(acc_type, acc_threshold=93):
 
     #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = True,sharey=True,figsize=(9.5,7.142))
     #fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))     # window size with text
-    fig, axs = plt.subplots(1, 3,sharex = True,sharey=True,figsize=(8.4/2*3,7.142/2 - 0.1))     # without text
+    fig, axs = plt.subplots(1, 3,sharex = True,sharey=True,figsize=(8.4/2*3+0.45,7.142/2 - 0.1))     # without text
     axs = axs.flat
 
-    line_cols_2 = ["white", "white", "white"]
+    line_cols_2 = ["gray", "gray", "gray"]
     line_cols_1 = ['k', 'k', 'k']
+    #line_cols_2 = ["green"]*3
+    #line_cols_1 = ['red']*3
     # plot boundaries for each axs
     for i in range(len(axs)):
         axs[i].plot(bound1.iloc[:,0], bound1.iloc[:,1], line_cols_1[i])
@@ -83,13 +97,23 @@ def mlp_accloss_phase(acc_type, acc_threshold=93):
     # plot points which computations where executed
     a_cross, m_cross = np.meshgrid(alpha_grid, mult_grid)
 
+    xticks = [1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0]
+    xtick_ls = []
+    for xidx, xtick in enumerate(xticks):
+        if xidx % 2 == 0:
+            xtick_ls.append(str(xtick))
+        else:
+            xtick_ls.append('')
     for i in range(len(axs)):
         # network realizations
-        if i == 0:
-            axs[i].plot(a_cross, m_cross, c='k', linestyle='None',marker='.',markersize=5)
+        #if i == 0:
+        #    axs[i].plot(a_cross, m_cross, c='k', linestyle='None',marker='.',markersize=5)
         #    axs[i].grid()
 
         # major ticks
+        axs[i].set_xticks(xticks)
+        axs[i].set_xticklabels(xtick_ls)
+
         axs[i].tick_params(bottom=True, top=True, left=True, right=True)
         axs[i].tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
 
@@ -135,7 +159,7 @@ def mlp_accloss_phase(acc_type, acc_threshold=93):
     acc_mesh = np.zeros((mult_N,alpha_N))
     loss_mesh = np.zeros((mult_N,alpha_N))
     early_mesh = np.zeros((mult_N,alpha_N))
-    for i in range(len(net_ls)):
+    for i in tqdm(range(len(net_ls))):
         try:
             net_path = net_ls[i]
             acc_loss = sio.loadmat(f"{net_path}/{net_type}_loss_log.mat")
@@ -191,6 +215,9 @@ def mlp_accloss_phase(acc_type, acc_threshold=93):
                                 interpolation=interp, aspect='auto')
         cbar = plt.colorbar(plot,ax=axs[pidx])
         cbar.ax.tick_params(labelsize=tick_size)
+        if pidx == 2:
+            cbar.set_ticks(list(range(100,601,100)))
+            cbar.set_ticklabels(list(range(100,601,100)))
 
     plt.tight_layout()
     #plt.show()
@@ -228,7 +255,8 @@ def mlp_pure_metric(acc_type="test", epoch_ls = [10, 50, 200]):
     # 1 by n
     nrows, ncols = len(metrics), len(epoch_ls)
     #fig, axs = plt.subplots(nrows, ncols,sharex=False,sharey=False,figsize=(9.5 + 0.5,7.142/3*len(metrics)))
-    fig, axs = fig, axs = plt.subplots(nrows, ncols,sharex=True,sharey=True,figsize=(8.4/2*3 + 1,7.142/2 * len(metrics)))     # without text
+    #fig, axs = fig, axs = plt.subplots(nrows, ncols,sharex=True,sharey=True,figsize=(8.4/2*3 + 1,7.142/2 * len(metrics)))     # without text
+    fig, axs = fig, axs = plt.subplots(nrows, ncols,sharex=True,sharey=True,figsize=(8.4/2*3,7.142/2 * len(metrics)))     # without text
 
     xticks = [1.0,1.2,1.4,1.6,1.8,2.0]
     yticks = [0.5,1.0,1.5,2.0,2.5,3.0]
@@ -244,7 +272,7 @@ def mlp_pure_metric(acc_type="test", epoch_ls = [10, 50, 200]):
                 bd = boundaries[j]
                 axis.plot(bd.iloc[:,0], bd.iloc[:,1], c="white", linestyle='--')  
 
-            axis.tick_params(axis='both',labelsize=tick_size)
+            axis.tick_params(axis='both',labelsize=label_size)
 
             # adding labels
             #label = label_ls[i] 
@@ -322,6 +350,7 @@ def mlp_pure_metric(acc_type="test", epoch_ls = [10, 50, 200]):
     print(f"Good: {good}")
 
     plt.tight_layout()
+    plt.subplots_adjust(hspace=0.25)
     #plt.show()
 
     fig1_path = "/project/PDLAI/project2_data/figure_ms"
