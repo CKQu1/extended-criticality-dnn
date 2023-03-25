@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 # reference: https://stackoverflow.com/questions/3899980/how-to-change-the-font-size-on-a-matplotlib-plot
 
 # change font
-pub_font = {'family' : 'serif'}
+pub_font = {'family' : 'sans-serif'}
 #plt.rc('font', **pub_font)
 
 # set up figures font sizes 
