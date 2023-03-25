@@ -151,7 +151,7 @@ Plotting the results for the Jacobian eigenvectors:
 
 `python dq_analysis/jac_mfrac_plot.py eigvec_magnitude`
 
-![alt-text-1](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=120_g100=100_l=4_epoch=0.jpg "alpha = 1.2") ![alt-text-2](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=200_g100=100_l=4_epoch=0.jpg "alpha = 2.0")
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=120_g100=100_l=4_epoch=0.jpg" width="425"/> <img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=200_g100=100_l=4_epoch=0.jpg" width="425"/> 
 
 `python dq_analysis/jac_mfrac_plot.py dq_vs_q`
 
