@@ -1,5 +1,5 @@
 
-## 1. Introduction
+## 1. Preface
 
 Github repository for the paper *Dynamical and computational properties of heavy-tailed deep neural networks*, currently submitted and under revision.
 
