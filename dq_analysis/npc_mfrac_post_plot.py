@@ -15,7 +15,7 @@ sys.path.append(os.getcwd())
 from path_names import root_data, model_log, id_to_path, get_model_id, get_alpha_g
 
 # plot settings
-plt.rcParams["font.family"] = "serif"     # set plot font globally
+plt.rcParams["font.family"] = "sans-serif"     # set plot font globally
 #plt.switch_backend('agg')
 global c_ls, figw, figh, axw, axh
 global title_size, tick_size, label_size, axis_size, legend_size
@@ -99,8 +99,8 @@ def metrics_vs_depth(post=0, epochs=[0,650]):
                         axs[0,gidx].fill_between(np.arange(1, L+1), metric_means[0] - metric_stds[0], metric_means[0] + metric_stds[0], color = c_ls[aidx], alpha=0.2) 
 
                         # leaving extra space for labels
-                        if gidx == len(g100_ls) - 1:
-                            axs[0,gidx].set_ylim(0,200)
+                        #if gidx == len(g100_ls) - 1:
+                        #    axs[0,gidx].set_ylim(0,200)
 
                     elif metric_name == "D2":
                         D2_mean = []  # D2's corresponding to the eigenvector of the largest eigenvalue of the covariance matrix  
@@ -132,26 +132,36 @@ def metrics_vs_depth(post=0, epochs=[0,650]):
         print(f"Metric {metric_name}")     
 
     # adjust gaps between subplots
-    plt.subplots_adjust(hspace=0.2)
+    plt.subplots_adjust(hspace=0.3)
+    plt.subplots_adjust(wspace=0.3)
 
     # legend
     legend_idx = 0
-    axs[legend_idx,-1].plot([], [], linewidth=lwidth, linestyle=linestyle_ls[0], c='k', label="Before training")
-    axs[legend_idx,-1].plot([], [], linewidth=lwidth, linestyle=linestyle_ls[1], c='k', label="After training")   
-    axs[legend_idx,-1].plot([], [], linewidth=lwidth, c = c_ls[0], label=rf"$\alpha$ = {alpha100_ls[0]/100}")
-    axs[legend_idx,-1].plot([], [], linewidth=lwidth, c = c_ls[1], label=rf"$\alpha$ = {alpha100_ls[1]/100}")    
-    axs[legend_idx,-1].legend(fontsize=legend_size, ncol=1, loc="upper left", frameon=False)
+    selected_col = 0
+    axs[legend_idx,selected_col].plot([], [], linewidth=lwidth, linestyle=linestyle_ls[0], c='k', label="Before training")
+    axs[legend_idx,selected_col].plot([], [], linewidth=lwidth, linestyle=linestyle_ls[1], c='k', label="After training")   
+    axs[legend_idx,selected_col].plot([], [], linewidth=lwidth, c = c_ls[0], label=rf"$\alpha$ = {alpha100_ls[0]/100}")
+    axs[legend_idx,selected_col].plot([], [], linewidth=lwidth, c = c_ls[1], label=rf"$\alpha$ = {alpha100_ls[1]/100}")    
+    axs[legend_idx,selected_col].legend(fontsize=legend_size, ncol=2, loc="lower left", bbox_to_anchor=[0, 1.25],
+                              frameon=True)
 
     for idx in range(2):
         axs[idx,0].set_xlim(1, L)
-        axs[idx,0].set_xticks(list(range(2,L+1,2)))
+        axs[idx,0].set_xticks(list(range(1,L+1)))
+        xtick_ls = []
+        for num in range(1,L+1):
+            if num % 2 == 1:
+                xtick_ls.append(str(num))
+            else:
+                xtick_ls.append('')
+        axs[idx,0].set_xticklabels(xtick_ls)
     for row in [1,2]:
         for col in range(3):
             axs[row,col].set_ylim(-0.05,1.05) 
             axs[row,col].set_yticks(np.arange(0,1.01,0.2)) 
     axs[1,0].set_yticks(np.arange(0,1.01,0.2))
 
-    #plt.tight_layout()
+    #fig.tight_layout(h_pad=2, w_pad=2)
     plot_path = join(root_data, f"figure_ms/{fcn}_npc")
     if not os.path.isdir(plot_path): os.makedirs(plot_path)    
     epochs_str = [str(epoch) for epoch in epochs]
@@ -165,7 +175,7 @@ def metrics_vs_depth(post=0, epochs=[0,650]):
     plt.savefig(file_full, bbox_inches='tight')
     #plt.show()
 
-def micro_stats(metric, n_top = 20, post=0, epochs=[0,650]):
+def micro_stats(metric, n_top=200, post=0, epochs=[0,650]):
     """
 
     microscopic statistics of the covariance matrix    
