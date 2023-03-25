@@ -32,7 +32,7 @@ We extract pretrained networks from Pytorch and iteratively fit the entries of e
 `python pretrained_workflow/pretrained_metaplot_grid.py`
 
 <p align="center">
-<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/pretrained_stablefit_grid.jpg" width="500">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/pretrained_stablefit_grid.jpg" width="750">
 </p>
 
 
@@ -53,7 +53,10 @@ To plot the circular manifold projected on the top 3 principal components (PC):
 
 `python geometry_analysis/great_circle_proj2.py gcircle_plot`
 
-![[proj3d_single_alpha=1.0_layer=30.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/proj3d_single_alpha=1.0_layer=30.jpg" width="750">
+</p>
+
 
 
 ### Phase transition of coefficient of variation
@@ -72,7 +75,9 @@ Finally, plot the phase transition figure for the CV for $L = 15,25,35$ as in th
 
 `python random_dnn/random_dnn.py SEM_plot path 15,25,35`
 
-![[random_dnn_1by3.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/random_dnn_1by3.jpg" width="750">
+</p>
 
 
 
@@ -112,13 +117,17 @@ After training, the test accuracy, loss and stopping epoch can be extracted and 
 
 `python tranasition_plot_functions/mlp_acc_phase.py mlp_accloss_phase test`
 
-![[fc10_mnist_test_epoch=650_grid_all.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/fc10_mnist_test_epoch=650_grid_all.jpg" width="750">
+</p>
 
 In a similar fashion the train accuracy, loss and stopping epoch and also be obtained for AlexNet via
 
 `python tranasition_plot_functions/cnn_acc_phase.py cnn_accloss_phase`
 
-![[alexnet_cifar10_train_epoch=500_grid_all.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/alexnet_cifar10_train_epoch=500_grid_all.jpg" width="750">
+</p>
 
 
 ### Layerwise Jacobian eigenvectors
@@ -142,15 +151,15 @@ Plotting the results for the Jacobian eigenvectors:
 
 `python dq_analysis/jac_mfrac_plot.py eigvec_magnitude`
 
-![alt-text-1](jac_eigvec_mag_pre_r_alpha100=120_g100=100_l=4_epoch=0.jpg "alpha = 1.2") ![alt-text-2](jac_eigvec_mag_pre_r_alpha100=200_g100=100_l=4_epoch=0.jpg "alpha = 2.0")
+![alt-text-1](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=120_g100=100_l=4_epoch=0.jpg "alpha = 1.2") ![alt-text-2](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_eigvec_mag_pre_r_alpha100=200_g100=100_l=4_epoch=0.jpg "alpha = 2.0")
 
 `python dq_analysis/jac_mfrac_plot.py dq_vs_q`
 
-![alt-text-1](dq_jac_single_pre_r_l=4_epoch=0.jpg "alpha = 1.2") ![alt-text-2](dq_jac_single_pre_r_l=4_epoch=650.jpg "alpha = 2.0")
+![alt-text-1](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/dq_jac_single_pre_r_l=4_epoch=0.jpg "alpha = 1.2") ![alt-text-2](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/dq_jac_single_pre_r_l=4_epoch=650.jpg "alpha = 2.0")
 
 `python dq_analysis/jac_mfrac_plot.py d2_vs_depth`
 
-![alt-text-1](jac_d2-vs-depth_pre_r_g100=100_epoch=0.jpg "alpha = 1.2") ![alt-text-2](jac_d2-vs-depth_pre_r_g100=100_epoch=650.jpg "alpha = 2.0")
+![alt-text-1](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_d2-vs-depth_pre_r_g100=100_epoch=0.jpg "alpha = 1.2") ![alt-text-2](https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/jac_d2-vs-depth_pre_r_g100=100_epoch=650.jpg "alpha = 2.0")
 
 
 ### Neural representation principal components
@@ -169,7 +178,11 @@ Finally, plotting the results:
 
 `python dq_analysis/npc_mfrac_post_plot.py metrics_vs_depth`
 
-![[fc10_mnist_epoch=0_650_g100=25_100_300_ED_D2_eigvals-vs-depth.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/fc10_mnist_epoch=0_650_g100=25_100_300_ED_D2_eigvals-vs-depth.jpg" width="750">
+</p>
+
+
 
 ## 6. Pretrained CNNs
 ****
@@ -200,11 +213,15 @@ Finally plot the results:
 
 `python fewshot-learning/pretrained-macaque-stimuli snr_metric_plot`
 
-![[pretrained_m=5_metric_alexnet_resnet101.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/pretrained_m=5_metric_alexnet_resnet101.jpg" width="750">
+</p>
 
 `python fewshot-learning/pretrained-macaque-stimuli extra_metric_plot`
 
-![[pretrained_m=5_extra_metrics_alexnet_resnet101.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/pretrained_m=5_extra_metrics_alexnet_resnet101.jpg" width="750">
+</p>
 
 
 
