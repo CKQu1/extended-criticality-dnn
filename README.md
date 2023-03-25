@@ -1,8 +1,6 @@
 
-****
-
 ## 1. Introduction
-****
+
 Github repository for the paper *Dynamical and computational properties of heavy-tailed deep neural networks*, currently submitted and under revision.
 
 ![[phasetransition_schematic.jpg]]
@@ -16,7 +14,7 @@ pip install -r requirements.txt
 
 
 ## 2. Pretrained network statistics
-****
+
 We extract pretrained networks from Pytorch and iteratively fit the entries of each weight matrix (not including biases or batch-normalization layers) independently as a Levy alpha-stable and Gaussian distribution respetively via maximum likelihood.
 
 1. Download the weight matrices into the `weights_all` directory:
@@ -38,7 +36,7 @@ We extract pretrained networks from Pytorch and iteratively fit the entries of e
 
 
 ## 3. Random DNN analysis
-****
+
 ### Circular manifold projection
 
 A circule manifold is propagated through a network at different initialization schemes. Final hidden layer is evaluated corresponding to a 2D random circular manifold embedded in $\mathbb{R}^N$ and propagated through $L$ layers of a MLP initialized at $(\alpha, \sigma_w)$, the angles $[0, 2\pi)$ are divided into `N_thetas` intervals: 
@@ -82,7 +80,7 @@ Finally, plot the phase transition figure for the CV for $L = 15,25,35$ as in th
 
 
 ## 4. Network training
-****
+
 The following includes the updated and old scripts for network-training where all the necessary quantities associated in the manuscript are saved accordingly.
 
 
@@ -106,7 +104,7 @@ The original main focus of theory is revolved around fully-connected neural netw
 
 
 ## 5. Post-training analysis
-****
+
 ### Accuracy transition diagram
 
 To get an accuracy transition diagram as the following, a resolution for $\alpha \in [1,2]$ and $D_w^{1/\alpha}$ must be decided apriori, and a network shall be trained on this grid of initialization schemes:
@@ -197,7 +195,7 @@ Finally, plotting the results:
 
 
 ## 6. Pretrained CNNs
-****
+
 ### SNR metrics
 
 First, download the pretrained networks from PyTorch
@@ -238,7 +236,7 @@ Finally plot the results:
 
 
 ## Citation
-****
+
 ```bibtex
 @ARTICLE{
     2022arXiv220312967Q,
@@ -260,13 +258,13 @@ Finally plot the results:
 
 
 ## References
-****
+
 Please refer to the manuscript.
 
 
 
 ## Github references
-****
+
 [1] Anomalous diffusion dynamics of SGD, https://github.com/ifgovh/Anomalous-diffusion-dynamics-of-SGD
 
 [2] Exponential expressivity in deep neural networks through transient chaos, https://github.com/ganguli-lab/deepchaos
@@ -276,7 +274,7 @@ Please refer to the manuscript.
 
 
 ## Gist references
-****
+
 [1] https://gist.github.com/asemptote/fa5de1eb976aa9fcb9d6510265dff6f9 (qsub.py)
 
 [2] https://gist.github.com/asemptote/3c9f901f1346dffb29d21742cb83c933 (original version of train_supervised.py)
