@@ -31,7 +31,9 @@ We extract pretrained networks from Pytorch and iteratively fit the entries of e
 
 `python pretrained_workflow/pretrained_metaplot_grid.py`
 
-![[pretrained_stablefit_grid.jpg]]
+<p align="center">
+<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/pretrained_stablefit_grid.jpg" width="500">
+</p>
 
 
 
