@@ -2,6 +2,7 @@ import numpy as np
 import os
 import re
 import sys
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from os.path import join
 from tqdm import tqdm
 
@@ -103,13 +104,14 @@ def submit_preplot(path):
 
 # plot settings
 global tick_size, label_size, axis_size, legend_size, linewidth
-tick_size = 13
+#tick_size = 13
+tick_size = 14
 label_size = 16.5
 axis_size = 16.5
 legend_size = 14
 linewidth = 0.8
 # colorbar
-interp = "quadric"
+interp = "none"
 #cm_type = 'RdGy'
 #cm_type = 'coolwarm'
 #cm_type = 'RdBu'
@@ -117,8 +119,10 @@ cm_type = 'RdYlBu'
 
 # /project/phys_DL/dnn_project/python_random_dnn.py_SEM_save_1000_50_1000
 # path = join(root_data, "/project/phys_DL/dnn_project", "python_random_dnn.py_SEM_save_1000_50_1000")
-def SEM_plot(path='', layer=None, one_row=True):
+def SEM_plot(path='', layer=None, one_row=False):
     from ast import literal_eval
+
+    global im, ax, cm_type, cbar
 
     #phase_path = f"/project/phys_DL/dnn_project"
     # plot settings
@@ -141,7 +145,7 @@ def SEM_plot(path='', layer=None, one_row=True):
     import pandas as pd
     import matplotlib.pyplot as plt
     import string
-    plt.rcParams["font.family"] = "serif"     # set plot font globally
+    plt.rcParams["font.family"] = 'sans-serif'     # set plot font globally
     if layer and ',' in layer:  # publication figure
         # phase transition lines
         bound1, boundaries = load_transition_lines()
@@ -168,8 +172,10 @@ def SEM_plot(path='', layer=None, one_row=True):
                 fig, axes = plt.subplots(nrows, ncols,
                                          constrained_layout=True,
                                          sharex=True, sharey=True,
-                                         figsize=(9.52/2*3 - 2.6,7.142/2 - 0.1)) 
-                fig.tight_layout(pad=3.4)
+                                         figsize=(9.52/2*3 - 2.6,7.142/2 - 0.1))
+                                         #figsize=(9.52/2*3,7.142/2 - 0.1)) 
+                #fig.tight_layout(pad=3.4)
+                plt.subplots_adjust(hspace=0.2)
   
         for i, l in enumerate(layers):
             ax = axes.flat[i]
@@ -189,7 +195,7 @@ def SEM_plot(path='', layer=None, one_row=True):
                 bd = boundaries[j]
                 ax.plot(bd.iloc[:,0], bd.iloc[:,1], 'k--')#'k-.')
             # plot x, y labels
-            #if not i%ncols: ax.set_ylabel(r'$D_w^{1/\alpha}$', fontsize=axis_size)
+            #if not i%ncols: ax.set_ylabel(r'$\sigma_w$', fontsize=axis_size)
             #if i >= (nrows-1)*ncols: ax.set_xlabel(r'$\alpha$', fontsize=axis_size)
             #ax.text(-0.1 if not i%ncols else 0.1, 1, f'({string.ascii_lowercase[i]})', transform=ax.transAxes, fontsize=label_size, va='top', ha='right')    # fontweight='bold'
             #ax.text(0.1, 1.1, f'({string.ascii_lowercase[i]})', transform=ax.transAxes, fontsize=label_size, va='top', ha='right')
@@ -197,18 +203,24 @@ def SEM_plot(path='', layer=None, one_row=True):
             mesh = np.zeros([len(alphas100), len(gs100)])
             for j in range(len(xs)):
                 mesh[alphas100.index(xs[j]), gs100.index(ys[j])] = cs[j,l]
-#            im = ax.scatter(xs, ys, c=cs[:,l],
             im = ax.imshow(mesh.T, interpolation=interp, aspect='auto', origin='lower', extent=(min(alphas100), max(alphas100), min(gs100), max(gs100)),
-                        cmap=plt.cm.get_cmap(cm_type),
-                        vmin=0, vmax=1
-                        )
+                           cmap=plt.cm.get_cmap(cm_type),
+                           vmin=0, vmax=1
+                           )
             if not one_row:
                 ax.set_title(f'Layer {l}', fontsize=label_size)
+
         if not one_row:
             cbar = fig.colorbar(im, ax=axes, shrink=.6) 
         else:
-            cbar = fig.colorbar(im, ax=axes, shrink=1., aspect=17, pad = 0.028)
+            #cbar_ax = fig.add_axes([1., 0.15, 0, 1])
+            #divider = make_axes_locatable(ax)
+            #cbar_ax = divider.append_axes('right', size='5%', pad=.15)
+            #cbar = fig.colorbar(im, ax=axes, shrink=1., aspect=17, pad=0.028)
+            #cbar = fig.colorbar(im, ax=ax, shrink=1., aspect=70, pad=.05)
+            cbar = plt.colorbar(im, ax=axes, shrink=1., aspect=70, pad=0.02)
         cbar.ax.tick_params(labelsize=tick_size-2)
+
         #plt.show()
         fig1_path = join(root_data, "figure_ms")
         if one_row:
