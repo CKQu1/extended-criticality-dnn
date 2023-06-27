@@ -10,6 +10,7 @@ from torch.autograd import Variable
 from tqdm import tqdm
 from scipy.stats import levy_stable
 
+from ast import literal_eval
 from path_names import root_data, log_model, read_log
 from utils_dnn import save_weights, get_weights, compute_dq, compute_IPR, layer_ipr, effective_dimension, store_model
 
@@ -30,20 +31,44 @@ def set_data(name, rshape: bool, **kwargs):
 
     data_path = "data"
     if rshape:        
-        if name == 'mnist':
+        if name.lower() == 'mnist':
             transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,)),
                                             transforms.Lambda(lambda x: torch.flatten(x))]
                                             )
             #transform = transform_cifar10
             train_ds = datasets.MNIST(root=data_path, download=True, transform=transform)
             valid_ds = datasets.MNIST(root=data_path, download=True, transform=transform, train=False)
-        elif name == "fashionmnist":
+        elif name.lower() == "gaussian":
+            from generate_gaussian_data import delayed_mixed_gaussian
+            #num_train, num_test, X_dim, Y_classes, X_clusters, n_hold, final_time_point, noise_sigma=0,
+                #cluster_seed=None, assignment_and_noise_seed=None, avg_magn=0.3, min_sep=None,
+                #freeze_input=False
+            
+            # same setting as MNIST
+            num_train, num_test = kwargs.get("num_train"), kwargs.get("num_test")
+            X_dim = kwargs.get("X_dim")
+            Y_classes, X_clusters = kwargs.get("Y_classes"), kwargs.get("X_clusters")
+            n_hold, final_time_point = kwargs.get("n_hold"), kwargs.get("final_time_point")    # not needed for feedforwards nets, always set to 0 for MLPs
+            noise_sigma = kwargs.get("noise_sigma")
+            cluster_seed, assignment_and_noise_seed = kwargs.get("cluster_seed"), kwargs.get("assignment_and_noise_seed")
+            avg_magn = kwargs.get("avg_magn")
+            min_sep = kwargs.get("min_sep")
+            freeze_input = kwargs.get("freeze_input")
+
+            class_datasets, centers, cluster_class_label = delayed_mixed_gaussian(num_train, num_test, X_dim, Y_classes, X_clusters, n_hold,
+                                                                                  final_time_point, noise_sigma,
+                                                                                  cluster_seed, assignment_and_noise_seed, avg_magn,                                        
+                                                                                  min_sep, freeze_input)
+            train_ds = class_datasets['train']
+            valid_ds = class_datasets['val']        
+
+        elif name.lower() == "fashionmnist":
             transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5,),(0.5,)), 
                                             transforms.Lambda(lambda x: torch.flatten(x))]
                                             )
             train_ds = datasets.FashionMNIST(root=data_path, download=True, train=True, transform=transform)
             valid_ds = datasets.FashionMNIST(root=data_path, download=True, train=False, transform=transform)
-        elif name == 'cifar10':
+        elif name.lower() == 'cifar10':
             transform=transform_cifar10
             train_ds = datasets.CIFAR10(root=data_path, download=True, transform=transform)
             valid_ds = datasets.CIFAR10(root=data_path, download=True, transform=transform, train=False)
@@ -148,7 +173,10 @@ def set_data(name, rshape: bool, **kwargs):
         else:
             raise NameError("name is not defined in function set_data")
     
-    return train_ds, valid_ds
+    if name.lower() == "gaussian":
+        return train_ds, valid_ds, centers, cluster_class_label
+    else:
+        return train_ds, valid_ds
 
 from torch.utils.data import TensorDataset
 from torch.utils.data import DataLoader
@@ -321,6 +349,8 @@ def get_optimizer(optimizer, model, **kwargs):
         raise ValueError("THIS OPTIMIZER DOES NOT EXIST!")
     return opt
 
+# --------------------------------------- Training functions ---------------------------------------
+
 from torch import optim
 import torch.nn.functional as F
 
@@ -335,14 +365,15 @@ import torch.nn.functional as F
 # maybe write a network Wrapper to include differenet kinds of attributes like ED, IPR, etc
 
 # FC10: lr=0.001, activation='tanh'
-def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
-                 epochs=650, net_type = "fc", activation='relu', hidden_structure=2, with_bias=False,                                    # network structure
+def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise_seed, num_train, num_test,
+                 alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                 epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False,                                    # network structure
                  loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                      # training setting
-                 save_epoch=1, weight_save=1, stablefit_save=1, eigvals_save=0,                                       # save data options
+                 weight_save=1, stablefit_save=0, eigvals_save=0,                                       # save data options
                  with_ed=False, with_pc=False, with_ipr=False):
                  #with_ed=True, with_pc=True, with_ipr=False):                                                            # save extra data options
 
-    global stablefit_params_all, stablefit_params, model
+    #global stablefit_params_all, stablefit_params, model
 
     """
     Trains MLPs and saves weights along the steps of training, can add to save gradients, etc.
@@ -351,6 +382,7 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
     from time import time; t0 = time()
     from NetPortal.models import ModelFactory
 
+    Y_classes, X_clusters = int(Y_classes), int(X_clusters)
     init_path = None if init_path.lower() == "none" else init_path
     init_epoch = None if init_epoch.lower() == "none" else init_epoch
     if not alpha100.lower() == "none" or not g100.lower() == "none": 
@@ -361,14 +393,42 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
         alpha, g = None, None
     bs, lr = int(bs), float(lr)
     epochs = int(epochs)
+    save_epoch = int(save_epoch)
     depth = int(depth)
     num_workers = int(num_workers)
     with_bias = literal_eval(with_bias) if isinstance(with_bias, str) else with_bias
 
-    train_ds, valid_ds = set_data(name,True)
+    if name.lower() != "gaussian":
+        train_ds, valid_ds = set_data(name,True)
+        Y_classes, X_clusters= None, None
+        cluster_seed, assignment_and_noise_seed = None, None
+    else:
+        # similar setting to MNIST, can adjust
+        X_dim = 784
+        noise_sigma = 0.2
+        num_train, num_test = int(num_train), int(num_test)
+        Y_classes, X_clusters = int(Y_classes), int(X_clusters)
+        cluster_seed, assignment_and_noise_seed = int(cluster_seed), int(assignment_and_noise_seed)
+        gaussian_data_kwargs = {"num_train": num_train, "num_test": num_test,
+                                "X_dim": 784,
+                                "Y_classes": Y_classes, "X_clusters": X_clusters,
+                                "n_hold": 0, "final_time_point": 0,     # not needed for feedforwards nets
+                                "noise_sigma": noise_sigma,
+                                "cluster_seed": cluster_seed, "assignment_and_noise_seed": assignment_and_noise_seed,
+                                "avg_magn": 1,
+                                "min_sep":None,
+                                "freeze_input": True
+                                }
+
+        train_ds, valid_ds, centers, cluster_class_label = set_data(name,True,**gaussian_data_kwargs)    
     #N = len(train_ds[0][0])
     N = train_ds[0][0].numel()
-    C = len(train_ds.classes)
+    if name != "gaussian":
+        C = len(train_ds.classes)
+        root_path += f"_{activation}" + "_{name}"
+    else:
+        C = len(np.unique(cluster_class_label))
+        root_path += f"_{activation}" + "_gaussian_data" + f"_{num_train}_{num_test}_{X_dim}_{Y_classes}_{X_clusters}" +  f"_{noise_sigma}_{cluster_seed}_{assignment_and_noise_seed}"
 
     # generate random id and date
     import uuid
@@ -384,11 +444,30 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
     np.savetxt(f"{model_path}/epochs={epochs}_save_epoch={save_epoch}_weight_save={weight_save}_stablefit_save={stablefit_save},eigvals_save={eigvals_save}", np.array([0]))
     np.savetxt(f"{model_path}/with_ed={with_ed}_with_ipr={with_ipr}_with_pc={with_pc}", np.array([0]))
 
+    if name.lower() == "gaussian":
+        # only need to save the associated parameters, i.e. seeds which generated the dataset
+        if not os.path.isfile(join(root_path, "gaussian_data_setting.csv")):
+            gaussian_data_setting = pd.DataFrame(gaussian_data_kwargs, index=[0], dtype=object)
+            gaussian_data_setting.to_csv(join(root_path, "gaussian_data_setting.csv"), index=False)
+        # save centers and labels for gaussian data (no longer needed)
+        """
+        if not os.path.isfile(join(root_path, f"centers.npy")):
+            np.save(join(root_path, "centers"), centers)
+        if not os.path.isfile(join(root_path, f"cluster_class_label.npy")):
+            np.save(join(root_path, "cluster_class_label"), cluster_class_label)
+        """
+
     # move entire dataset to GPU
-    train_ds = TensorDataset(torch.stack([e[0] for e in train_ds]).to(dev),
-                             torch.tensor(train_ds.targets).to(dev))
-    valid_ds = TensorDataset(torch.stack([e[0] for e in valid_ds]).to(dev),
-                             torch.tensor(valid_ds.targets).to(dev))
+    if name.lower() != "gaussian":
+        train_ds = TensorDataset(torch.stack([e[0] for e in train_ds]).to(dev),
+                                 torch.tensor(train_ds.targets).to(dev))
+        valid_ds = TensorDataset(torch.stack([e[0] for e in valid_ds]).to(dev),
+                                 torch.tensor(valid_ds.targets).to(dev))
+    else:
+        train_ds = TensorDataset(torch.stack([e[0] for e in train_ds]).to(dev),
+                                 torch.stack([e[1] for e in train_ds]).to(dev))
+        valid_ds = TensorDataset(torch.stack([e[0] for e in valid_ds]).to(dev),
+                                 torch.stack([e[1] for e in valid_ds]).to(dev))
 
     train_dl, valid_dl = get_data(train_ds, valid_ds, bs)#, num_workers=num_workers, pin_memory=True, persistent_workers=True)
     steps = len(train_dl)
@@ -430,9 +509,11 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
 
     print("Saving information into local model_path before training.")
     # save information to model_path locally
+    print((model_id,train_date,name))
     log_model(model_path, model_path, file_name="net_log", local_log=False, net_type=net_type, model_dims=model.dims, model_id=model_id, train_date=train_date, name=name, 
               alpha100=alpha100, g100=g100, activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, bs=bs, lr=lr, 
-              num_workers=num_workers, epochs=epochs, steps=steps)
+              num_workers=num_workers, epochs=epochs, steps=steps,
+              Y_classes=Y_classes, X_clusters=X_clusters)
 
     # for effective dimension (ED) analysis
     if with_pc or with_ipr:
@@ -469,13 +550,13 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
 
     print(epoch0_data)
     #if not os.path.isdir(f'{model_path}/epoch_0'): os.makedirs(f'{model_path}/epoch_0')
-    acc_loss = pd.DataFrame(columns=['train loss', 'train acc', 'test loss', 'test acc'])
+    acc_loss = pd.DataFrame(columns=['train loss', 'train acc', 'test loss', 'test acc'], dtype=object)
     acc_loss.loc[0,:] = epoch0_data[:-1]
 
     if stablefit_save > 0:
         stablefit_params_all = []
         for widx in range(len(list(model.parameters()))):
-            stablefit_params_all.append( pd.DataFrame(columns=['alpha', 'beta', 'mu', 'sigma']) )
+            stablefit_params_all.append( pd.DataFrame(columns=['alpha', 'beta', 'mu', 'sigma'], dtype=object) )
         if stablefit_save == 1:
             for widx in range(len(stablefit_params_all)):
                 stablefit_params_all[widx].loc[0,:] = stablefit_params[widx,:]
@@ -507,7 +588,7 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
         print(f'Epoch {(1+epoch)*(num_workers)}:', end=' ')
         # record selected accuracies
         epoch_path = f"{model_path}/epoch_{epoch + 1}"
-        if (epoch+1) % save_epoch == 0 or epoch == epochs - 1:
+        if ((epoch+1) % save_epoch == 0 or epoch == epochs - 1) and weight_save != 0:
             # train_loss, train_acc, val_loss, val_acc, epoch_time
             if not os.path.isdir(epoch_path): os.makedirs(epoch_path)
             if stablefit_save > 0:
@@ -521,7 +602,7 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
             
             print(final_acc)
         else:           
-            if (not os.path.isdir(epoch_path)) and (stablefit_save > 0 or eigvals_save > 0): 
+            if (not os.path.isdir(epoch_path)) and eigvals_save > 0: 
                 os.makedirs(epoch_path)
                 if stablefit_save > 0:
                     final_acc, stablefit_params = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers,
@@ -537,8 +618,8 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
 
             print(final_acc)
 
-        if stablefit_save > 0:
-            print(stablefit_params)     # delete
+        #if stablefit_save > 0:
+        #    print(stablefit_params)     # delete
         if stablefit_save == 1:
             for widx in range(len(stablefit_params_all)):
                 stablefit_params_all[widx].loc[epoch+1,:] = stablefit_params[widx,:]
@@ -549,7 +630,7 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
                     row_dict[col_name] = stablefit_params[:,widx,param_idx]
                     #stablefit_params_all[widx].loc[ epoch*steps + 1 : (epoch+1)*steps + 1, :] = stablefit_params[:,widx,:]   
 
-                df_epoch = pd.DataFrame(row_dict)
+                df_epoch = pd.DataFrame(row_dict, dtype=object)
                 stablefit_params_all[widx] = stablefit_params_all[widx].append(df_epoch,ignore_index=True)     
 
         if with_ed:
@@ -589,7 +670,8 @@ def train_ht_dnn(name, alpha100, g100, optimizer, bs, init_path, init_epoch, roo
     log_path = root_data
     log_model(log_path, model_path, file_name="net_log", net_type=net_type, model_dims=model.dims, model_id=model_id, train_date=train_date, name=name, alpha100=alpha100, g100=g100, 
               activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, bs=bs, lr=lr, num_workers=num_workers, 
-              epochs=epochs, steps=steps, final_acc=final_acc, total_time=total_time)
+              epochs=epochs, steps=steps, final_acc=final_acc, total_time=total_time,
+              Y_classes=Y_classes, X_clusters=X_clusters)
 
     if with_ed:
         np.savetxt(f"{model_path}/ed_train",ed_train)
@@ -730,38 +812,103 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
 
 # ---------------------------------------
 
+# wrapper for training MLPs on Gaussain generated data
+def gaussian_train_ht_dnn(seed_ls, name, Y_classes, X_clusters, num_train, num_test,
+                          alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                          epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False,                                    
+                          loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                      
+                          weight_save=1, stablefit_save=0, eigvals_save=0,                                       
+                          with_ed=False, with_pc=False, with_ipr=False):                                                           
+
+    # we make cluster_seed, assignment_and_noise_seed the same for tractability
+    seed_ls = literal_eval(seed_ls) if not isinstance(seed_ls,list) else seed_ls
+    for seed in seed_ls:
+        train_ht_dnn(name, Y_classes, X_clusters, seed, seed, num_train, num_test,
+                     alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                     epochs, save_epoch, net_type, activation, hidden_structure, with_bias,                                   
+                     loss_func_name, momentum, weight_decay, num_workers,                      
+                     weight_save, stablefit_save, eigvals_save,                                       
+                     with_ed, with_pc, with_ipr)
+
+
+# --------------------------------------- Submit functions ---------------------------------------
+
 # train networks in array jobs
 def train_submit(*args):
     from qsub import qsub, job_divider, project_ls
 
-    dataset_ls = ["mnist"]
-    #dataset_ls = ["cifar10"]
 
-    #alpha100_ls = [100, 200]
-    #g100_ls = [25,100,300]
-    alpha100_ls = [None]
-    g100_ls = [None]
+    #dataset_ls = ["mnist"]
+    dataset_ls = ["gaussian"]
+    #Y_classes = 10
+    Y_classes = 2
+    #X_clusters_ls = [60,120]
+    #X_clusters_ls = list(range(20,121,20))
+    X_clusters_ls = [2,3]
+    #X_clusters_ls = list(range(4,11)) + list(range(20,121,20))
+    #num_train_ls = [5,10,20,30,40,50,100,200,300,400,500,750,1000,1250,1500,2000]   # 16
+    #num_train_ls = [5,10,20,30,40,50,100,200,300,400]
+    #num_train_ls = [10,400]
+    num_train_ls = [2000]   # binary classification
+    num_test = 1000
+
+    alpha100_ls = [120, 200]
+    g100_ls = [25,100,300]
+    #alpha100_ls = [None]
+    #g100_ls = [None]
+    #alpha100_ls = list(range(100,201,10))
+    #g100_ls = list(range(25,301,25))
     optimizer_ls = ["sgd"]
-    #optimizer_ls = ["adam"]
-    #bs_ls = [int(2**p) for p in range(3,11)]
-    bs_ls = [128]
-    lr_ls = [0.35,0.4]
-    depth_ls = [4]
-    epochs = 50
+    bs_ls = [1024]  
+    lr_ls = [0.001]
+    depth = 10
+    epochs = 650
+    save_epoch = 50
     init_path, init_epoch = None, None
     #root_path = join(root_data, "trained_mlps/bs_analysis")
     #root_path = join("/project/phys_DL/project2_data", "trained_nets")
-    root_path = join("/project/PDLAI/project2_data", "trained_mlps/debug")
+    #root_path = join("/project/PDLAI/project2_data", "trained_mlps/debug")
+    #root_folder = "trained_mlps_gaussian"
+    root_folder = "gaussian_binary_classification"
+    root_path = join("/project/PDLAI/project2_data", f"{root_folder}/fc{depth}")
+    
+    total_ensembles = 1
+    seed_pairs = []
+    for i in range(total_ensembles):
+        seed_pairs.append( (0,i) )
 
-    pbs_array_data = [(name, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr, epochs)
+    # submissions
+    pbs_array_data = [(name, Y_classes, X_clusters, seed_pair[0], seed_pair[1],
+                       num_train, num_test,
+                       alpha100, g100, optimizer, bs, 
+                       init_path, init_epoch, root_path, depth, lr, epochs, save_epoch)
                       for name in dataset_ls
+                      for X_clusters in X_clusters_ls
+                      for seed_pair in seed_pairs
+                      for num_train in num_train_ls
                       for alpha100 in alpha100_ls
                       for g100 in g100_ls
                       for optimizer in optimizer_ls
                       for bs in bs_ls
-                      for depth in depth_ls
                       for lr in lr_ls
                       ]
+
+    # resubmissions
+    """
+    alpha_g_pair = []
+    for alpha100 in alpha100_ls:
+        for g100 in g100_ls:
+            if (alpha100,g100) not in [(100,25), (100,300), (200,25), (200,100), (200,300)]:
+                alpha_g_pair.append( (alpha100,g100) )
+    
+    pbs_array_data = [(name, pair[0], pair[1], optimizer, bs, init_path, init_epoch, root_path, depth, lr, epochs)
+                      for name in dataset_ls
+                      for pair in alpha_g_pair
+                      for optimizer in optimizer_ls
+                      for bs in bs_ls
+                      for lr in lr_ls
+                      ]
+    """
 
     """
     pbs_array_true = []
@@ -786,13 +933,13 @@ def train_submit(*args):
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data, "trained_mlps"),
+             path=join(root_data, root_folder),
              P=project_ls[pidx],
              #ngpus=1,
              ncpus=1,
-             walltime='0:29:59',
-             #walltime='23:59:59',
-             mem='3GB') 
+             #walltime='0:59:59',
+             walltime='23:59:59',
+             mem='4GB') 
 
     """
     qsub(f'python {sys.argv[0]} {" ".join(args)}',    
@@ -809,6 +956,80 @@ def train_submit(*args):
          #walltime='23:59:59',
          mem='6GB') 
     """
+
+# ---------------------------------------
+
+# train networks in array jobs
+def train_ensemble_submit(*args):
+    from qsub import qsub, job_divider, project_ls
+
+    # dataset     
+    name = "gaussian"
+    Y_classes = 10
+
+    # ---------- X_clusters as a control ----------
+    #X_clusters_ls = [60,120]
+    #X_clusters_ls = list(range(20,121,20))
+    #X_clusters_ls = list(range(140,241,20))
+
+    # ---------- num_train as a control ----------
+    #num_train_ls = [5,10,20,30,40,50,100,200,300,400,500,750,1000,1250,1500,2000]   # 16
+    #num_train_ls = [5,10,20,30,40,50,100,200,300,400]
+    #num_train_ls = [500,600,700,800]
+    #num_train_ls = [10,400]
+    #num_test = 1000
+
+    #alpha100_ls = [100, 200]
+    #g100_ls = [25,100,300]
+
+    # ---------- phase transition ----------
+    alpha100_ls = list(range(100,201,10))
+    g100_ls = list(range(25,301,25))
+
+    X_clusters_ls = [60, 120]
+    num_train_ls = [60000]
+    num_test = 10000
+    # training setting
+    optimizer_ls = ["sgd"]
+    bs, lr = 1024, 0.001
+    depth = 10
+    epochs = 650
+    init_path, init_epoch = None, None
+    root_folder = "trained_mlps_gaussian_phase"
+    root_path = join("/project/PDLAI/project2_data", f"{root_folder}/fc{depth}")   
+    #seed_ls = list(range(10))
+    seed_ls = list(range(10,20))
+    # convert seed_ls to string list
+    seed_ls = str(seed_ls).replace(" ", "")
+
+    # submissions
+    pbs_array_data = [(seed_ls, name, Y_classes, X_clusters, num_train, num_test,
+                       alpha100, g100, optimizer, bs, 
+                       init_path, init_epoch, root_path, depth, lr, epochs, epochs)
+                      for X_clusters in X_clusters_ls
+                      for num_train in num_train_ls
+                      for alpha100 in alpha100_ls
+                      for g100 in g100_ls
+                      for optimizer in optimizer_ls
+                      ]
+
+    #resubmissions
+    
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, root_folder),
+             P=project_ls[pidx],
+             #ngpus=1,
+             ncpus=1,
+             #walltime='0:59:59',
+             walltime='23:59:59',
+             mem='4GB') 
+
+
 
 # version corresponding train_dnn
 def train_submit_cnn(*args):
