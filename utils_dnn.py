@@ -4,7 +4,7 @@ import torch
 from os.path import join
 from path_names import root_data
 
-# ---------- Computation ----------
+# ---------- Computation related to D_q ----------
 
 # numpy version
 def IPR(vec, q):
@@ -83,6 +83,7 @@ def store_model(model, path ,save_type):
         raise TypeError("save_type does not exist!")  
 
 # ---------- Extra quantities ----------
+
 def layer_ipr(model,hidden_layer,lq_ls):
     arr = np.zeros([len(model.sequential),len(q_ls)])
 
@@ -138,4 +139,34 @@ def effective_dimension(model, hidden_layer, with_pc:bool, q_ls):    # hidden_la
         pc_dqss = None                
                      
     return ed_arr, C_dims, pc_dqss
+
+# ---------- Getting relevant folder names ----------
+
+# input data_path is folder which contains the batch of networks trained for a phase transition diagram
+def setting_from_path(data_path, alpha100, g100):
+    import os
+    all_net_folder = data_path.split("/")[-1] if len(data_path.split("/")[-1]) > 0 else data_path.split("/")[-2]
+    fcn = all_net_folder.split("_")[0]
+
+    if "fcn_grid" in data_path:
+        alpha, g = int(alpha100)/100., int(g100)/100.
+        # storage of trained nets
+        net_type = f"{fcn}_mnist_tanh"
+        net_ls = [net for net in next(os.walk(data_path))[1] if f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch" in net]
+        assert len(net_ls) > 0
+        net_folder = net_ls[0]
+        epoch_last = int([ s for s in net_folder.split("_") if "epoch" in s ][0][5:])
+        #net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
+        activation = "tanh"
+    else:
+        # find folder which matches alpha100 and g100
+        net_ls = [net for net in next(os.walk(data_path))[1] if fcn in net and "epochs=" and f"_{alpha100}_{g100}_" in net]
+        assert len(net_ls) > 0
+        net_folder = net_ls[0]
+        net_setup = pd.read_csv(join(data_path,net_folder,"log"))
+        activation = net_setup.loc[0,"activation"]
+        epoch_last = int(net_setup.loc[0,"epochs"])   
+
+    return fcn, activation, epoch_last, net_folder      
+
 
