@@ -24,15 +24,14 @@ post_dict = {0:'pre', 1:'post'}
 reig_dict = {0:'l', 1:'r'}
 
 def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
-    """
-    
+    """    
     computes and saves all the D^l W^l's matrix multiplication, i.e. pre- or post-activation jacobians
     - post = 1: post-activation jacobian
            = 0: pre-activation jacobian
 
     - input_idx: the index of the image
-    
     """
+
     global utils, train_loader
 
     import scipy.io as sio
@@ -64,14 +63,15 @@ def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
     hidden_N = [784]*L + [10]
     kwargs = {"dims": hidden_N, "alpha": None, "g": None,
               "init_path": join(data_path, net_folder), "init_epoch": epoch,
-              "activation": 'tanh', "architecture": 'fc'}
+              "activation": 'tanh', "with_bias": False,
+              "architecture": 'fc'}
     net = ModelFactory(**kwargs)
 
     # push the image through
     image = trainloader.dataset[input_idx][0]
-    num = trainloader.dataset[input_idx][1]
-    print(torch.sum(image))
-    print(num)
+    #num = trainloader.dataset[input_idx][1]
+    #print(torch.sum(image))
+    #print(num)
 
     return net.layerwise_jacob_ls(image, post)
 
@@ -117,8 +117,8 @@ def jac_dq(alpha100, g100, navg, epoch, post, reig, save_fig=False, *args):
         DW_all = jac_layerwise(post, alpha100, g100, input_idx, epoch)
         L = len(DW_all)        
 
-        for l in [0]:
-        #for l in range(L):
+        #for l in [0]:
+        for l in range(L):
             D_qss = []
 
             DW = DW_all[l].detach().numpy()
@@ -180,6 +180,80 @@ def jac_dq(alpha100, g100, navg, epoch, post, reig, save_fig=False, *args):
     np.savetxt(outpath, dq_stds)
     print(f"Conversion to Dq complete for ({alpha100}, {g100}) at epoch {epoch}!")
 
+# ---------- Computing D_2 for multiple inputs (without saving the Jacobian) ----------
+
+def jac_d2(alpha100, g100, navg, epoch, post, reig, save_fig=False, *args):
+    """
+
+    Computing the eigenvectors of the associated jacobians from jac_layerwise() (without saving), 
+    and then saving the Dq's averaged across different inputs
+
+    """
+
+    global DW_all, eigvals, eigvecs, qs, D_qs, DW
+
+    import numpy as np    
+    import random
+    import torch
+    from numpy import linalg as la
+    from tqdm import tqdm
+
+    # number of images to take average over
+    navg = int(navg)
+    # post: pre/post activation for Jacobians, reig: right or left eigenvectors
+    post, reig = int(post), int(reig)
+    assert post == 1 or post == 0, "No such option!"
+    assert reig == 1 or reig == 0, "No such option!"
+
+    main_path = join(root_data, "geometry_data")
+    save_path = f"{main_path}/d2_layerwise_navg={navg}_{post_dict[post]}_{reig_dict[reig]}"
+    if not os.path.exists(f'{save_path}'):
+        os.makedirs(f'{save_path}')   
+
+    q = 2
+    input_idxs = random.sample(range(60000), navg)
+    DW_all = jac_layerwise(post, alpha100, g100, 0, epoch)  # just for getting L
+    L = len(DW_all)  
+    dq_shape = [L, navg]    # multiple inputs
+    d2_means = np.zeros(dq_shape)
+    for idx, input_idx in enumerate(tqdm(input_idxs)):
+        # compute DW's
+        DW_all = jac_layerwise(post, alpha100, g100, input_idx, epoch)
+        L = len(DW_all)        
+
+        #for l in [0]:
+        for l in range(L):
+            D_qss = []
+
+            DW = DW_all[l].detach().numpy()
+            # left eigenvector
+            if reig == 0:
+                DW = DW.T
+
+            if idx == len(input_idxs) - 1:
+                print(f"layer {l}: {DW.shape}")
+            # SVD if not square matrix
+            if DW.shape[0] != DW.shape[1]:
+                # old method
+                #DW = DW[:10,:]
+                #DW = DW.T @ DW  # final DW is 10 x 784
+                _, eigvals, eigvecs = la.svd(DW)
+            else:
+                eigvals, eigvecs = la.eig(DW)
+            d2_mean = 0
+            for i in range(len(eigvals)):  
+                eigvec = eigvecs[:,i]
+                d2_mean += np.log(IPR(eigvec ,q)) / (1-q) / np.log(len(eigvec))
+            d2_means[l,idx] = d2_mean/len(eigvals) 
+
+    # save D_q values
+    # mean
+    outfname = f'd2means-navg={navg}-alpha{alpha100}-g{g100}-ep{epoch}'
+    outpath = f"{save_path}/{outfname}"
+    #print(f'Saving means: {outpath}')
+    np.save(outpath, d2_means)
+    print(f"Conversion to D2 complete for ({alpha100}, {g100}) at epoch {epoch}!")
+
 # ---------- Saving Jacobian ----------
 
 # this actually eats up a lot of storage, don't recommend saving for too many input_idxs
@@ -222,6 +296,34 @@ def submit(*args):
                       #for g100 in [100]
                       for epoch in [0,1] + list(range(50,651,50))
                       #for epoch in [0, 100, 650]
+                      ]
+
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, "geometry_data"),
+             P=project_ls[pidx],
+             ncpus=1,
+             walltime='23:59:59',
+             mem='1GB') 
+
+def nosave_submit(*args):
+    from qsub import qsub, job_divider, project_ls
+    post = 0
+    navg = 1000
+    reig = 1
+    pbs_array_data = [(alpha100, g100, navg, epoch, post, reig)
+                      #for alpha100 in range(100, 201, 10)
+                      #for g100 in range(25, 301, 25)
+                      for alpha100 in [120, 200]
+                      for g100 in [25, 100, 300]
+                      for epoch in [0,1,50,150,200,250,300,650]
+                      #for epoch in [0,1] + list(range(50,651,50))
+                      #for epoch in [0, 100, 650]
+                      #for epoch in [0]
                       ]
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
