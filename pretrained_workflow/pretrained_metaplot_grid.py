@@ -462,6 +462,7 @@ from path_names import root_data
 from NetPortal.models import ModelFactory
 from train_supervised import get_data, set_data
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from utils_dnn import compute_dq
 
 axs_3 = [ax6, ax7, ax8]
@@ -533,16 +534,19 @@ for init_idx, init_epoch in enumerate(init_epochs):
         d2s = np.array(d2s)
     else:
         # center hidden layer
+        #hidden_layer = StandardScaler().fit_transform(hidden_layer)
         hidden_layer = hidden_layer - hidden_layer.mean(0)
         pca = PCA()
-        pca.fit(hidden_layer)
-        eigvals = pca.explained_variance_
+        #pca.fit(hidden_layer)
+        X = pca.fit_transform(hidden_layer) # PCs
+        eigvals = pca.explained_variance_   # principal axes
         eigvecs = pca.components_
 
-        #print(eigvals[:2])
-        top_pc = eigvecs[0,:]
-        quantity = top_pc
-        d2s = [compute_dq(eigvecs[eidx,:], 2) for eidx in range(eigvecs.shape[0])]
+        #quantity = X[0,:]   # top PC
+        quantity = eigvecs[0,:]   # top PA
+
+        #d2s = [compute_dq(eigvecs[eidx,:], 2) for eidx in range(eigvecs.shape[0])]
+        d2s = [compute_dq(X[eidx,:], 2) for eidx in range(X.shape[0])]
         d2s = np.array(d2s)
 
     # normalize
@@ -581,7 +585,7 @@ for init_idx, init_epoch in enumerate(init_epochs):
 
     #axs_3[init_idx].set_ylabel(f"Epoch {init_epoch}")
 
-axs_3[0].set_ylabel(f"Layer {l+1} (Top PC)")
+axs_3[0].set_ylabel(f"Layer {l+1} (Top PD)")
 
 #im1 = axs_3[0].imshow(image, aspect="auto", cmap=colmap)
 #axs_3[0].set_title("Input image")
