@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as la
 import os
+import pandas as pd
 import re
 import sys
 import torch
@@ -14,7 +15,8 @@ from tqdm import tqdm
 
 sys.path.append(os.getcwd())
 from path_names import root_data
-from utils_dnn import IPR, compute_dq, effective_dimension
+from utils_dnn import IPR, compute_dq, effective_dimension, setting_from_path
+from train_supervised import get_data, set_data
 
 dev = torch.device(f"cuda:{torch.cuda.device_count()-1}"
                    if torch.cuda.is_available() else "cpu")
@@ -26,14 +28,47 @@ This is for computing and saving the multifractal data of the (layerwise) Jacobi
 """
 
 global post_dict, reig_dict
-post_dict = {0:'pre', 1:'post'}
+post_dict = {0:'pre', 1:'post', 2:'all'}
 reig_dict = {0:'l', 1:'r'}
 
 # computes the angle between two vectors
 def vec_angle(vec1, vec2):
     return np.arccos( np.dot(vec1,vec2)/( np.sqrt(np.dot(vec1,vec1) * np.dot(vec2,vec2)) ) )
 
-def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
+# return the **TRAINING** dataset, i.e. mnist or gaussian_data
+def get_dataset(image_type, batch_size,  **kwargs):
+    if image_type.lower() == "mnist":
+        trainloader, testloader = set_data(image_type, rshape=True)
+        #trainloader = DataLoader(trainloader, batch_size=batch_size, shuffle=False)
+        trainloader = DataLoader(trainloader, batch_size=batch_size, shuffle=True)
+        testloader = DataLoader(testloader, batch_size=batch_size, shuffle=True)
+        return trainloader, testloader
+    elif image_type.lower() == "gaussian":
+        from generate_gaussian_data import delayed_mixed_gaussian
+        """
+        num_train, num_test = kwargs.get("num_train"), kwargs.get("num_test")
+        X_dim = kwargs.get("X_dim")
+        Y_classes, X_clusters = kwargs.get("Y_classes"), kwargs.get("X_clusters")
+        n_hold, final_time_point = kwargs.get("n_hold"), kwargs.get("final_time_point")    # not needed for feedforwards nets, always set to 0 for MLPs
+        noise_sigma = kwargs.get("noise_sigma")
+        cluster_seed, assignment_and_noise_seed = kwargs.get("cluster_seed"), kwargs.get("assignment_and_noise_seed")
+        avg_magn = kwargs.get("avg_magn")
+        min_sep = kwargs.get("min_sep")
+        freeze_input = kwargs.get("freeze_input")
+
+        class_datasets, centers, cluster_class_label = delayed_mixed_gaussian(num_train, num_test, X_dim, Y_classes, X_clusters, n_hold,
+                                                                              final_time_point, noise_sigma,
+                                                                              cluster_seed, assignment_and_noise_seed, avg_magn,                                        
+                                                                              min_sep, freeze_input)
+        """
+        class_datasets, centers, cluster_class_label = delayed_mixed_gaussian(**kwargs)
+        trainloader = class_datasets['train']
+        trainloader = DataLoader(trainloader, batch_size=batch_size, shuffle=True)
+        return trainloader, centers, cluster_class_label
+    else:
+        raise Exception("Only mnist or gaussian is allowed for MLPs!")
+    
+def npc_layerwise_ed(data_path, post, alpha100, g100, epochs):
     """
 
     computes the effective dimension of PCs of the layerwise neural representations,
@@ -44,41 +79,39 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
     - input_idx: the index of the image
     
     """
-    global C_ls, C_dims, dqs, eigvals, eigvecs, ii, hidden_layer, ED, ED_means, ED_stds, net, trainloader,C
+    #global C_ls, C_dims, dqs, eigvals, eigvecs, ii, hidden_layer, ED, ED_means, ED_stds, net, trainloader,C
+    #global input_mean
 
     import scipy.io as sio
     import sys
     import torch
     from sklearn.decomposition import PCA
-
     from NetPortal.models import ModelFactory
-    from train_supervised import get_data, set_data
 
     post = int(post)
-    assert post == 1 or post == 0, "No such option!"
+    alpha100, g100 = int(alpha100), int(g100)
+    assert post == 2 or post == 1 or post == 0, "No such option!"
     epochs = literal_eval(epochs) if isinstance(epochs, str) else epochs
 
-    # storage of trained nets
-    L = 10
-    total_epoch = 650
-    fcn = f"fc{L}"
-    net_type = f"{fcn}_mnist_tanh"
-    data_path = join(root_data, f"trained_mlps/fcn_grid/{fcn}_grid")
-
-    # Extract numeric arguments.
-    alpha, g = int(alpha100)/100., int(g100)/100.
-    # load MNIST
-    image_type = 'mnist'
+    # getting network setting from path
+    fcn, activation, epoch_last, net_folder = setting_from_path(data_path, alpha100, g100)
+    L = int(fcn[2:])
     batch_size = 1000
     #batch_size = 500
-    trainloader, _ = set_data(image_type, rshape=True)
-    #trainloader = DataLoader(trainloader, batch_size=batch_size, shuffle=False)
-    trainloader = DataLoader(trainloader, batch_size=batch_size, shuffle=True)
-    #trainloader = DataLoader(trainloader, batch_size=512*16, shuffle=False)
-
+    if "fcn_grid" in data_path or "gaussian_data" not in data_path:
+        # load MNIST
+        image_type = 'mnist'
+        trainloader, _ = get_dataset(image_type, batch_size)
+    else:
+        image_type = "gaussian"
+        gaussian_data_setting = pd.read_csv(join(data_path, "gaussian_data_setting.csv"))
+        gaussian_data_kwargs = {}
+        for param_name in gaussian_data_setting.columns:
+            gaussian_data_kwargs[param_name] = gaussian_data_setting.loc[0,param_name]
+        trainloader, _, _ = get_dataset(image_type, batch_size, **gaussian_data_kwargs)
+             
     # load nets and weights
     epoch = 0
-    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
     hidden_N = [784]*L + [10]
     with_bias = False
     kwargs = {"dims": hidden_N, "alpha": None, "g": None,
@@ -89,11 +122,18 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
 
     # compute effective dimension for a single input manifold
     C_dims = np.zeros([len(net.sequential)])   # record dimension of correlation matrix
-    l_remainder = 0 if post == 0 else 1
+    if post == 0 or post == 1:
+        l_remainder = post
+    else:
+        l_remainder = None
     l_start = l_remainder
-    depth_idxs = list(range(l_start,len(net.sequential),2))
-    L = len(depth_idxs)
-    save_path = join(data_path, net_folder, f"ed-dq-batches_{post_dict[post]}_{reig_dict[reig]}")
+    if post == 0 or post == 1:
+        depth_idxs = list(range(l_start,len(net.sequential),2))
+        L = len(depth_idxs)
+    else:
+        L = len(net.sequential)
+    #save_path = join(data_path, net_folder, f"ed-dq-batches_{post_dict[post]}_{reig_dict[reig]}")
+    save_path = join(data_path, net_folder, f"ed-batches_{post_dict[post]}")
     if not os.path.isdir(save_path): os.makedirs(save_path)
     print("Computation starting.")
     with torch.no_grad():
@@ -104,9 +144,6 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
             #D2_means = np.zeros([1,L])
             #D2_stds = np.zeros([1,L])
             # load nets and weights
-            net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
-            hidden_N = [784]*L + [10]
-            with_bias = False
             kwargs = {"dims": hidden_N, "alpha": None, "g": None,
                       "init_path": join(data_path, net_folder), "init_epoch": epoch,
                       "activation": 'tanh', "with_bias": with_bias,
@@ -119,7 +156,7 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
                 for lidx in range(len(net.sequential)):
                     hidden_layer = net.sequential[lidx](hidden_layer)
                     hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
-                    if lidx % 2 == l_remainder:     # pre or post activation
+                    if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
                         # covariance matrix
                         C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
                         ED = torch.trace(C)**2/torch.trace(C@C)
@@ -169,8 +206,6 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
             for l in range(ED_means.shape[1]):
                 ED_means[0,l] /= batches
                 ED_stds[0,l] = np.sqrt( ED_stds[0,l]/batches - ED_means[0,l]**2 )
-            print(batches)  # delete
-            print(ED_means) # delete
 
             # save data
             np.save(join(save_path, f"ED_means_{epoch}"), ED_means)
@@ -178,20 +213,20 @@ def npc_layerwise_ed(post, alpha100, g100, epochs, reig=1):
 
     print(f"ED via method batches is saved for epochs {epochs}!")
 
-def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
+def npc_layerwise_d2(data_path, post, alpha100, g100, epochs):
     """
-
     computes 1. the correlation dimension D2 of the layerwise neural representations' top eigenvectors
     2. saves the variance explained by each PC (eigvals)
 
     - post = 1: post-activation jacobian
            = 0: pre-activation jacobian
-
     """
     from torch.utils.data import TensorDataset
     from sklearn.decomposition import PCA
+    #from sklearn.preprocessing import StandardScaler
 
-    global C_ls, C_dims, dqs, eigvals, eigvecs, hidden_layer, net, trainloader,C
+    global C_ls, C_dims, dqs, eigvals, eigvecs, hidden_layer, hidden_layer_centered, net, trainloader,C
+    global PCs, dqs_npc, dqs_npd
 
     import scipy.io as sio
     import sys
@@ -200,15 +235,9 @@ def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
     from train_supervised import get_data, set_data
 
     post = int(post)
-    assert post == 1 or post == 0, "No such option!"
+    alpha100, g100 = int(alpha100), int(g100)
+    assert post == 2 or post == 1 or post == 0, "No such option!"
     epochs = literal_eval(epochs) if isinstance(epochs, str) else epochs
-
-    # storage of trained nets
-    L = 10
-    total_epoch = 650
-    fcn = f"fc{L}"
-    net_type = f"{fcn}_mnist_tanh"
-    data_path = join(root_data, f"trained_mlps/fcn_grid/{fcn}_grid")
 
     # Extract numeric arguments.
     alpha, g = int(alpha100)/100., int(g100)/100.
@@ -218,9 +247,24 @@ def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
     trainloader = DataLoader(trainloader, batch_size=len(trainloader), shuffle=False)
     #assert len(trainloader) == 1, "The computation of D_2 in npc_layerwise_d2() is not over the full-batch images!"
 
+    # getting network setting from path
+    fcn, activation, epoch_last, net_folder = setting_from_path(data_path, alpha100, g100)
+    L = int(fcn[2:])
+    batch_size = 60000
+    if "fcn_grid" in data_path or "gaussian_data" not in data_path:
+        # load MNIST
+        image_type = 'mnist'
+        trainloader, _ = get_dataset(image_type, batch_size)
+    else:
+        image_type = "gaussian"
+        gaussian_data_setting = pd.read_csv(join(data_path, "gaussian_data_setting.csv"))
+        gaussian_data_kwargs = {}
+        for param_name in gaussian_data_setting.columns:
+            gaussian_data_kwargs[param_name] = gaussian_data_setting.loc[0,param_name]
+        trainloader, _, _ = get_dataset(image_type, batch_size, **gaussian_data_kwargs)
+
     # load nets and weights
     epoch = 0
-    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
     hidden_N = [784]*L + [10]
     with_bias = False
     kwargs = {"dims": hidden_N, "alpha": None, "g": None,
@@ -231,20 +275,27 @@ def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
 
     # compute effective dimension for a single input manifold
     C_dims = np.zeros([len(net.sequential)])   # record dimension of correlation matrix
-    l_remainder = 0 if post == 0 else 1
+    if post == 0 or post == 1:
+        l_remainder = post
+    else:
+        l_remainder = None
     l_start = l_remainder
-    depth_idxs = list(range(l_start,len(net.sequential),2))
-    L = len(depth_idxs)
-    save_path = join(data_path, net_folder, f"ed-dq-fullbatch_{post_dict[post]}_{reig_dict[reig]}")
-    if not os.path.isdir(save_path): os.makedirs(save_path)
+    if post == 0 or post == 1:
+        depth_idxs = list(range(l_start,len(net.sequential),2))
+        L = len(depth_idxs)
+    else:
+        L = len(net.sequential)
+    dq_npc_save_path = join(data_path, net_folder, f"dq_npc-fullbatch_{post_dict[post]}")
+    dq_npd_save_path = join(data_path, net_folder, f"dq_npd-fullbatch_{post_dict[post]}")
+    eigvals_save_path = join(data_path, net_folder, f"eigvals-fullbatch_{post_dict[post]}")
+    if not os.path.isdir(dq_npc_save_path): os.makedirs(dq_npc_save_path)
+    if not os.path.isdir(dq_npd_save_path): os.makedirs(dq_npd_save_path)
+    if not os.path.isdir(eigvals_save_path): os.makedirs(eigvals_save_path)
     print("Computation starting.")    
     with torch.no_grad():
         for epoch in tqdm(epochs):
             l = 0
             # load nets and weights
-            net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
-            hidden_N = [784]*L + [10]
-            with_bias = False
             kwargs = {"dims": hidden_N, "alpha": None, "g": None,
                       "init_path": join(data_path, net_folder), "init_epoch": epoch,
                       "activation": 'tanh', "with_bias": with_bias,
@@ -254,160 +305,129 @@ def npc_layerwise_d2(post, alpha100, g100, epochs, reig=1):
             hidden_layer = torch.squeeze(torch.stack([e[0] for e in trainloader]).to(dev))        
             for lidx in range(len(net.sequential)):
                 hidden_layer = net.sequential[lidx](hidden_layer)
-                hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
-                if lidx % 2 == l_remainder:     # pre or post activation
+                #hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
+                if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
                     # directly use PCA
                     hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
+                    if dev == "cpu":
+                        hidden_layer_centered = hidden_layer_centered.detach().numpy()
+                    else:
+                        hidden_layer_centered = hidden_layer_centered.cpu().detach().numpy()
+                    #hidden_layer_centered = StandardScaler().fit_transform(hidden_layer.detach().numpy())
                     pca = PCA()
-                    pca.fit(hidden_layer_centered.detach().numpy())
+                    #pca.fit(hidden_layer_centered)
+                    PCs = pca.fit_transform(hidden_layer_centered)
                     eigvals = pca.explained_variance_
                     eigvecs = pca.components_
-                    ED = np.sum(eigvals)**2/np.sum(eigvals**2)
+                    #ED = np.sum(eigvals)**2/np.sum(eigvals**2)
 
-                    dqs = np.zeros(len(eigvals))
-                    for eidx, eigval in enumerate(eigvals):
-                        dqs[eidx] = compute_dq(eigvecs[eidx,:],2)
+                    dqs_npc = np.zeros(PCs.shape[0])
+                    dqs_npd = np.zeros(len(eigvals))
+                    for pcidx in range(PCs.shape[0]):
+                        dqs_npc[pcidx] = compute_dq(PCs[pcidx,:],2)
+                    for eidx in range(len(eigvals)):
+                        dqs_npd[eidx] = compute_dq(eigvecs[eidx,:],2)
 
                     # save data
-                    np.save(join(save_path, f"D2_{l}_{epoch}"), dqs)
-                    np.save(join(save_path, f"npc-eigvals_{l}_{epoch}"), eigvals)
+                    np.save(join(dq_npc_save_path, f"D2_{l}_{epoch}"), dqs_npc)
+                    np.save(join(dq_npd_save_path, f"D2_{l}_{epoch}"), dqs_npd)
+                    np.save(join(eigvals_save_path, f"npc-eigvals_{l}_{epoch}"), eigvals)
                     l += 1
 
     print(f"D2 for the full batch of images is saved for epochs {epochs}!")
 
 
-"""
-def npc_layerwise_2(post, alpha100, g100, total_images, epochs, reig=1):
-    
-    # computes the PCs of the layerwise neural representations
-    # - post = 1: post-activation jacobian
-    #        = 0: pre-activation jacobian
+def class_separation_pca(data_path, alpha100, g100, epochs):
+    #global trainloader, gaussian_data_kwargs, eigvecs, hidden_layer, targets_indices, X_pca
+    #global centers, cluster_class_label
+    #global net, hidden_N, targets
+    global testloader
 
-    # - input_idx: the index of the image
-    
-
-    global alpha, g
-    global C_ls, C_dims, dqs, eigvals, eigvecs, ii, hidden_layer, hidden_layer_mean, ED, ED_means, net, C
-    global hidden_layer, trainloader
-
-    import scipy.io as sio
-    import sys
-    import torch    
     from NetPortal.models import ModelFactory
-    from train_supervised import get_data, set_data
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
 
-    post = int(post)
-    total_images = int(total_images)
-    assert post == 1 or post == 0, "No such option!"
+    alpha100, g100 = int(alpha100), int(g100)
+    epochs = literal_eval(epochs) if isinstance(epochs, str) else epochs
 
-    epochs = literal_eval(epochs) if isinstance(epochs,str) else epochs
+    if "fcn_grid" in data_path or "gaussian_data" not in data_path:
+        # load MNIST
+        image_type = 'mnist'
+        batch_size = 10000
+        _, testloader = get_dataset(image_type, batch_size)
+    else:
+        image_type = "gaussian"
+        gaussian_data_setting = pd.read_csv(join(data_path, "gaussian_data_setting.csv"))
+        gaussian_data_kwargs = {}
+        for param_name in gaussian_data_setting.columns:
+            gaussian_data_kwargs[param_name] = gaussian_data_setting.loc[0,param_name]
+        batch_size = int(gaussian_data_kwargs["num_train"])  # full batch
+        trainloader, centers, cluster_class_label = get_dataset(image_type, batch_size, **gaussian_data_kwargs)
 
-    # storage of trained nets
-    L = 10
-    total_epoch = 650
-    fcn = f"fc{L}"
-    net_type = f"{fcn}_mnist_tanh"
-    data_path = join(root_data, f"trained_mlps/fcn_grid/{fcn}_grid")
-
-    # Extract numeric arguments.
+    # Network setting
     alpha, g = int(alpha100)/100., int(g100)/100.
-    # load MNIST
-    image_type = 'mnist'
-    trainloader, _ = set_data(image_type, rshape=True)
-    trainloader = DataLoader(trainloader, batch_size=len(trainloader), shuffle=False)
-
     # load nets and weights
-    epoch = 0
-    net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
-    hidden_N = [784]*L + [10]
-    with_bias = False
-    kwargs = {"dims": hidden_N, "alpha": None, "g": None,
-              "init_path": join(data_path, net_folder), "init_epoch": epoch,
-              "activation": 'tanh', "with_bias": with_bias,
-              "architecture": 'fc'}
-    net = ModelFactory(**kwargs)
+    fcn, activation, total_epoch, net_folder = setting_from_path(data_path, alpha100, g100)
+    L = int(fcn[2:])    
+    save_path = join(data_path, net_folder, "X_pca_test")
+    if not os.path.exists(save_path): os.makedirs(save_path)  
 
-    # compute effective dimension for a single input manifold
-    C_ls = []    # list of correlation matrices
-    C_dims = np.zeros([len(net.sequential)])   # record dimension of correlation matrix
-    l_remainder = 0 if post == 0 else 1
-    l_start = l_remainder
-    depth_idxs = list(range(l_start,len(net.sequential),2))
-    L = len(depth_idxs)
-    save_path = join(data_path, net_folder, f"ed-dq-method2_{post_dict[post]}_{reig_dict[reig]}")
-    if not os.path.isdir(save_path): os.makedirs(save_path)
+    testloader = next(iter(testloader))
+    targets = testloader[1].unique()
+
+    hidden_N = [784]*L + [len(targets)]
+    targets_indices = []
+    # group in classes
+    for cl_idx, cl in enumerate(targets):
+        targets_indices.append(list(testloader[1] == cl))
+
+    # number of PCs
+    n_components = 3   
+    print("Starting PCA!")         
     with torch.no_grad():
-        for epoch in epochs:
-            l = 0
-            ED_means = np.zeros([1,L])
-            ED_stds = np.zeros([1,L])
-            D2_means = np.zeros([1,L])
-            D2_stds = np.zeros([1,L])
+        for epoch_plot in epochs:        
             # load nets and weights
-            net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
-            hidden_N = [784]*L + [10]
             with_bias = False
             kwargs = {"dims": hidden_N, "alpha": None, "g": None,
-                      "init_path": join(data_path, net_folder), "init_epoch": epoch,
+                      "init_path": join(data_path, net_folder), "init_epoch": epoch_plot,
                       "activation": 'tanh', "with_bias": with_bias,
                       "architecture": 'fc'}
             net = ModelFactory(**kwargs)
-            # push the image through
-            hidden_layer = torch.stack([trainloader.dataset[idx][0].reshape(784) for idx in range(total_images)])
-            #hidden_layer = trainloader.dataset[:total_images][0].reshape((total_images,784))
-            print(hidden_layer.shape)
-            for lidx in range(len(net.sequential)):
-                hidden_layer = net.sequential[lidx](hidden_layer)
-                hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
-                if lidx % 2 == l_remainder:     # pre or post activation
-                    C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer) - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
-                    ED = torch.trace(C)**2/torch.trace(C@C)
-                    ED = ED.item()
-                    ED_means[0,l] = ED
-                    ED_stds[0,l] = ED**2
-                    C_dims[lidx] = C.shape[0]
-                    
-                    eigvals, eigvecs = la.eigh(C)
-                    ii = np.argsort(np.abs(eigvals))
-                    dqs = np.zeros(len(ii))
-                    for eidx, eigval in enumerate(eigvals):
-                        dqs[eidx] = compute_dq(eigvecs[:,eidx],2)
-                    D2_means[0,l] = dqs.mean()
-                    D2_stds[0,l] = dqs.std()
-                    
-                    l += 1
 
-            D2_means /= total_images
-            D2_stds /= total_images
+            hidden_layer = testloader[0]
+            # create batches and compute and mean/std over the batches
+            total_depth = len(net.sequential)
+            for lidx in range(total_depth):
+                hidden_layer = net.sequential[lidx](hidden_layer)                        
+                # center data
+                hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
+                pca = PCA(n_components)
+                X_pca = pca.fit_transform(hidden_layer_centered.detach().numpy())
+                # save data
+                np.save(join(save_path, f"npc-depth={lidx}-epoch={epoch_plot}"), X_pca)   
 
-            # save data
-            np.save(join(save_path, f"ED_means_{epoch}"), ED_means)
-            np.save(join(save_path, f"ED_stds_{epoch}"), ED_stds)
-            np.save(join(save_path, f"D2_means_{epoch}"), D2_means)
-            np.save(join(save_path, f"D2_stds_{epoch}"), D2_stds)
-
-    print(f"ED and D2 via method 2 is saved for {epochs}!")
-    #plt.plot(range(1,L+1), ED_means[0,:])
-    #plt.show()
-"""
+    # save target indices
+    np.save(join(save_path, "target_indices"), np.array(targets_indices))
+    np.save(join(save_path, "target"), targets.detach().numpy())                
 
 
 def submit(*args):
     from qsub import qsub, job_divider, project_ls
     input_idxs = str( list(range(1,50)) ).replace(" ", "")
-    post = 0
+    #post = 1
     #epochs = [0,1] + list(range(50,651,50))
     #epochs = [0,1,50,100,150,200,250,300,650]
-    #epochs = [0,1,300,650]
     epochs = [0,650]
+    post_ls = [0,1,2]
     perm_epoch, pbss_epoch = job_divider(epochs, 3)
     epochs_ls = [str(epoch_ls).replace(" ", "") for epoch_ls in pbss_epoch]
-    #epochs_ls = ['[0,650]']
-    pbs_array_data = [(post, alpha100, g100, epoch_ls)
+    #data_path = "/project/PDLAI/project2_data/trained_mlps/fc10_tanh_gaussian_data_Y_classes=10_X_clusters=120/"
+    data_path = "/project/PDLAI/project2_data/trained_mlps/fcn_grid/fc10_grid/"
+    pbs_array_data = [(data_path, post, alpha100, g100, epoch_ls)
+                      for post in post_ls
                       #for alpha100 in range(100, 201, 10)
                       #for g100 in range(25,301,25)
                       for alpha100 in [120,200]
-                      #for g100 in [25,100,300]
                       for g100 in [25,100,300]
                       for epoch_ls in epochs_ls
                       ]
@@ -424,7 +444,33 @@ def submit(*args):
              ncpus=1,
              walltime='23:59:59',
              #mem='1GB')
-             mem='4GB') 
+             mem='2GB') 
+
+def pca_submit(*args):
+    from qsub import qsub, job_divider, project_ls
+    #epochs = [0,650]
+    epochs = [0,1] + list(range(50,651,50))
+    perm_epoch, pbss_epoch = job_divider(epochs, 1)
+    epochs_ls = [str(epoch_ls).replace(" ", "") for epoch_ls in pbss_epoch]
+    data_path = "/project/PDLAI/project2_data/trained_mlps/fcn_grid/fc10_grid/"
+    pbs_array_data = [(data_path, alpha100, g100, epoch_ls)
+                      for alpha100 in [120,200]
+                      for g100 in [25,100,300]
+                      for epoch_ls in epochs_ls
+                      ]
+    print(f"Total jobs: {len(pbs_array_data)}")
+    print(epochs_ls)
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, "trained_mlps/PCA_jobs"),
+             P=project_ls[pidx],
+             ncpus=1,
+             walltime='23:59:59',
+             mem='3GB') 
 
 # ----- preplot ----- (useless from here onwards)
 
