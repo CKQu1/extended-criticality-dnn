@@ -583,10 +583,8 @@ def snr_d2_mbatch(model_name, pretrained, n_top=100):
                         output -= output.mean(0)
                         output = output.detach().numpy()
                         # scklearn PCA
-                        #pca = PCA(n_top)
-                        pca = PCA()
-                        #pca.fit(output)  # fit to data
-                        pca.fit_transform(output)  # fit to data
+                        pca = PCA(n_top)
+                        pca.transform(output)
                         Rn = pca.explained_variance_
                         Vn = pca.components_
 
@@ -622,15 +620,12 @@ def snr_d2_mbatch(model_name, pretrained, n_top=100):
                     output -= output.mean(0)
                     output = output.detach().numpy()
                     # scklearn PCA
-                    #pca = PCA(n_top)
-                    pca = PCA()
-                    #pca.fit(output)  # fit to data
-                    Vn = pca.fit_transform(output)  # fit to data (get PCs)
+                    pca = PCA(n_top)
+                    pca.transform(output)
                     Rn = pca.explained_variance_
-                    #Vn = pca.components_
+                    Vn = pca.components_
 
-                    #d2 = [compute_dq(Vn[eidx,:], 2) for eidx in range(len(Rn))]
-                    d2 = [compute_dq(Vn[eidx,:], 2) for eidx in range(Vn.shape[0])]
+                    d2 = [compute_dq(Vn[eidx,:], 2) for eidx in range(len(Rn))]
                     d2s.append(d2)
                     Rs.append(Rn)
     
