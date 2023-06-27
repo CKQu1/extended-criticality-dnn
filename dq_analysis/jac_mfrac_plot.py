@@ -8,6 +8,7 @@ import torch
 
 import pandas as pd
 import seaborn as sns
+from ast import literal_eval
 from matplotlib.pyplot import figure
 from matplotlib.ticker import AutoMinorLocator
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
@@ -281,9 +282,10 @@ def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
 
 
 # original d2-vs-depth.py
-def d2_vs_depth(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, appendix=True):
+def d2_vs_depth(alpha100_ls=[120,200], g100 = 100, post=0, reig=1, appendix=False):
 
     post, reig = int(post), int(reig)
+    appendix = literal_eval(appendix) if isinstance(appendix, str) else appendix
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
@@ -397,6 +399,187 @@ def d2_vs_depth(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, appendix=Tr
 
         #print(f"Epoch {epoch} layer {layer} done!")
         print(f"Epoch {epoch} done!")
+
+
+def d2mean_vs_depth(alpha100_ls=[120, 200], g100=100, post=0, reig=1, appendix=False, display=False):
+    global ms, stds
+
+    post, reig = int(post), int(reig)
+    appendix = literal_eval(appendix) if isinstance(appendix, str) else appendix
+    display = literal_eval(display) if isinstance(display, str) else display
+    fcn = "fc10"
+    net_type = f"{fcn}_mnist_tanh"
+    #net_type = f"{fcn}_mnist_tanh_2"
+    main_path = join(root_data, "trained_mlps")
+
+    path = f"{main_path}/fcn_grid/{fcn}_grid"
+
+    assert post == 1 or post == 0, "No such option!"
+    assert reig == 1 or reig == 0, "No such option!"
+
+    trans_ls = [1, 0.5]
+    dq_path = join(root_data, f"geometry_data/d2_layerwise_navg=1000_{post_dict[post]}_{reig_dict[reig]}")
+
+    missing_data = []
+    # in the future for ipidx might be needed
+    #depths = np.arange(9)     # not including the final layer since there are only 10 neurons
+    depths = np.arange(10)
+    l = 4
+    for epoch in [0, 650]:
+
+        #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = False,sharey=False,figsize=(9.5,7.142))
+        fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))
+        set_size(axw, axh, ax)
+        # linestyle
+        lstyle = "--" if epoch == 0 else "-" 
+
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)           
+        # label ticks
+        ax.tick_params(axis='x', labelsize=axis_size - 1)
+        ax.tick_params(axis='y', labelsize=axis_size - 1)
+        # set ticks
+        ax.set_yticks(np.arange(0,2.1,0.5))
+        ax.set_yticklabels(np.arange(0,2.1,0.5))
+
+        # minor ticks
+        #ax.xaxis.set_minor_locator(AutoMinorLocator())
+        ax.yaxis.set_minor_locator(AutoMinorLocator())
+
+        ylim_lower = 1
+        ylim_upper = 1
+        for f_idx, alpha100 in enumerate(alpha100_ls):
+            extension_name = f"d2means-navg=1000-alpha{alpha100}-g{g100}-ep{epoch}.npy"            
+            d2_means = np.load(join(dq_path, extension_name))
+            ms = d2_means.mean(1)
+            stds = d2_means.std(1)
+            ax.plot(depths+1, ms, linewidth=3.5, linestyle=lstyle, alpha=1, c = c_ls[f_idx])
+            ax.fill_between(depths+1, ms-stds, ms+stds, color = c_ls[f_idx], alpha=0.2)
+
+        # extra labels
+        if epoch == 0 and g100 == 25:
+            ax.plot([], [], linewidth=3.5, alpha=1, c = c_ls[0], label=rf"$\alpha$ = {round(alpha100_ls[0]/100,1)}")
+            ax.plot([], [], linewidth=3.5, alpha=1, c = c_ls[1], label=rf"$\alpha$ = {round(alpha100_ls[1]/100,1)}")
+            ax.plot([], [], linewidth=3.5, linestyle="--", c="k", label="Before training")
+            ax.plot([], [], linewidth=3.5, linestyle="-", c="k", label="After training")
+
+        ax.set_ylim(-0.1,1.1)
+        ax.set_xlim(depths[0]+1,depths[-1]+1)
+        ax.set_xticks(list(range(1,11)))
+        xtick_ls = []
+        for num in range(1,11):
+            if num % 2 == 1:
+                xtick_ls.append(str(num))
+            else:
+                xtick_ls.append('')
+        ax.set_xticklabels(xtick_ls)
+
+        if not appendix:
+            ax.set_xlabel(r'Layer $l$', fontsize=axis_size)
+            ax.set_ylabel(r'$D_2$', fontsize=axis_size)
+
+        plt.tight_layout()
+
+        fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
+        if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
+        # alleviate memory
+        if display:
+            plt.show()
+        else:
+            plt.savefig(f"{fig1_path}/jac_d2mean-vs-depth_{post_dict[post]}_{reig_dict[reig]}_g100={g100}_epoch={epoch}.pdf", bbox_inches='tight')
+        #plt.clf()
+        #plt.close(fig)
+        #plt.show()
+
+        #print(f"Epoch {epoch} layer {layer} done!")
+        print(f"Epoch {epoch} done!")
+
+
+# distribution of mean d2 for different inputs
+def d2_dist(alpha100_ls=[120,200], g100=100, post=0, reig=1, appendix=False, display=False):
+    from scipy.stats import gaussian_kde
+
+    post, reig = int(post), int(reig)
+    appendix = literal_eval(appendix) if isinstance(appendix, str) else appendix
+    display = literal_eval(display) if isinstance(display, str) else display
+    fcn = "fc10"
+    net_type = f"{fcn}_mnist_tanh"
+    #net_type = f"{fcn}_mnist_tanh_2"
+    main_path = join(root_data, "trained_mlps")
+
+    path = f"{main_path}/fcn_grid/{fcn}_grid"
+
+    assert post == 1 or post == 0, "No such option!"
+    assert reig == 1 or reig == 0, "No such option!"
+
+    trans_ls = [0.5,1]
+    dq_path = join(root_data, f"geometry_data/d2_layerwise_navg=1000_{post_dict[post]}_{reig_dict[reig]}")
+
+    missing_data = []
+    # in the future for ipidx might be needed
+    #depths = np.arange(9)     # not including the final layer since there are only 10 neurons
+    depths = np.arange(10)
+    l = 4
+    for eidx, epoch in enumerate([0,650]):
+
+        #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = False,sharey=False,figsize=(9.5,7.142))
+        fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))
+        set_size(axw, axh, ax)
+        # linestyle
+        lstyle = "--" if epoch == 0 else "-" 
+
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)           
+        # label ticks
+        ax.tick_params(axis='x', labelsize=axis_size - 1)
+        ax.tick_params(axis='y', labelsize=axis_size - 1)
+
+        # minor ticks
+        #ax.xaxis.set_minor_locator(AutoMinorLocator())
+        ax.yaxis.set_minor_locator(AutoMinorLocator())
+
+        ylim_lower = 1
+        ylim_upper = 1
+        for f_idx, alpha100 in enumerate(alpha100_ls):
+            extension_name = f"d2means-navg=1000-alpha{alpha100}-g{g100}-ep{epoch}.npy"            
+            d2_means = np.load(join(dq_path, extension_name))
+            #ax.hist(2_means, 1000, linewidth=3.5, linestyle=lstyle, alpha=1, c = c_ls[f_idx])
+            ax.hist(d2_means[l,:], 50, alpha=trans_ls[eidx], color=c_ls[f_idx], density=True)
+            # kde
+            #density = gaussian_kde(d2_means[l,:])            
+            #xs = np.linspace(d2_means[l,:].min(),d2_means[l,:].max(),1000)
+            #xs = np.linspace(0,0.6,1000) if f_idx == 0 else np.linspace(0.8,1,1000)
+            #ax.plot(xs, density(xs), linewidth=3.5, linestyle=lstyle, alpha=1, c = c_ls[f_idx] )
+
+        # extra labels
+        if epoch == 0 and g100 == 25:
+            ax.plot([], [], linewidth=3.5, alpha=1, c = c_ls[0], label=rf"$\alpha$ = {round(alpha100_ls[0]/100,1)}")
+            ax.plot([], [], linewidth=3.5, alpha=1, c = c_ls[1], label=rf"$\alpha$ = {round(alpha100_ls[1]/100,1)}")
+            ax.plot([], [], linewidth=3.5, linestyle="--", c="k", label="Before training")
+            ax.plot([], [], linewidth=3.5, linestyle="-", c="k", label="After training")
+
+        ax.set_xlim(-0.1,1.1)
+        ax.set_ylim(0,200)
+        #ax.set_yscale('log')
+
+        if not appendix:
+            ax.set_ylabel('Density', fontsize=axis_size)
+            ax.set_xlabel(r'$D_2$', fontsize=axis_size)
+
+        plt.tight_layout()
+
+        fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
+        if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
+        # alleviate memory
+        if display:
+            plt.show()
+        else:
+            plt.savefig(f"{fig1_path}/jac_d2mean-dist_{post_dict[post]}_{reig_dict[reig]}_g100={g100}_epoch={epoch}.pdf", bbox_inches='tight')
+        #plt.clf()
+        #plt.close(fig)
+        #plt.show()
+
+        #print(f"Epoch {epoch} layer {layer} done!")
+        print(f"Epoch {epoch} done!")
+
 
 
 # original: d2-vs-eigvals.py
