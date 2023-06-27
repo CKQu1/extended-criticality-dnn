@@ -56,13 +56,16 @@ def load_accloss(net_path, acc_type):
     return metrics
 
 # 1 by 3 figure including phase transition for accuracy, loss and stopping epoch (train/test)
-def cnn_accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, epoch=500):
+def accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, epoch=500, display=False):
+    global model_info, net_ls
+
     acc_threshold, epoch = int(acc_threshold), int(epoch)
+    display = literal_eval(display) if isinstance(display,str) else display
 
     if net_type == "alexnet":
         net_path = join(root_data, "trained_cnns", "alexnet_htcw_ufw_tanh")
-    #elif net_type == "resnet14_ht":
-    #    net_path = join(root_data, "trained_cnns", "resnet14_ht_new")
+    elif net_type == "resnet14_ht":
+        net_path = join(root_data, "trained_cnns", "resnet14_ht_new")
     #net_ls = [net[0] for net in os.walk(net_path) if "epochs=" in net[0]]
     net_ls = [join(net_path, dirname) for dirname in next(os.walk(net_path))[1]]
     epoch_last = int(net_ls[0][net_ls[0].index("epochs=")+7:])
@@ -164,20 +167,23 @@ def cnn_accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, ep
                                 interpolation=interp, aspect='auto')
 
         cbar = plt.colorbar(plot,ax=axs[pidx])
+        """
         if pidx == 1:
             cbar.set_ticks(list(range(20,71,10)))
             cbar.set_ticklabels(list(range(20,71,10)))
         if pidx == 2:
             cbar.set_ticks(list(range(200,451,50)))
-            cbar.set_ticklabels(list(range(200,451,50)))
+            cbar.set_ticklabels(list(range(200,451,50)))        
         cbar.ax.tick_params(labelsize=tick_size)
+        """
 
     plt.tight_layout()
     #plt.show()
 
     #net_type = "alexnet"
-    net_type = model_info.loc[model_info.index[0],'net_type']
-    dataname = model_info.loc[model_info.index[0],'name']
+    #net_type = model_info.loc[model_info.index[0],'net_type']
+    #dataname = model_info.loc[model_info.index[0],'name']
+    dataname = "cifar10"
     plt.savefig(f"{root_data}/figure_ms/{net_type}_{dataname}_{acc_type}_epoch={epoch}_grid_all.pdf", bbox_inches='tight')
 
     print(f"Loaded networks: {good}")
@@ -185,7 +191,8 @@ def cnn_accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, ep
     print(f"Successfully data initialisations loaded: {len(alpha_m_ls)}")
 
 # 1 by 3 plot for either accuracy or loss (alexnet)
-def cnn_pure_phase(acc_type="train", epoch_ls=[10,50,200]):   
+def pure_phase(acc_type="train", epoch_ls=[10,50,200], display=False):   
+    display = literal_eval(display) if isinstance(display,str) else display
 
     metrics = ["acc", "loss"]
 
