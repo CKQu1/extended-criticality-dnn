@@ -37,7 +37,7 @@ print("Loading data.")
 log_path = join(root_data, "fewshot-data")
 imdir = join(log_path, "image_dicarlo_hvm-public")
 imnames = np.load(join(imdir,"majaj_2015_imnames_2.npy"),allow_pickle=True)
-imnames = sorted(imnames)   # a total of 64 concepts with 50 examples each
+imnames = sorted(imnames)   # a total of 64 concepts with 50 examples each, this groups them into the respective input classes
 
 # Image preprocessing
 from torchvision import transforms
@@ -523,8 +523,10 @@ def snr_components(model_name, pretrained):
 
 
 # get d2 from minibatch
-# def snr_d2_mbatch(model_name, pretrained, n_top=100):
-def snr_d2_mbatch(model_name, pretrained, n_top=50):
+#def snr_d2_mbatch(model_name, pretrained, n_top=50):
+def snr_d2_mbatch(model_name, pretrained, n_top=100):
+
+    # only the top n_top eigenvectors (of the covariance matrix) are explored, the feature space is large
 
     import numpy.linalg as LA
     import scipy
@@ -532,7 +534,7 @@ def snr_d2_mbatch(model_name, pretrained, n_top=50):
     from sklearn.decomposition import PCA
 
     pretrained = literal_eval(pretrained) if isinstance(pretrained,str) else pretrained
-    n_top = int(n_top)
+    n_top = int(n_top) if n_top != None else None
 
     print(f"Setting up path for {model_name}.")        
     emb_path = join(root_data, "macaque_stimuli", model_name, "pretrained") if pretrained else join(root_data, "macaque_stimuli", model_name, "untrained")
@@ -554,7 +556,7 @@ def snr_d2_mbatch(model_name, pretrained, n_top=50):
     else:
         print(f"Total number of modules: { len(list(model.children())) }")
 
-        batch_size = n_top
+        batch_size = 50
         N_images = len(imnames)
 
         counter = 0
@@ -578,12 +580,13 @@ def snr_d2_mbatch(model_name, pretrained, n_top=50):
                         input_tensor = get_batch(i,batch_size)
                         with torch.no_grad():
                             output = backbone(input_tensor.to(dev))      
-                        output -= output.mean(0)                    
+                        output -= output.mean(0)
                         output = output.detach().numpy()
-
                         # scklearn PCA
-                        pca = PCA(n_top)
-                        pca.fit(output)  # fit to data
+                        #pca = PCA(n_top)
+                        pca = PCA()
+                        #pca.fit(output)  # fit to data
+                        pca.fit_transform(output)  # fit to data
                         Rn = pca.explained_variance_
                         Vn = pca.components_
 
@@ -616,16 +619,18 @@ def snr_d2_mbatch(model_name, pretrained, n_top=50):
                     input_tensor = get_batch(i,batch_size)
                     with torch.no_grad():
                         output = backbone(input_tensor.to(dev))      
-                    output -= output.mean(0)                    
+                    output -= output.mean(0)
                     output = output.detach().numpy()
-
                     # scklearn PCA
-                    pca = PCA(n_top)
-                    pca.fit(output)  # fit to data
+                    #pca = PCA(n_top)
+                    pca = PCA()
+                    #pca.fit(output)  # fit to data
+                    Vn = pca.fit_transform(output)  # fit to data (get PCs)
                     Rn = pca.explained_variance_
-                    Vn = pca.components_
+                    #Vn = pca.components_
 
-                    d2 = [compute_dq(Vn[eidx,:], 2) for eidx in range(len(Rn))]
+                    #d2 = [compute_dq(Vn[eidx,:], 2) for eidx in range(len(Rn))]
+                    d2 = [compute_dq(Vn[eidx,:], 2) for eidx in range(Vn.shape[0])]
                     d2s.append(d2)
                     Rs.append(Rn)
     
@@ -644,8 +649,8 @@ def snr_d2_mbatch(model_name, pretrained, n_top=50):
         Rsmb_all = np.stack(Rsmb_all)
         # save correlation dimension D_2
         #np.save(join(emb_path,f'd2s_layerwise.npy'), d2s_all)   # minibatch
-        np.save(join(emb_path,f'd2smb_n_top={n_top}_layerwise.npy'), d2smb_all)   # fullbatch
-        np.save(join(emb_path,f'Rsmb_n_top={n_top}_layerwise.npy'), Rsmb_all)   # fullbatch
+        np.save(join(emb_path, d2_file), d2smb_all)   # fullbatch
+        np.save(join(emb_path, Rsmb_file), Rsmb_all)   # fullbatch
 
 
 # get d2 from full batch, analysis for top n_top PCs
@@ -938,24 +943,25 @@ def snr_submit(*args):
     # simulation guide
     """
     - SNR
-		- level 1: "alexnet" (12GB)
-		- level 2: "resnet18", "resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_1", "wide_resnet50_2" (24GB)
-		- level 3: "squeezenet1_0", "resnet101", "resnet152",  "resnext101_32x8d",  "wide_resnet101_2" (32GB)
-	- d2
-		- level 1: "alexnet", "resnet18" (8GB)
-		- level 2: "resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_0", "squeezenet1_1", "wide_resnet50_2" (16GB)
+        - level 1: "alexnet" (12GB)
+        - level 2: "resnet18", "resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_1", "wide_resnet50_2" (24GB)
+        - level 3: "squeezenet1_0", "resnet101", "resnet152",  "resnext101_32x8d",  "wide_resnet101_2" (32GB)
+    - d2
+        - level 1: "alexnet", "resnet18" (8GB)
+        - level 2: "resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_0", "squeezenet1_1", "wide_resnet50_2" (16GB)
         - level 3: "resnet101", "resnet152",  "resnext101_32x8d",  "wide_resnet101_2" (32GB)
     """
 
 
     # SNR
     #models = ["resnet152"]
-    models = ["squeezenet1_0"]
+    #models = ["squeezenet1_0"]
 
     # d2
     #models = ["resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_0", "squeezenet1_1", "wide_resnet50_2"]
-
+    models = ["alexnet", "resnet18"]
     
+
     pretrained_ls = [True, False]
     pbs_array_data = [(model_name, pretrained)
                       for model_name in models
@@ -972,20 +978,21 @@ def snr_submit(*args):
         print(project_ls[pidx])
         qsub(f'python {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data, "macaque_stimuli/new_snr"),
+             #path=join(root_data, "macaque_stimuli/new_snr"),
              #path=join(root_data, "macaque_stimuli"),
              #path=join(root_data, "macaque_stimuli", "pure_rsmb"),
+             path=join(root_data, "macaque_stimuli/new_d2"),
              P=project_ls[pidx],
              #ngpus=1,
              ncpus=1,
              #walltime='47:59:59',
              walltime='23:59:59',   # small/medium
-             mem='32GB')
+             #mem='32GB')
              #mem='24GB')
              #mem='20GB')
              #mem='16GB')
              #mem='12GB')
-             #mem='8GB') 
+             mem='8GB') 
 
 # ---------------------- Plotting ----------------------
 
@@ -1001,7 +1008,7 @@ def load_dict():
                    }
 
     name_dict = {"SNR"        : "SNR",
-                 "error"       : "error",
+                 "error"      : "error",
                  "D"          : 'Dimension',
                  "dist_norm"  : "Signal",
                  "css"        : "Signal-noise overlap",
@@ -1085,7 +1092,8 @@ def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
         metric_data = np.zeros(metric_og[:,:,0].shape) 
         #print(f"Total layers {metric_data.shape[0]}")
         for l in range(metric_data.shape[0]):  
-            #n_top = round(np.nanmean(metric_D[l,:]))  
+            #n_top = round(np.nanmean(metric_D[l,:])) 
+            # round to closest integer to ED of the layer
             n_top = round(np.ma.masked_invalid(metric_D[l:]).mean())               
             var_percentage = metric_R[l,:,:n_top]/metric_R[l,:,:n_top].sum(-1)[:,None]
             metric_data[l,:] = ( metric_og[l,:,:n_top] * var_percentage ).sum(-1)
@@ -1146,20 +1154,12 @@ lstyle_grid = "--"
 def get_model_names(main):
     if not main:
         model_names = ["squeezenet1_1","wide_resnet101_2"]
-        #model_names = ["resnet34", "wide_resnet101_2"]
-        #model_names = ["alexnet", "resnet50"]
-        #model_names = ['squeezenet1_1']
-        #model_names = ['resnet34']
-        #model_names = ['resnet50']
-        #model_names = ["squeezenet1_1"]
-        #model_names = ["resnext50_32x4d"]
     else:
         model_names = ["alexnet", "resnet101"]
-        #model_names = ["alexnet"]
     return model_names
 
 # Main text plot (minibatch d2 version)
-def snr_metric_plot(main=True, n_top=100):
+def snr_metric_plot(main=True, n_top=100, display=False):
     metric_names="d2_avg,D,SNR,error"
 
     # color
@@ -1175,6 +1175,7 @@ def snr_metric_plot(main=True, n_top=100):
     """
 
     main = literal_eval(main) if isinstance(main, str) else main
+    display = literal_eval(display) if isinstance(display, str) else display 
     n_top = int(n_top)
 
     # Plot settings
@@ -1194,7 +1195,7 @@ def snr_metric_plot(main=True, n_top=100):
         if "d2_" in metric_name:
             if metric_name != "d2_avg":
                 pc_idx = int(metric_name.split("_")[1])
-            name_dict[metric_name] = r'$D_2$' 
+            name_dict[metric_name] = r'Weighted $D_2$' 
 
     # get available networks
     #all_models = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv")).loc[:,"model_name"]
@@ -1307,7 +1308,7 @@ def snr_metric_plot(main=True, n_top=100):
 
                     # axis labels
                     #axs[midx+2].set_title(name_dict[metric_name_y] + rf" ($m$ = {m})", fontsize=title_size)
-                    axis.set_xlabel(r"$D_2$", fontsize=label_size)
+                    axis.set_xlabel(r"Weighted $D_2$", fontsize=label_size)
                     if m == np.inf:
                         axis.set_ylabel(rf"$\infty$-shot error", fontsize=label_size)
                     else:
@@ -1358,19 +1359,20 @@ def snr_metric_plot(main=True, n_top=100):
     # adjust vertical space
     plt.subplots_adjust(hspace=0.4)
 
-    #plt.show()
-
     # --------------- Save figure ---------------
-    fig_path = join(root_data,"figure_ms/pretrained-fewshot-main") if main else join(root_data,"figure_ms/pretrained-fewshot-appendix")
-    if not os.path.isdir(fig_path): os.makedirs(fig_path)
-    net_cat = "_".join(model_names)
-    fig_name = f"pretrained_m={m_featured}_metric_{net_cat}.pdf"
-    print(f"Saved as {join(fig_path, fig_name)}")
-    plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
+    if not display:
+        fig_path = join(root_data,"figure_ms/pretrained-fewshot-main") if main else join(root_data,"figure_ms/pretrained-fewshot-appendix")
+        if not os.path.isdir(fig_path): os.makedirs(fig_path)
+        net_cat = "_".join(model_names)
+        fig_name = f"pretrained_m={m_featured}_metric_{net_cat}.pdf"
+        print(f"Saved as {join(fig_path, fig_name)}")
+        plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
+    else:
+        plt.show()
 
 
 # Appendix plot for other metrics corresponding to SNR, i.e. signal (dist_norm), bias, signal-to-noise overlap (css)
-def extra_metric_plot(main=True, n_top=100):
+def extra_metric_plot(main=True, n_top=100, display=False):
     metric_names="dist_norm,bias,css,d2_avg"
 
     # plot settings
@@ -1392,6 +1394,7 @@ def extra_metric_plot(main=True, n_top=100):
     fig_size = (11/2*3,7.142+2)
 
     main = literal_eval(main) if isinstance(main, str) else main
+    display = literal_eval(display) if isinstance(display, str) else display
     
     # load dict
     metric_dict, name_dict = load_dict()
@@ -1473,7 +1476,7 @@ def extra_metric_plot(main=True, n_top=100):
                 ax.set_ylabel(name_dict[metric_names[ax_idx]],fontsize=label_size)
                 #ax.set_title(name_dict[metric_names[ax_idx]],fontsize=title_size)
             else:
-                ax.set_xlabel(r"$D_2$")
+                ax.set_xlabel(r"Weighted $D_2$")
                 ax.set_ylabel(name_dict[metric_names[ax_idx-3]],fontsize=label_size)
             #if ax_idx > 0:
             #    ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
@@ -1510,13 +1513,16 @@ def extra_metric_plot(main=True, n_top=100):
         # adjust vertical space
         plt.subplots_adjust(hspace=0.4)
 
-        # --------------- Save figure ---------------
-        fig_path = join(root_data,"figure_ms/pretrained-fewshot-main") if main else join(root_data,"figure_ms/pretrained-fewshot-appendix")
-        if not os.path.isdir(fig_path): os.makedirs(fig_path)    
-        net_cat = "_".join(model_names)
-        fig_name = f"pretrained_m={m_featured}_extra_metrics_{net_cat}.pdf"
-        print(f"Saved as {join(fig_path, fig_name)}")
-        plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
+        if display:
+            plt.show()
+        else:
+            # --------------- Save figure ---------------
+            fig_path = join(root_data,"figure_ms/pretrained-fewshot-main") if main else join(root_data,"figure_ms/pretrained-fewshot-appendix")
+            if not os.path.isdir(fig_path): os.makedirs(fig_path)    
+            net_cat = "_".join(model_names)
+            fig_name = f"pretrained_m={m_featured}_extra_metrics_{net_cat}.pdf"
+            print(f"Saved as {join(fig_path, fig_name)}")
+            plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
 
 
 def snr_delta_plot(main=True, n_top=100):
@@ -1529,7 +1535,7 @@ def snr_delta_plot(main=True, n_top=100):
 
     """
     Fig 1:
-    Plots the a selected metric1 (based on metric_dict) vs layer and SNR vs layer,
+    Plots the selected metric1 (based on metric_dict) vs layer and SNR vs layer,
     for dq, the pc_idx PC needs to be selected
 
     Fig 2:
@@ -1733,9 +1739,9 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
  
     # "resnet152"
     model_names = ["alexnet",
-		           "resnet18", "resnet34", "resnet50", "resnet101",
+                   "resnet18", "resnet34", "resnet50", "resnet101",
                    "resnext50_32x4d", "resnext101_32x8d",
-		           "squeezenet1_0", "squeezenet1_1",  
+                   "squeezenet1_0", "squeezenet1_1",  
                    "wide_resnet50_2", "wide_resnet101_2"]
     #model_names = ["resnet18", "resnet34", "resnet50", "resnet101"]
 
@@ -1846,7 +1852,7 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
 
 
 # microscopic statistics of the neural representations (perhaps leave out)
-def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
+def snr_microscopic_plot(small=True, log=False, display=True):
     import matplotlib.pyplot as plt
     import matplotlib.colors as mcl
     import pubplot as ppt
@@ -1861,24 +1867,20 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
     global metric_data_all, metric_og, metric_name, var_cum, metric_names, metric_R
 
     small = literal_eval(small) if isinstance(small, str) else small
+    display = literal_eval(display) if isinstance(small, str) else display
     log = literal_eval(log) if isinstance(log, str) else log
 
     # Plot settings
     #fig_size = (9.5 + 1.5,7.142/2) # 1 by 2
     #fig_size = (9.5 + 1.5,7.142) # 2 by 2
     fig_size = (11/2*3,7.142+2) # 2 by 3
-    markers = ["o", "v", "s", "p", "*", "P", "H", "D", "d", "+", "x"]
+    #markers = ["o", "v", "s", "p", "*", "P", "H", "D", "d", "+", "x"]
+    markers = [None]*11
     transparency, lstyle = 0.4, "--"
 
-    name_dict = {"SNR"        : "SNR",
-                 "D"          : 'Dimension',
-                 "dist_norm"  : "Signal",
-                 "css"        : "Signal-noise overlap",
-                 "bias"       : "Bias",      
-                 "R"          : 'Cumulative variance'        
-                 }   
-
-    metric_names = [metric_name for metric_name in args]
+    metric_names = ["d2", "R"]
+    metric_dict, name_dict = load_dict()
+    
     print(f"metric list: {metric_names}")
     for metric_name in metric_names:
         if "d2" in metric_name:
@@ -1894,8 +1896,8 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
                   "resnext50_32x4d",
                   "wide_resnet50_2"]
         """
-        model_names = ["resnet50"]
-        #model_names = ["resnet18"]
+        #model_names = ["resnet50"]
+        model_names = ["alexnet", "resnet101"]
 
     else:
         # large models
@@ -1903,7 +1905,7 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
         #               "resnext101_32x8d",
         #               "squeezenet1_0", "squeezenet1_1", 
         #               "wide_resnet101_2"]
-        model_names = ["resnet152", "squeezenet1_1"]
+        model_names = ["resnet101", "squeezenet1_1"]
 
     # transparency list
     trans_ls = np.linspace(0,1,len(model_names)+2)[::-1]
@@ -1958,7 +1960,7 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
                         d2_name = metric_name
                         metric_data_all[metric_name] = d2_data
 
-                l = 10
+                l = -1  # final depth
                 # plot D_2 for each PC
                 metric_data = metric_data_all["d2"]
                 axs[0].plot(list(range(1,metric_data.shape[2]+1)), metric_data[l,:,:].mean(0), 
@@ -1973,11 +1975,11 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
                 axs[1].plot(list(range(1,var_cum.shape[2]+1)), var_cum[l,:,:].mean(0), 
                                      c=color, alpha=trans_ls[nidx], marker=markers[nidx], linestyle=lstyle)
 
-                # plot loglog plot of eigenvalues (variance)
+                # plot of ordered eigenvalues (variance)
                 axs[2].plot(list(range(1,metric_data.shape[2]+1)), metric_data[l,:,:].mean(0), 
-                                     c=color, alpha=trans_ls[nidx], marker=markers[nidx], linestyle=lstyle)
-            
-                axs[2].set_xscale('log'); axs[2].set_yscale('log')
+                                     c=color, alpha=trans_ls[nidx], marker=markers[nidx], linestyle=lstyle)            
+                if log:
+                    axs[2].set_xscale('log'); axs[2].set_yscale('log')
 
                 # --------------- Plot 2 (lower) ---------------
 
@@ -1996,6 +1998,7 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
                 ax.set_title(name_dict[metric_names[ax_idx]], fontsize=title_size)
             if ax_idx >= 0:
                 ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
+            axs[2].set_title("Ordered eigenvalues", fontsize=title_size)
             # ticklabel size
             ax.xaxis.set_tick_params(labelsize=label_size)
             ax.yaxis.set_tick_params(labelsize=label_size)
@@ -2018,7 +2021,6 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
         axs[1].set_xlim((-5,105))
         axs[1].set_ylim((-0.1,1.1))
         axs[0].legend(frameon=False, ncol=2, loc="upper center", fontsize=legend_size)
-        #ax2.set_yscale('log')
         axs[1].ticklabel_format(style="sci", scilimits=(0,1), axis="y" )
 
         #axs[2].set_ylim(1e-1,1e3)
@@ -2027,11 +2029,13 @@ def snr_microscopic_plot(*args, small=True, log=False, n_top = 5):
         plt.subplots_adjust(hspace=0.4)
         plt.show()
 
-        # --------------- Save figure ---------------
-        fig_path = join(root_data,"figure_ms/pretrained-fewshot-old-small") if small else join(root_data,"figure_ms/pretrained-fewshot-old-large")
-        if not os.path.isdir(fig_path): os.makedirs(fig_path)    
-        #plt.savefig(join(fig_path, f"pretrained_m={m}_microscopic.pdf") , bbox_inches='tight')
-
+        if display:
+            plt.show()
+        else:
+            # --------------- Save figure ---------------
+            fig_path = join(root_data,"figure_ms/pretrained-fewshot-old-small") if small else join(root_data,"figure_ms/pretrained-fewshot-old-large")
+            if not os.path.isdir(fig_path): os.makedirs(fig_path)    
+            #plt.savefig(join(fig_path, f"pretrained_m={m}_microscopic.pdf") , bbox_inches='tight')
 
 if __name__ == '__main__':
     import sys
