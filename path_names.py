@@ -9,7 +9,8 @@ root_data = "/project/PDLAI/project2_data"
 
 def log_model(log_path, model_path, file_name="net_log", local_log=True, **kwargs):    
     fi = f"{log_path}/{file_name}.csv"
-    df = pd.DataFrame(columns = kwargs)
+    #df = pd.DataFrame(columns = kwargs)
+    df = pd.DataFrame(columns = kwargs, dtype=object)
     df.loc[0,:] = list(kwargs.values())
     if local_log:
         df.to_csv(f"{model_path}/log", index=False)
@@ -19,7 +20,7 @@ def log_model(log_path, model_path, file_name="net_log", local_log=True, **kwarg
         df = pd.concat([df_og,df], axis=0, ignore_index=True)
     else:
         if not os.path.isdir(f"{log_path}"): os.makedirs(log_path)
-    df.to_csv(fi, index=False)
+    #df.to_csv(fi, index=False)
     print('Log saved!')
 
 def read_log():    
