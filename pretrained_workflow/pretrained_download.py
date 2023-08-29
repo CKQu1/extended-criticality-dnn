@@ -31,7 +31,7 @@ from path_names import root_data
 
 global main_path, project_ls
 main_path = "/project/dnn_maths/project2_data/pretrained_workflow"
-project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
+project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
 
 t0 = time.time()
 

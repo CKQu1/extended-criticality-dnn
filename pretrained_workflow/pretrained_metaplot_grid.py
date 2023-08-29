@@ -85,7 +85,6 @@ ax1_inset = fig.add_subplot(gs[5:81, 130:206])
 # ---------------------------
 
 prepath = "/project/PDLAI/project2_data/pretrained_workflow"
-main_path = f"{prepath}/stablefit_all"
 
 """
 Featured CNN convolution tensor
