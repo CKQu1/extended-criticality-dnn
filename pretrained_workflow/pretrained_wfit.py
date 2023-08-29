@@ -300,18 +300,47 @@ def pretrained_allfit(weight_path, save_dir, n_weight, pytorch=True):
     print(df)
 
 # Plots ----------------------    
-    plt.hist(weights, bins=200, density=True)
+    fig, axs = plt.subplots(3, 1, sharex = False,sharey=False,figsize=(12.5 + 4.5, 9.5/2 + 0.5))
+    # plot 1 (full distribution)
+    axs[0].hist(weights, bins=200, density=True)
+    wmin, wmax = weights.min(), weights.max()
+    bd = max(np.abs(wmin), np.abs(wmax))
+    #x = np.linspace(-bd, bd, 1000)
+    x = np.linspace(-1, 1, 1000)
+    axs[0].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
+    axs[0].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
+    axs[0].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
+    axs[0].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
+
+    # plot 2 (log-log hist right tail)
+    axs[1].hist(weights, bins=1000, histtype="step")
+
+    x = np.linspace((mean_gaussian + wmax)/2, wmax, 500)
+    mean_gaussian = df.iloc[0,11]
+    axs[1].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
+    axs[1].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
+    axs[1].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
+    axs[1].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
+    axs[1].set_xlim((mean_gaussian + wmax)/2, wmax)
+    axs[1].set_xscale('log'); axs[1].set_yscale('log')
+
+    # plot 3 (left tail)
+    axs[2].hist(weights, bins=1000, histtype="step")
+
+    x = np.linspace(wmin, (wmin + mean_gaussian)/2, 500)
+    axs[2].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
+    axs[2].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
+    axs[2].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
+    axs[2].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
+    axs[1].set_xlim(wmin, (wmin + mean_gaussian)/2)
+    axs[2].set_xscale('log'); axs[2].set_yscale('log')
+
+    print("Starting plot")
     plot_title = str(list(df.iloc[0,0:3])) + '\n'
     plot_title += "Levy" + str(["{:.2e}".format(num) for num in df.iloc[0,3:7]]) + '  '
     plot_title += "Normal" + str(["{:.2e}".format(num) for num in df.iloc[0,11:13]]) + '\n'
     plot_title += "TStudent" + str(["{:.2e}".format(num) for num in df.iloc[0,19:22]]) + '  '
     plot_title += "Lognorm" + str(["{:.2e}".format(num) for num in df.iloc[0,26:29]])
-    x = np.linspace(-1, 1, 1000)
-    plt.plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
-    plt.plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
-    plt.plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
-    plt.plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
-    print("Starting plot")
     plt.title(plot_title)
     plot_name = replace_name(weight_name,'plot')
     plt.legend(loc = 'upper right')
@@ -355,7 +384,7 @@ def submit(*args):
 
     pbs_array_data = []
 
-    total_weights = 1000
+    total_weights = 20
     for n_weight in list(range(total_weights)): 
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
@@ -363,12 +392,12 @@ def submit(*args):
         plot_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
         fit_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
         #if not (plot_exist or fit_exist):
-        if not fit_exist:
-            pbs_array_data.append( (root_path, fit_path, n_weight, pytorch) )
+        #if not fit_exist:
+        pbs_array_data.append( (root_path, fit_path, n_weight, pytorch) )
  
     #pbs_array_data = pbs_array_data[:1000] 
-    print(len(pbs_array_data))        
-    """
+    print(len(pbs_array_data))    
+    """        
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -378,7 +407,7 @@ def submit(*args):
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="4GB")          
+             mem="4GB")              
     """
 
 if __name__ == '__main__':
