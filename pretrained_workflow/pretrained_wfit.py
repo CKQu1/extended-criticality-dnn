@@ -99,9 +99,9 @@ def fit_and_test(data, dist_type):
 # powerlaw fit (to absolute value of the weights, i.e. not two-sided)
 def pretrained_plfit(weight_path, save_dir, n_weight, pytorch=True):
     global model_path, df_pl
+    #global weights_all, thing, weights, plaw_fit, fits, compare_ls
 
     pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
-    #global weights_all, thing, weights, plaw_fit, fits, compare_ls
 
     t0 = time.time()
     n_weight = int(n_weight)
@@ -114,21 +114,6 @@ def pretrained_plfit(weight_path, save_dir, n_weight, pytorch=True):
     main_path = join(root_data, "pretrained_workflow")
     if not os.path.isdir(main_path): os.makedirs(main_path)
 
-    # old method
-    """
-    #main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
-    weight_path = f"{main_path}/weights_all"
-    weights_all = next(os.walk(f'{weight_path}'))[2]
-    weights_all.sort()
-
-    weight_name = weights_all[n_weight]
-    print(f"{n_weight}: {weight_name}")
-    model_name = get_name(weight_name)
-
-    model_path = f"{main_path}/plfit_all/{model_name}"
-    """
-
-    # new method
     df = pd.read_csv(join(main_path, "weight_info.csv")) if pytorch else pd.read_csv(join(main_path, "weight_info_tf.csv"))
     weight_name = df.loc[n_weight,"weight_file"]
     i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
@@ -144,7 +129,6 @@ def pretrained_plfit(weight_path, save_dir, n_weight, pytorch=True):
 
 # Powerlaw fitting ----------------------
 
-    #df_pl = pd.DataFrame(columns=col_names)
     df_pl = pd.DataFrame(np.zeros((1,len(col_names)))) 
     df_pl = df_pl.astype('object')
     df_pl.columns = col_names
@@ -343,20 +327,17 @@ def submit(*args):
     #is_stablefit = False
     #global df, model_name, weight_name, i, wmat_idx, main_path, fit_path, root_path
     
-    #root_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow/weights_all"
     main_path = join(root_data, "pretrained_workflow")
     if not os.path.isdir(main_path): os.makedirs(main_path)    
 
     if pytorch:
         # --- Pytorch ---
         root_path = join(main_path, "weights_all")
-        #fit_path = join(main_path, "stablefit_all") if is_stablefit else join(main_path, "tstudentfit_all")
         fit_path = join(main_path, "allfit_all")
         df = pd.read_csv(join(main_path, "weight_info.csv"))
     else:
         # ---TensorFlow ---
         root_path = join(main_path, "weights_all_tf")
-        #fit_path = join(main_path, "stablefit_all_tf") if is_stablefit else join(main_path, "tstudentfit_all_tf")
         fit_path = join(main_path, "allfit_all_tf")
         df = pd.read_csv(join(main_path, "weight_info_tf.csv"))
 
@@ -380,17 +361,10 @@ def submit(*args):
         weight_name = df.loc[n_weight,"weight_file"]
         i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
         plot_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
-        #if is_stablefit:
-        #    fit_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'stablefit')}.csv") )
-        #else:
-        #    fit_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'tstudentfit')}.csv") )
         fit_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
         #if not (plot_exist or fit_exist):
         if not fit_exist:
             pbs_array_data.append( (root_path, fit_path, n_weight, pytorch) )
-
-    #qsub(f'python geometry_preplot.py {" ".join(args)}', pbs_array_data, path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/metrics_postact/', P='phys_DL')
-    #qsub(f'python pretrained_workflow/pretrained_wfit.py {" ".join(args)}', pbs_array_data, path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow', P='phys_DL', mem="3GB")
  
     #pbs_array_data = pbs_array_data[:1000] 
     print(len(pbs_array_data))        
