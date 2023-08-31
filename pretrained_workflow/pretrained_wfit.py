@@ -45,9 +45,9 @@ def replace_name(weight_name,other):
     return '_'.join(ls)
 
 # convert torch saved weight matrices into numpy
-def wmat_torch_to_np(weight_path, n_weight, pytorch=True):
+def wmat_torch_to_np(weight_path, n_weight):
 
-    pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
+    pytorch = False if "_tf" in weight_path else True
     n_weight = int(n_weight)
 
 # Loading weight matrix ----------------------   
@@ -122,14 +122,13 @@ def fit_and_test(data, dist_type):
 
 
 # powerlaw fit (to absolute value of the weights, i.e. not two-sided)
-def pretrained_plfit(weight_path, save_dir, n_weight, pytorch=True):
+def pretrained_plfit(weight_path, save_dir, n_weight):
     global model_path, df_pl
     #global weights_all, thing, weights, plaw_fit, fits, compare_ls
 
-    pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
-
     t0 = time.time()
     n_weight = int(n_weight)
+    pytorch = False if "_tf" in weight_path else True
 
 # Loading weight matrix ----------------------
 
@@ -251,15 +250,16 @@ def pretrained_plfit(weight_path, save_dir, n_weight, pytorch=True):
 # -----------------------------------------------------------------------
     
 # fitting to stable, Gaussian, Student-t, lognormal distribution
-def pretrained_allfit(weight_path, save_dir, n_weight, pytorch=True):
+def pretrained_allfit(weight_path, save_dir, n_weight):
     global weights, params, df, plot_title, x, params
     global weight_name
-
-    pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
     #global weights_all, thing, weights, plaw_fit, fits, compare_ls
 
     t0 = time.time()
     n_weight = int(n_weight)
+    #pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
+    pytorch = False if "_tf" in weight_path else True
+
 
 # Loading weight matrix ----------------------
 
