@@ -2,14 +2,12 @@ import numpy as np
 import math
 import os
 import pandas as pd
-import powerlaw as plaw
 import random
 import scipy.io as sio
 import scipy.stats as sst
 import seaborn as sns
 import sys
 import time
-import torch
 
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
@@ -46,6 +44,7 @@ def replace_name(weight_name,other):
 
 # convert torch saved weight matrices into numpy
 def wmat_torch_to_np(weight_path, n_weight):
+    import torch
 
     pytorch = False if "_tf" in weight_path else True
     n_weight = int(n_weight)
@@ -65,11 +64,13 @@ def wmat_torch_to_np(weight_path, n_weight):
     weights = weights.detach().numpy()    
 
     # save weights
-    np_weight_path = join(main_path, "np_weights_all")
+    if pytorch:
+        np_weight_path = join(main_path, "np_weights_all")
+    else:
+        np_weight_path = join(main_path, "np_weights_all_tf")
     if not os.path.isdir(np_weight_path): os.makedirs(np_weight_path)
-    np.save(join(np_weight_path, weight_name))
+    np.save(join(np_weight_path, weight_name), weights)
     print("Weights saved in numpy!")
-
 
 # fitting and testing goodness of fit
 def fit_and_test(data, dist_type):
@@ -93,6 +94,8 @@ def fit_and_test(data, dist_type):
         params = lognorm.fit(data)
         r = lognorm.rvs(*params, size=len(data))
         logl = np.sum(np.log(lognorm.pdf(data, *params)))
+
+    assert logl != np.nan, "Log likelihood from fit_and_test() is nan"
 
     # statistical tests    
     # AD test
@@ -123,12 +126,14 @@ def fit_and_test(data, dist_type):
 
 # powerlaw fit (to absolute value of the weights, i.e. not two-sided)
 def pretrained_plfit(weight_path, save_dir, n_weight):
+    import powerlaw as plaw
     global model_path, df_pl
     #global weights_all, thing, weights, plaw_fit, fits, compare_ls
 
     t0 = time.time()
-    n_weight = int(n_weight)
+    n_weight = int(n_weight)    
     pytorch = False if "_tf" in weight_path else True
+    if_torch_weights = (weight_path.split("/")[-1][:3] != "np_")
 
 # Loading weight matrix ----------------------
 
@@ -157,8 +162,12 @@ def pretrained_plfit(weight_path, save_dir, n_weight):
     df_pl = df_pl.astype('object')
     df_pl.columns = col_names
 
-    weights = torch.load(f"{weight_path}/{weight_name}")
-    weights = weights.detach().numpy()
+    if if_torch_weights:
+        import torch
+        weights = torch.load(f"{weight_path}/{weight_name}")
+        weights = weights.detach().numpy()
+    else:
+        weights = np.load(f"{weight_path}/{weight_name}.npy")
     w_size = len(weights)
 
     # 1. values much smaller than zero are filtered out
@@ -246,7 +255,6 @@ def pretrained_plfit(weight_path, save_dir, n_weight):
     t_last = time.time()
     print(f"{weight_name} done in {t_last - t0} s!")     
     
-
 # -----------------------------------------------------------------------
     
 # fitting to stable, Gaussian, Student-t, lognormal distribution
@@ -259,7 +267,8 @@ def pretrained_allfit(weight_path, save_dir, n_weight):
     n_weight = int(n_weight)
     #pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
     pytorch = False if "_tf" in weight_path else True
-
+    print(weight_path.split("/")[-1][:3])
+    if_torch_weights = (weight_path.split("/")[-1][:3] != "np_")
 
 # Loading weight matrix ----------------------
 
@@ -291,8 +300,12 @@ def pretrained_allfit(weight_path, save_dir, n_weight):
     df = df.astype('object')
     df.columns = col_names    
 
-    weights = torch.load(f"{weight_path}/{weight_name}")
-    weights = weights.detach().numpy()
+    if if_torch_weights:
+        import torch
+        weights = torch.load(f"{weight_path}/{weight_name}")
+        weights = weights.detach().numpy()
+    else:
+        weights = np.load(f"{weight_path}/{weight_name}.npy")
     w_size = len(weights)
 
     # 1. values much smaller than zero are filtered out         
@@ -333,7 +346,7 @@ def pretrained_allfit(weight_path, save_dir, n_weight):
     print(f"Percentiles at {percs}: {percentiles}")
 
 # Plots ----------------------    
-    fig, axs = plt.subplots(3, 1, sharex = False,sharey=False,figsize=(12.5 + 4.5, 9.5/3 + 0.5))
+    fig, axs = plt.subplots(1, 3, sharex = False,sharey=False,figsize=(12.5 + 4.5, 9.5/3 + 2.5))
     # plot 1 (full distribution)
     axs[0].hist(weights, bins=1000, density=True)
     sns.kdeplot(weights, shade=True, color='blue', ax=axs[0])
