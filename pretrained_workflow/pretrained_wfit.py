@@ -6,6 +6,7 @@ import powerlaw as plaw
 import random
 import scipy.io as sio
 import scipy.stats as sst
+import seaborn as sns
 import sys
 import time
 import torch
@@ -17,15 +18,12 @@ from ast import literal_eval
 from os.path import join, isfile
 from scipy.stats import levy_stable, norm, lognorm
 from scipy.stats import anderson_ksamp, ks_2samp, shapiro, distributions 
+from tqdm import tqdm
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from mpl_toolkits.axes_grid.inset_locator import inset_axes
-from mpl_toolkits.axes_grid1.inset_locator import mark_inset
-from mpl_toolkits.mplot3d import axes3d
-from tqdm import tqdm
 
 from path_names import root_data
 
@@ -161,27 +159,27 @@ def pretrained_plfit(weight_path, save_dir, n_weight, pytorch=True):
     else:
         print("High range.")
 
-        """
-        q_ls = np.arange(0.9, 0.999, 0.005)
-        xmin_ls = []
-        fits = []
-        compare_ls = []
-        for q_idx in tqdm(range(len(q_ls))):
-            xmin_cur = np.quantile(weights, q_ls[q_idx])
-            print(xmin_cur)
-            xmin_ls.append(xmin_cur)
-            fit = plaw.Fit(weights[weights > xmin_cur], xmin=xmin_cur, xmax=max(weights), verbose=False)
-            # lognormal
-            R_1, p_1 = fit.distribution_compare('power_law', 'lognormal')
-            # exponential
-            R_2, p_2 = plaw_fit.distribution_compare('power_law', 'exponential')
-            compare_ls.append([R_1, p_1, R_2, p_2])
-            fits.append(fit)   
-        """    
-        q_large = 0.9
-        xmin_cur = np.quantile(weights, q_large)
-        #plaw.Fit(weights[weights > xmin_cur], xmin=xmin_cur, xmax=max(weights), verbose=False)
-        plaw_fit = plaw.Fit(weights[weights > xmin_cur], xmin=xmin_cur, verbose=False)
+        
+        #q_ls = np.arange(0.9, 0.999, 0.005)
+        #xmin_ls = []
+        #fits = []
+        #compare_ls = []
+        #for q_idx in tqdm(range(len(q_ls))):
+        #    xmin_cur = np.quantile(weights, q_ls[q_idx])
+        #    print(xmin_cur)
+        #    xmin_ls.append(xmin_cur)
+        #    fit = plaw.Fit(weights[weights > xmin_cur], xmin=xmin_cur, xmax=max(weights), verbose=False)
+        #    # lognormal
+        #    R_1, p_1 = fit.distribution_compare('power_law', 'lognormal')
+        #    # exponential
+        #    R_2, p_2 = plaw_fit.distribution_compare('power_law', 'exponential')
+        #    compare_ls.append([R_1, p_1, R_2, p_2])
+        #    fits.append(fit)   
+           
+        #q_large = 0.9
+        #xmin_cur = np.quantile(weights, q_large)
+        ##plaw.Fit(weights[weights > xmin_cur], xmin=xmin_cur, xmax=max(weights), verbose=False)
+        #plaw_fit = plaw.Fit(weights[weights > xmin_cur], xmin=xmin_cur, verbose=False)
     
     print(f"True size: {w_size}")
     print(f"Fit size: {len(weights)}")
@@ -220,7 +218,8 @@ def pretrained_plfit(weight_path, save_dir, n_weight, pytorch=True):
     #plt.show()
 
     t_last = time.time()
-    print(f"{weight_name} done in {t_last - t0} s!")        
+    print(f"{weight_name} done in {t_last - t0} s!")     
+    
 
 # -----------------------------------------------------------------------
     
@@ -299,14 +298,20 @@ def pretrained_allfit(weight_path, save_dir, n_weight, pytorch=True):
     print("df saved!")
     print(df)
 
+# Percentiles of the weights 
+    print(f"Min weight: {weights.min()}, Max weight: {weights.max()}")
+    percs = [5e-6, 50, 50, 99.999995]
+    percentiles = [np.percentile(weights, per) for per in percs]
+    pl1, pl2, pu1, pu2 = percentiles
+    print(f"Percentiles at {percs}: {percentiles}")
+
 # Plots ----------------------    
-    fig, axs = plt.subplots(3, 1, sharex = False,sharey=False,figsize=(12.5 + 4.5, 9.5/2 + 0.5))
+    fig, axs = plt.subplots(3, 1, sharex = False,sharey=False,figsize=(12.5 + 4.5, 9.5/3 + 0.5))
     # plot 1 (full distribution)
-    axs[0].hist(weights, bins=200, density=True)
-    wmin, wmax = weights.min(), weights.max()
-    bd = max(np.abs(wmin), np.abs(wmax))
-    #x = np.linspace(-bd, bd, 1000)
-    x = np.linspace(-1, 1, 1000)
+    axs[0].hist(weights, bins=1000, density=True)
+    sns.kdeplot(weights, shade=True, color='blue', ax=axs[0])
+    #x = np.linspace(-1, 1, 1000)
+    x = np.linspace(pl1, pu2, 1000)
     axs[0].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
     axs[0].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
     axs[0].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
@@ -314,26 +319,28 @@ def pretrained_allfit(weight_path, save_dir, n_weight, pytorch=True):
 
     # plot 2 (log-log hist right tail)
     axs[1].hist(weights, bins=1000, histtype="step")
+    sns.kdeplot(weights, shade=True, color='blue', ax=axs[1])
 
-    x = np.linspace((mean_gaussian + wmax)/2, wmax, 500)
     mean_gaussian = df.iloc[0,11]
+    x = np.linspace(pu1, pu2, 500)  
     axs[1].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
     axs[1].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
     axs[1].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
     axs[1].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
-    axs[1].set_xlim((mean_gaussian + wmax)/2, wmax)
-    axs[1].set_xscale('log'); axs[1].set_yscale('log')
+    axs[1].set_xlim(pu1,pu2)
+    axs[1].set_xscale('symlog'); axs[1].set_yscale('log')
 
     # plot 3 (left tail)
     axs[2].hist(weights, bins=1000, histtype="step")
+    sns.kdeplot(weights, shade=True, color='blue', ax=axs[2])
 
-    x = np.linspace(wmin, (wmin + mean_gaussian)/2, 500)
+    x = np.linspace(pl1, pl2, 500)
     axs[2].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
     axs[2].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
     axs[2].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
     axs[2].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
-    axs[1].set_xlim(wmin, (wmin + mean_gaussian)/2)
-    axs[2].set_xscale('log'); axs[2].set_yscale('log')
+    axs[2].set_xlim(pl1,pl2)
+    axs[2].set_xscale('symlog'); axs[2].set_yscale('log')
 
     print("Starting plot")
     plot_title = str(list(df.iloc[0,0:3])) + '\n'
@@ -384,7 +391,7 @@ def submit(*args):
 
     pbs_array_data = []
 
-    total_weights = 20
+    total_weights = 10
     for n_weight in list(range(total_weights)): 
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
@@ -397,7 +404,7 @@ def submit(*args):
  
     #pbs_array_data = pbs_array_data[:1000] 
     print(len(pbs_array_data))    
-    """        
+            
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -407,8 +414,7 @@ def submit(*args):
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="4GB")              
-    """
+             mem="4GB")                  
 
 if __name__ == '__main__':
     import sys
