@@ -44,6 +44,33 @@ def replace_name(weight_name,other):
     #ls += other
     return '_'.join(ls)
 
+# convert torch saved weight matrices into numpy
+def wmat_torch_to_np(weight_path, n_weight, pytorch=True):
+
+    pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
+    n_weight = int(n_weight)
+
+# Loading weight matrix ----------------------   
+
+    main_path = join(root_data,"pretrained_workflow")
+    if not os.path.isdir(main_path): os.makedirs(main_path)
+
+    df = pd.read_csv(join(main_path, "weight_info.csv")) if pytorch else pd.read_csv(join(main_path, "weight_info_tf.csv"))
+    weight_name = df.loc[n_weight,"weight_file"]
+    i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+    model_name = df.loc[n_weight, "model_name"]
+    print(f"{n_weight}: {weight_name}")
+
+    weights = torch.load(f"{weight_path}/{weight_name}")
+    weights = weights.detach().numpy()    
+
+    # save weights
+    np_weight_path = join(main_path, "np_weights_all")
+    if not os.path.isdir(np_weight_path): os.makedirs(np_weight_path)
+    np.save(join(np_weight_path, weight_name))
+    print("Weights saved in numpy!")
+
+
 # fitting and testing goodness of fit
 def fit_and_test(data, dist_type):
     
@@ -310,12 +337,14 @@ def pretrained_allfit(weight_path, save_dir, n_weight, pytorch=True):
     # plot 1 (full distribution)
     axs[0].hist(weights, bins=1000, density=True)
     sns.kdeplot(weights, shade=True, color='blue', ax=axs[0])
-    #x = np.linspace(-1, 1, 1000)
-    x = np.linspace(pl1, pu2, 1000)
+    bd = min(np.abs(pl1), np.abs(pu2))
+    x = np.linspace(-bd, bd, 1000)
     axs[0].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
     axs[0].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
     axs[0].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
     axs[0].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
+    axs[0].set_xlim(-bd, bd)
+    axs[0].legend(loc = 'upper right')
 
     # plot 2 (log-log hist right tail)
     axs[1].hist(weights, bins=1000, histtype="step")
@@ -348,9 +377,8 @@ def pretrained_allfit(weight_path, save_dir, n_weight, pytorch=True):
     plot_title += "Normal" + str(["{:.2e}".format(num) for num in df.iloc[0,11:13]]) + '\n'
     plot_title += "TStudent" + str(["{:.2e}".format(num) for num in df.iloc[0,19:22]]) + '  '
     plot_title += "Lognorm" + str(["{:.2e}".format(num) for num in df.iloc[0,26:29]])
-    plt.title(plot_title)
+    plt.suptitle(plot_title)
     plot_name = replace_name(weight_name,'plot')
-    plt.legend(loc = 'upper right')
     plt.savefig(f"{model_path}/{plot_name}.pdf", bbox_inches='tight', format='pdf')     
     #plt.clf()
     # Time
