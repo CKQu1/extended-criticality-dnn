@@ -504,7 +504,7 @@ def submit(*args):
     #pbs_array_data = pbs_array_data[:1000] 
     print(len(pbs_array_data))    
 
-    """
+    
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -515,7 +515,7 @@ def submit(*args):
              path=main_path,  
              P=project_ls[pidx], 
              mem="2GB")    
-    """
+    
 
 # -------------------- Single pretrained weight matrix fitting --------------------
 
