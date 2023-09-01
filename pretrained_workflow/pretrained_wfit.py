@@ -42,6 +42,17 @@ def replace_name(weight_name,other):
     #ls += other
     return '_'.join(ls)
 
+def list_str_divider(ls, chunks):
+    start = 0
+    n = len(ls)
+    lss = []
+    while start + chunks < n:
+        lss.append(str( ls[start:start+chunks] ).replace(" ",""))
+        start += chunks
+    if start <= n - 1:
+        lss.append(str( ls[start:] ).replace(" ",""))    
+    return lss
+
 # convert torch saved weight matrices into numpy
 def wmat_torch_to_np(weight_path, n_weight):
     import torch
@@ -75,6 +86,7 @@ def wmat_torch_to_np(weight_path, n_weight):
 def ensemble_wmat_torch_to_np(weight_path, n_weights):
     if isinstance(n_weights,str):
         n_weights = literal_eval(n_weights)
+    assert isinstance(n_weights,list), "n_weights is not a list!"
     for n_weight in n_weights:
         wmat_torch_to_np(weight_path, n_weight)
 
@@ -108,13 +120,7 @@ def w_conversion_submit(*args):
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
 
     chunks = 15  # number of elements in each list
-    nweightss = []
-    start = 0
-    while start + chunks < total_weights:
-        nweightss.append(str( total_weights_idxs[start:start+chunks] ).replace(" ",""))
-        start += chunks
-    if start <= total_weights - 1:
-        nweightss.append(str( total_weights_idxs[start:] ).replace(" ",""))
+    nweightss = list_str_divider(total_weights_idxs, chunks)
 
     pbs_array_data = []    
     for n_weights in nweightss: 
@@ -316,7 +322,7 @@ def pretrained_plfit(weight_path, save_dir, n_weight):
     t_last = time.time()
     print(f"{weight_name} done in {t_last - t0} s!")     
     
-# -----------------------------------------------------------------------
+# -------------------- Single pretrained weight matrix fitting --------------------
     
 # fitting to stable, Gaussian, Student-t, lognormal distribution
 def pretrained_allfit(weight_path, save_dir, n_weight):
@@ -439,18 +445,14 @@ def pretrained_allfit(weight_path, save_dir, n_weight):
     plot_title += "Lognorm" + str(["{:.2e}".format(num) for num in df.iloc[0,26:29]])
     plt.suptitle(plot_title)
     plot_name = replace_name(weight_name,'plot')
-    plt.savefig(f"{model_path}/{plot_name}.pdf", bbox_inches='tight', format='pdf')     
-    #plt.clf()
+    plt.savefig(f"{model_path}/{plot_name}.pdf", bbox_inches='tight', format='pdf')         
     # Time
     t_last = time.time()
-    print(f"{weight_name} done in {t_last - t0} s!") 
+    print(f"{weight_name} done in {t_last - t0} s!")
+    plt.clf()
 
-def submit(*args):
+def pre_submit(pytorch: bool):
 
-    pytorch = True
-    #is_stablefit = False
-    #global df, model_name, weight_name, i, wmat_idx, main_path, fit_path, root_path
-    
     main_path = join(root_data, "pretrained_workflow")
     if not os.path.isdir(main_path): os.makedirs(main_path)    
 
@@ -473,29 +475,36 @@ def submit(*args):
     total_weights = len(weights_all)
     
     print(df.shape)
-    assert total_weights == df.shape[0]
-    #total_weights = 10
+    assert total_weights == df.shape[0]   
+
+    return main_path, root_path, fit_path, df, weights_all, total_weights
+
+def submit(*args):
+
+    pytorch = False
+    main_path, root_path, fit_path, df, weights_all, total_weights = pre_submit(pytorch)
 
     from qsub import qsub, job_divider
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
 
     pbs_array_data = []
-
-    total_weights = 10
+    
     #for n_weight in list(range(total_weights)):
-    for n_weight in list(range(10,1000)): 
+    for n_weight in list(range(10, total_weights)):
+    #for n_weight in list(range(10)): 
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
         i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
         plot_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
         fit_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
         #if not (plot_exist or fit_exist):
-        #if not fit_exist:
-        pbs_array_data.append( (root_path, fit_path, n_weight) )
+        if not fit_exist:
+            pbs_array_data.append( (root_path, fit_path, n_weight) )
  
     #pbs_array_data = pbs_array_data[:1000] 
     print(len(pbs_array_data))    
-            
+
+    """
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -505,7 +514,63 @@ def submit(*args):
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="4GB")                  
+             mem="2GB")    
+    """
+
+# -------------------- Single pretrained weight matrix fitting --------------------
+
+def batch_pretrained_allfit(weight_path, save_dir, n_weights):
+    if isinstance(n_weights,str):
+        n_weights = literal_eval(n_weights)
+    assert isinstance(n_weights, list), "n_weights is not a list!"
+
+    for n_weight in tqdm(n_weights):
+        pretrained_allfit(weight_path, save_dir, n_weight)
+
+    print(f"Batch completed for {weight_path} for n_weights: {n_weights}")
+
+def batch_submit(*args):
+
+    pytorch = False
+    chunks = 4
+
+    main_path, root_path, fit_path, df, weights_all, total_weights = pre_submit(pytorch)
+
+    from qsub import qsub, job_divider
+    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]    
+    
+    n_weights = []
+    #for n_weight in list(range(total_weights)):
+    for n_weight in list(range(10,total_weights)):
+    #for n_weight in list(range(10)): 
+        model_name = df.loc[n_weight,"model_name"]
+        weight_name = df.loc[n_weight,"weight_file"]
+        i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+        plot_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
+        fit_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
+        #if not (plot_exist or fit_exist):
+        if not fit_exist:            
+            n_weights.append(n_weight)
+     
+    n_weightss = list_str_divider(n_weights, chunks)
+    pbs_array_data = []
+    for n_weights in n_weightss:
+        pbs_array_data.append( (root_path, fit_path, n_weights) )
+
+    #pbs_array_data = pbs_array_data[:1000] 
+    print(len(pbs_array_data))    
+        
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+
+        qsub(f'python {sys.argv[0]} {" ".join(args)}', 
+             pbs_array_true, 
+             path=main_path,  
+             P=project_ls[pidx], 
+             mem="2GB")            
+
 
 if __name__ == '__main__':
     import sys
