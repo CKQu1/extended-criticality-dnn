@@ -360,11 +360,11 @@ def load_single_wmat(weight_path, weight_name, if_torch_weights):
 
 def plot_weight_fit(df, weights, model_path, weight_name):
     # Percentiles of the weights 
-    print(f"Min weight: {weights.min()}, Max weight: {weights.max()}")
+    #print(f"Min weight: {weights.min()}, Max weight: {weights.max()}")
     percs = [5e-6, 50, 50, 99.999995]
     percentiles = [np.percentile(weights, per) for per in percs]
     pl1, pl2, pu1, pu2 = percentiles
-    print(f"Percentiles at {percs}: {percentiles}")
+    #print(f"Percentiles at {percs}: {percentiles}")
 
     # Plots ----------------------    
 
@@ -377,9 +377,9 @@ def plot_weight_fit(df, weights, model_path, weight_name):
     # plot 1 (full distribution); # plot 2 (log-log hist right tail); # plot 3 (left tail)
     for aidx in range(len(axs)):
         axs[aidx].hist(weights, bins=2000, density=True)
-        sns.kdeplot(weights, fill=False, color='blue', ax=axs[aidx])
+        sns.kdeplot(weights, color='blue', ax=axs[aidx])
 
-        x = np.linspace(xbds[i][0], xbds[i][1], 1000)
+        x = np.linspace(xbds[aidx][0], xbds[aidx][1], 1000)
         axs[aidx].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
         axs[aidx].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
         axs[aidx].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
@@ -432,17 +432,24 @@ def pretrained_allfit(weight_path, n_weight):
     model_path2 = join(os.path.dirname(weight_path), allfit_folder2, model_name)   
     if not os.path.exists(model_path1): os.makedirs(model_path1)
     if not os.path.exists(model_path2): os.makedirs(model_path2)
+    print(f"model_path1: {model_path1}" + "\n" + f"model_path2: {model_path2}")
 
     # check if previously trained
-    df_name = replace_name(weight_name,'allfit')
-    plot_name = df_name = replace_name(weight_name,'plot')  
+    data_name = replace_name(weight_name,'allfit') 
+    df_name = data_name + ".csv"
+    plot_name = df_name = replace_name(weight_name,'plot') + ".pdf"
+    print(f"df_name: {df_name}")
+    print(f"plot_name: {plot_name}")
     plot_exists = isfile( join(model_path1, plot_name) )
     fit_exists1 = isfile( join(model_path1, df_name) )
     fit_exists2 = isfile( join(model_path2, df_name) )
+    print(f"plot_exists: {plot_exists}, fit_exists1: {fit_exists1}, fit_exists2: {fit_exists2}")
 
     # ---------- 1. fit and test ----------
 
     if not (fit_exists1 or fit_exists2):
+        print("Start fitting from scratch!")
+
         col_names = ['wmat_idx','w_size', 'fit_size',
                     'alpha','beta','delta','sigma', 'logl_stable', 'ad sig level stable', 'ks stat stable', 'ks pvalue stable',                        # stable(stability, skewness, location, scale), 3 - 10
                     'mu', 'sigma_norm', 'logl_norm', 'ad sig level normal','ks stat normal', 'ks pvalue normal', 'shap stat', 'shap pvalue',           # normal(mean, std), 11 - 18
@@ -493,21 +500,30 @@ def pretrained_allfit(weight_path, n_weight):
         print(df)
 
     elif fit_exists2:
+        print("Correct nan logls!")
+
         df = pd.read_csv(join(model_path2, f"{data_name}.csv"))
         # check entries 7, 13, 22, 29
         logl_idxs = [7, 13, 22, 29]
+        bd_idxs = [[3,7], [11,13], [19,22], [26,29]]
         dist_types = ['levy_stable', 'normal', 'tstudent', 'lognorm']
         weights = load_single_wmat(weight_path, weight_name, if_torch_weights)
         # values significantly smaller than zero are filtered out         
         weights = weights[np.abs(weights) >0.00001]
 
-        for idx, log_idx in enumerate(logl_idxs):
+        # recompute the loglihoods which are originally nan
+        for idx, logl_idx in enumerate(logl_idxs):
             logl = df.iloc[0, logl_idx]
-            if is_num_defined(logl):
+            params = df.iloc[0, bd_idxs[idx][0]:bd_idxs[idx][1]]
+            dist_type = dist_types[idx]
+            if not is_num_defined(logl):
+                print(f"{dist_type} logl ill-defined!")
                 logl = logl_from_params(weights, params, dist_type)  
+                if is_num_defined(logl):
+                    print(f"{dist_type} logl updated!")
 
         all_logl_defined = True
-        for idx, log_idx in enumerate(logl_idxs):
+        for idx, logl_idx in enumerate(logl_idxs):
             all_logl_defined = all_logl_defined and is_num_defined(df.iloc[0, logl_idx])     
 
         if all_logl_defined:
@@ -518,6 +534,9 @@ def pretrained_allfit(weight_path, n_weight):
         else:
             df.to_csv(f'{model_path2}/{data_name}.csv', index=False)
             print("nan logls still exist")
+
+    else:
+        print("Fitting already done!")
 
     # plot hist and fit
     if not plot_exists:
@@ -572,8 +591,8 @@ def submit(*args):
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
     pbs_array_data = []
     
-    #for n_weight in list(range(10, total_weights)):
-    for n_weight in list(range(10)): 
+    for n_weight in list(range(10, total_weights)):
+    #for n_weight in list(range(10)): 
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
         i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
@@ -585,7 +604,7 @@ def submit(*args):
  
     #pbs_array_data = pbs_array_data[:1000] 
     print(len(pbs_array_data))
-    
+        
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -595,26 +614,28 @@ def submit(*args):
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="2GB")            
+             mem="2GB")          
 
 # -------------------- Single pretrained weight matrix fitting --------------------
 
-def batch_pretrained_allfit(weight_path, save_dir, n_weights):
+def batch_pretrained_allfit(weight_path, n_weights):
     if isinstance(n_weights,str):
         n_weights = literal_eval(n_weights)
     assert isinstance(n_weights, list), "n_weights is not a list!"
 
     for n_weight in tqdm(n_weights):
-        pretrained_allfit(weight_path, save_dir, n_weight)
+        pretrained_allfit(weight_path, n_weight)
 
     print(f"Batch completed for {weight_path} for n_weights: {n_weights}")
 
 def batch_submit(*args):
 
     pytorch = False
-    chunks = 4
+    chunks = 3
 
-    main_path, root_path, fit_path, df, weights_all, total_weights = pre_submit(pytorch)
+    main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)
+    allfit_folder = "allfit_all" if pytorch else "allfit_all_tf"
+    fit_path1 = join(os.path.dirname(root_path), allfit_folder) 
 
     from qsub import qsub, job_divider
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]    
@@ -626,20 +647,20 @@ def batch_submit(*args):
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
         i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
-        plot_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
-        fit_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
-        #if not (plot_exist or fit_exist):
-        if not fit_exist:            
+        plot_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
+        fit_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
+        if not (plot_exist and fit_exist):
+        #if not fit_exist:            
             n_weights.append(n_weight)
      
     n_weightss = list_str_divider(n_weights, chunks)
     pbs_array_data = []
     for n_weights in n_weightss:
-        pbs_array_data.append( (root_path, fit_path, n_weights) )
+        pbs_array_data.append( (root_path, n_weights) )
 
-    #pbs_array_data = pbs_array_data[:1000] 
     print(len(pbs_array_data))    
         
+    
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -649,7 +670,7 @@ def batch_submit(*args):
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="2GB")            
+             mem="4GB")       
 
 
 if __name__ == '__main__':
