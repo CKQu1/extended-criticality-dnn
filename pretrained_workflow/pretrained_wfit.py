@@ -72,6 +72,68 @@ def wmat_torch_to_np(weight_path, n_weight):
     np.save(join(np_weight_path, weight_name), weights)
     print("Weights saved in numpy!")
 
+def ensemble_wmat_torch_to_np(weight_path, n_weights):
+    if isinstance(n_weights,str):
+        n_weights = literal_eval(n_weights)
+    for n_weight in n_weights:
+        wmat_torch_to_np(weight_path, n_weight)
+
+def w_conversion_submit(*args):
+    pytorch = False
+    
+    main_path = join(root_data, "pretrained_workflow")
+    if not os.path.isdir(main_path): os.makedirs(main_path)    
+
+    if pytorch:
+        # --- Pytorch ---
+        root_path = join(main_path, "weights_all")
+        fit_path = join(main_path, "allfit_all")
+        df = pd.read_csv(join(main_path, "weight_info.csv"))
+    else:
+        # ---TensorFlow ---
+        root_path = join(main_path, "weights_all_tf")
+        fit_path = join(main_path, "allfit_all_tf")
+        df = pd.read_csv(join(main_path, "weight_info_tf.csv"))
+
+    print(fit_path)
+    weights_all = next(os.walk(root_path))[2]
+    weights_all.sort()
+    total_weights = len(weights_all)
+    total_weights_idxs = list(range(total_weights))
+    
+    print(df.shape)
+    assert total_weights == df.shape[0]
+
+    from qsub import qsub, job_divider
+    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
+
+    chunks = 15  # number of elements in each list
+    nweightss = []
+    start = 0
+    while start + chunks < total_weights:
+        nweightss.append(str( total_weights_idxs[start:start+chunks] ).replace(" ",""))
+        start += chunks
+    if start <= total_weights - 1:
+        nweightss.append(str( total_weights_idxs[start:] ).replace(" ",""))
+
+    pbs_array_data = []    
+    for n_weights in nweightss: 
+        pbs_array_data.append( (root_path, n_weights) )
+ 
+    #pbs_array_data = pbs_array_data[:1000] 
+    print(len(pbs_array_data))    
+                
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+
+        qsub(f'python {sys.argv[0]} {" ".join(args)}', 
+             pbs_array_true, 
+             path=main_path,  
+             P=project_ls[pidx], 
+             mem="4GB")        
+
 # fitting and testing goodness of fit
 def fit_and_test(data, dist_type):
     
@@ -95,7 +157,7 @@ def fit_and_test(data, dist_type):
         r = lognorm.rvs(*params, size=len(data))
         logl = np.sum(np.log(lognorm.pdf(data, *params)))
 
-    assert logl != np.nan, "Log likelihood from fit_and_test() is nan"
+    assert not (np.isnan(logl) or np.isposinf(logl) or np.isneginf(logl)) , f"Log likelihood fitting {dist_type} from fit_and_test() ill-defined, i.e. inf or nan"
 
     # statistical tests    
     # AD test
@@ -128,7 +190,6 @@ def fit_and_test(data, dist_type):
 def pretrained_plfit(weight_path, save_dir, n_weight):
     import powerlaw as plaw
     global model_path, df_pl
-    #global weights_all, thing, weights, plaw_fit, fits, compare_ls
 
     t0 = time.time()
     n_weight = int(n_weight)    
@@ -259,9 +320,8 @@ def pretrained_plfit(weight_path, save_dir, n_weight):
     
 # fitting to stable, Gaussian, Student-t, lognormal distribution
 def pretrained_allfit(weight_path, save_dir, n_weight):
-    global weights, params, df, plot_title, x, params
-    global weight_name
-    #global weights_all, thing, weights, plaw_fit, fits, compare_ls
+    #global weights, params, df, plot_title, x, params
+    #global weight_name
 
     t0 = time.time()
     n_weight = int(n_weight)
@@ -336,6 +396,7 @@ def pretrained_allfit(weight_path, save_dir, n_weight):
     data_name = replace_name(weight_name,'allfit')
     df.to_csv(f'{model_path}/{data_name}.csv', index=False)
     print("df saved!")
+    pd.set_option('display.max_columns', df.shape[1])
     print(df)
 
 # Percentiles of the weights 
@@ -346,43 +407,29 @@ def pretrained_allfit(weight_path, save_dir, n_weight):
     print(f"Percentiles at {percs}: {percentiles}")
 
 # Plots ----------------------    
-    fig, axs = plt.subplots(1, 3, sharex = False,sharey=False,figsize=(12.5 + 4.5, 9.5/3 + 2.5))
-    # plot 1 (full distribution)
-    axs[0].hist(weights, bins=1000, density=True)
-    sns.kdeplot(weights, shade=True, color='blue', ax=axs[0])
+
+    # x-axis bounds for 3 plots
     bd = min(np.abs(pl1), np.abs(pu2))
     x = np.linspace(-bd, bd, 1000)
-    axs[0].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
-    axs[0].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
-    axs[0].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
-    axs[0].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
-    axs[0].set_xlim(-bd, bd)
-    axs[0].legend(loc = 'upper right')
+    xbds = [[-bd,bd], [pu1, pu2], [pl1, pl2]]
 
-    # plot 2 (log-log hist right tail)
-    axs[1].hist(weights, bins=1000, histtype="step")
-    sns.kdeplot(weights, shade=True, color='blue', ax=axs[1])
+    fig, axs = plt.subplots(1, 3, sharex = False,sharey=False,figsize=(12.5 + 4.5, 9.5/3 + 2.5))
+    # plot 1 (full distribution); # plot 2 (log-log hist right tail); # plot 3 (left tail)
+    for aidx in range(len(axs)):
 
-    mean_gaussian = df.iloc[0,11]
-    x = np.linspace(pu1, pu2, 500)  
-    axs[1].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
-    axs[1].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
-    axs[1].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
-    axs[1].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
-    axs[1].set_xlim(pu1,pu2)
-    axs[1].set_xscale('symlog'); axs[1].set_yscale('log')
+        axs[aidx].hist(weights, bins=2000, density=True)
+        sns.kdeplot(weights, fill=False, color='blue', ax=axs[aidx])
 
-    # plot 3 (left tail)
-    axs[2].hist(weights, bins=1000, histtype="step")
-    sns.kdeplot(weights, shade=True, color='blue', ax=axs[2])
-
-    x = np.linspace(pl1, pl2, 500)
-    axs[2].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
-    axs[2].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
-    axs[2].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
-    axs[2].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
-    axs[2].set_xlim(pl1,pl2)
-    axs[2].set_xscale('symlog'); axs[2].set_yscale('log')
+        x = np.linspace(xbds[i][0], xbds[i][1], 1000)
+        axs[aidx].plot(x, levy_stable.pdf(x, *df.iloc[0,3:7]), label = 'Stable fit', alpha=1)
+        axs[aidx].plot(x, norm.pdf(x, *df.iloc[0,11:13]), label = 'Normal fit', linestyle='dashdot', alpha=0.85)
+        axs[aidx].plot(x, sst.t.pdf(x, *df.iloc[0,19:22]), label = "Student-t",  linestyle='dashed', alpha=0.7)
+        axs[aidx].plot(x, lognorm.pdf(x, *df.iloc[0,26:29]), label = "Lognormal",  linestyle='dotted', alpha=0.7)
+        axs[aidx].set_xlim(xbds[aidx][0], xbds[aidx][1])
+        if aidx == 0:
+            axs[aidx].legend(loc = 'upper right')
+        if aidx == 1 or aidx == 2:
+            axs[aidx].set_xscale('symlog'); axs[aidx].set_yscale('log')
 
     print("Starting plot")
     plot_title = str(list(df.iloc[0,0:3])) + '\n'
@@ -409,23 +456,25 @@ def submit(*args):
 
     if pytorch:
         # --- Pytorch ---
-        root_path = join(main_path, "weights_all")
+        #root_path = join(main_path, "weights_all")
+        root_path = join(main_path, "np_weights_all")
         fit_path = join(main_path, "allfit_all")
         df = pd.read_csv(join(main_path, "weight_info.csv"))
     else:
         # ---TensorFlow ---
-        root_path = join(main_path, "weights_all_tf")
+        #root_path = join(main_path, "weights_all_tf")
+        root_path = join(main_path, "np_weights_all_tf")
         fit_path = join(main_path, "allfit_all_tf")
         df = pd.read_csv(join(main_path, "weight_info_tf.csv"))
 
     print(fit_path)
-    #total_weights = len([weight_ii for weight_ii in os.walk(p)][1:])
     weights_all = next(os.walk(root_path))[2]
     weights_all.sort()
     total_weights = len(weights_all)
     
     print(df.shape)
     assert total_weights == df.shape[0]
+    #total_weights = 10
 
     from qsub import qsub, job_divider
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
@@ -433,7 +482,8 @@ def submit(*args):
     pbs_array_data = []
 
     total_weights = 10
-    for n_weight in list(range(total_weights)): 
+    #for n_weight in list(range(total_weights)):
+    for n_weight in list(range(10,1000)): 
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
         i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
@@ -441,7 +491,7 @@ def submit(*args):
         fit_exist = isfile( join(fit_path, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
         #if not (plot_exist or fit_exist):
         #if not fit_exist:
-        pbs_array_data.append( (root_path, fit_path, n_weight, pytorch) )
+        pbs_array_data.append( (root_path, fit_path, n_weight) )
  
     #pbs_array_data = pbs_array_data[:1000] 
     print(len(pbs_array_data))    
