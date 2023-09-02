@@ -66,6 +66,7 @@ def postfit_stats(pytorch, with_outliers=True):
     param_shape_map = {'stable': 4, 'normal': 2,
                        'tstudent': 3, 'lognorm': 3}
     fit_sizes = pd.DataFrame({"fit_size": []})
+    depths = pd.DataFrame({"depths": []})
     data_types = ['ll', "aic", "bic", "ks"]
     dist_types = list(LL_colname_map.keys())    
 
@@ -84,6 +85,7 @@ def postfit_stats(pytorch, with_outliers=True):
         for fitfile in fitfiles:
             df = pd.read_csv(fitfile)
             fit_size = df.loc[0,'fit_size']
+            depth = df.loc[0,'wmat_idx']
             # get LL first
             LLs = [ df.loc[0, LL_colname_map[dist_type] ] for dist_type in dist_types ]
             isnotnan = True
@@ -105,8 +107,9 @@ def postfit_stats(pytorch, with_outliers=True):
                 data_dict['aic'].loc[total_wm] = AICs
                 data_dict['bic'].loc[total_wm] = BICs
 
-                # get fit_size
+                # get fit_size and depths
                 fit_sizes.loc[total_wm] = fit_size
+                depths.loc[total_wm] = depth
                 total_wm += 1
 
             else:
@@ -115,7 +118,7 @@ def postfit_stats(pytorch, with_outliers=True):
     print(f"Total weight matrices: {total_wm}")
 
     # box plots
-    fig, axs = plt.subplots(2, 2, figsize=(17/3*2, 5.67*2))    
+    fig, axs = plt.subplots(2, 4, figsize=(17/3*4, 5.67*2))    
 
     # summarize stats
     selected_dists = [ data_dict['ll'].idxmax(axis=1), data_dict['aic'].idxmin(axis=1), data_dict['bic'].idxmin(axis=1),
@@ -123,7 +126,7 @@ def postfit_stats(pytorch, with_outliers=True):
     ll_summary = {}; aic_summary = {}; bic_summary = {}; ad_summary = {}; ks_summary = {}   
     summaries1 = [[] for i in range(len(selected_dists))]        
     for didx, data_type in enumerate(data_types):
-        dist_fit_sizes = {}
+        dist_fit_sizes = {}; dist_depths = {}
         fit_sizes_legends = []
         summaries1[didx] = {}   
         row, col = get_plot_rc(didx, axs.shape[1])     
@@ -133,12 +136,16 @@ def postfit_stats(pytorch, with_outliers=True):
             summaries1[didx][colname] = [percentage]
             # distribution for fit_sizes            
             dist_fit_sizes[colname] = list(fit_sizes[idxs].iloc[:,0])
+            dist_depths[colname] = list(depths[idxs].iloc[:,0])
             fit_sizes_legends.append(str(round(percentage*100, 2)) + "%")
 
         if with_outliers:
             axs[row, col].boxplot(dist_fit_sizes.values())
+            axs[row + 1, col].boxplot(dist_depths.values())
         else:
             axs[row, col].boxplot(dist_fit_sizes.values(), showfliers=False) 
+            axs[row + 1, col].boxplot(dist_depths.values(), showfliers=False)
+
         axs[row, col].set_xticklabels(dist_fit_sizes.keys())        
         axs[row, col].set_title(data_type.upper() + ": " + ',  '.join(fit_sizes_legends))
         #axs[didx].set_ylim([0,1e8])
@@ -147,8 +154,10 @@ def postfit_stats(pytorch, with_outliers=True):
         print(f"{data_types[didx]}")
         print(summaries1[didx])
         print('\n')
-
-    axs[0,0].set_ylabel(f"Total weights: {total_wm}")
+    
+    axs[0,0].set_ylabel("Weight sizes")
+    axs[1,0].set_ylabel("Weight depths")
+    plt.suptitle(f"Total weights: {total_wm}")
 
     save_path = join(root_data, "pretrained_workflow", "weight_summary_stats")
     if not os.path.isdir(save_path): os.makedirs(save_path)

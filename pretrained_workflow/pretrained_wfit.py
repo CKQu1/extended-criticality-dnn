@@ -395,7 +395,51 @@ def plot_weight_fit(df, weights, model_path, weight_name):
     plt.suptitle(plot_title)
     plot_name = replace_name(weight_name,'plot')
     plt.savefig(f"{model_path}/{plot_name}.pdf", bbox_inches='tight', format='pdf')       
-    
+
+
+# remove fitted files in model_path2 if they both exist in model_path1 and model_path2
+def remove_repeated_files(weight_path):
+    global to_be_removed, model_path1, model_path2, df_name, df
+    global fit_exists1, fit_exists2
+    global exists1_ls, exists2_ls, pytorch
+    global allfit_folder1, allfit_folder2
+    global weight_name, model_name
+    global upper_weight_path
+
+    weight_path = weight_path if weight_path[-1] != '/' else weight_path[:-1]    
+    pytorch = False if "_tf" in weight_path else True
+    upper_weight_path = os.path.dirname(weight_path)
+
+    main_path = join(root_data,"pretrained_workflow")
+    df = pd.read_csv(join(main_path, "weight_info.csv")) if pytorch else pd.read_csv(join(main_path, "weight_info_tf.csv"))
+
+    # dir for potentially previously fitted params
+    allfit_folder1 = "allfit_all" if pytorch else "allfit_all_tf"
+    allfit_folder2 = "nan_allfit_all" if pytorch else "nan_allfit_all_tf"      
+
+    to_be_removed = []
+    exists1_ls = []; exists2_ls = []
+    for n_weight in tqdm(range(df.shape[0])):
+
+        weight_name = df.loc[n_weight,"weight_file"]
+        model_name = df.loc[n_weight,"model_name"]
+        model_path1 = join(upper_weight_path, allfit_folder1, model_name)
+        model_path2 = join(upper_weight_path, allfit_folder2, model_name) 
+
+        data_name = replace_name(weight_name,'allfit') 
+        df_name = data_name + ".csv"
+        fit_exists1 = isfile( join(model_path1, df_name) )
+        fit_exists2 = isfile( join(model_path2, df_name) )
+
+        if fit_exists1 and fit_exists2:
+            to_be_removed.append( join(model_path2, df_name) )
+        if fit_exists1:
+            exists1_ls.append( join(model_path1, df_name) )
+        if fit_exists2:
+            exists2_ls.append( join(model_path2, df_name) )            
+
+    print(len(to_be_removed))
+
 # fitting to stable, Gaussian, Student-t, lognormal distribution
 def pretrained_allfit(weight_path, n_weight):
     #global weights, params, df, plot_title, x, params
@@ -433,7 +477,7 @@ def pretrained_allfit(weight_path, n_weight):
     # check if previously trained
     data_name = replace_name(weight_name,'allfit') 
     df_name = data_name + ".csv"
-    plot_name = df_name = replace_name(weight_name,'plot') + ".pdf"
+    plot_name = replace_name(weight_name,'plot') + ".pdf"
     print(f"df_name: {df_name}")
     print(f"plot_name: {plot_name}")
     plot_exists = isfile( join(model_path1, plot_name) )
@@ -594,13 +638,14 @@ def submit(*args):
         i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
         plot_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
         fit_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'allfit')}.csv") )        
-        if not (plot_exist or fit_exist):
-        #if not fit_exist:
+        #if not (plot_exist or fit_exist):
+        if not fit_exist:
             pbs_array_data.append( (root_path, n_weight) )
  
     #pbs_array_data = pbs_array_data[:1000] 
     print(len(pbs_array_data))
         
+    """
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -610,7 +655,8 @@ def submit(*args):
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="2GB")          
+             mem="2GB")  
+    """
 
 # -------------------- Single pretrained weight matrix fitting --------------------
 
