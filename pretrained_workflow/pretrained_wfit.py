@@ -149,16 +149,12 @@ def logl_from_params(data, params, dist_type):
 
     # fitting plus log likelihood
     if dist_type == 'levy_stable':
-        params = pconv(*levy_stable._fitstart(data))
         logl = np.sum(np.log(levy_stable.pdf(data, *params)))
     elif dist_type == 'normal':
-        params = distributions.norm.fit(data)
         logl = np.sum(np.log(norm.pdf(data, *params)))
     elif dist_type == 'tstudent':
-        params = sst.t.fit(data)
         logl = np.sum(np.log(sst.t.pdf(data, *params)))
     elif dist_type == 'lognorm':
-        params = lognorm.fit(data)
         logl = np.sum(np.log(lognorm.pdf(data, *params)))
     return logl
 
