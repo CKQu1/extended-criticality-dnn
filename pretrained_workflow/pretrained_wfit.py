@@ -399,12 +399,6 @@ def plot_weight_fit(df, weights, model_path, weight_name):
 
 # remove fitted files in model_path2 if they both exist in model_path1 and model_path2
 def remove_repeated_files(weight_path):
-    global to_be_removed, model_path1, model_path2, df_name, df
-    global fit_exists1, fit_exists2
-    global exists1_ls, exists2_ls, pytorch
-    global allfit_folder1, allfit_folder2
-    global weight_name, model_name
-    global upper_weight_path
 
     weight_path = weight_path if weight_path[-1] != '/' else weight_path[:-1]    
     pytorch = False if "_tf" in weight_path else True
@@ -417,7 +411,7 @@ def remove_repeated_files(weight_path):
     allfit_folder1 = "allfit_all" if pytorch else "allfit_all_tf"
     allfit_folder2 = "nan_allfit_all" if pytorch else "nan_allfit_all_tf"      
 
-    to_be_removed = []
+    n = 0
     exists1_ls = []; exists2_ls = []
     for n_weight in tqdm(range(df.shape[0])):
 
@@ -432,13 +426,10 @@ def remove_repeated_files(weight_path):
         fit_exists2 = isfile( join(model_path2, df_name) )
 
         if fit_exists1 and fit_exists2:
-            to_be_removed.append( join(model_path2, df_name) )
-        if fit_exists1:
-            exists1_ls.append( join(model_path1, df_name) )
-        if fit_exists2:
-            exists2_ls.append( join(model_path2, df_name) )            
+            os.remove(join(model_path2, df_name))
+            n += 1
 
-    print(len(to_be_removed))
+    print(f"{n} files removed from {allfit_folder2}!")
 
 # fitting to stable, Gaussian, Student-t, lognormal distribution
 def pretrained_allfit(weight_path, n_weight):
@@ -579,6 +570,7 @@ def pretrained_allfit(weight_path, n_weight):
         print("Fitting already done!")
 
     # plot hist and fit
+    """
     if not plot_exists:
         if fit_exists1:
             weights = load_single_wmat(weight_path, weight_name, if_torch_weights)
@@ -589,6 +581,7 @@ def pretrained_allfit(weight_path, n_weight):
         print("Plot done!")
     else:
         print("Plot already created!")
+    """
 
     # Time
     t_last = time.time()
@@ -673,7 +666,7 @@ def batch_pretrained_allfit(weight_path, n_weights):
 def batch_submit(*args):
 
     pytorch = False
-    chunks = 3
+    chunks = 2
 
     main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)
     allfit_folder = "allfit_all" if pytorch else "allfit_all_tf"
@@ -683,16 +676,14 @@ def batch_submit(*args):
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]    
     
     n_weights = []
-    #for n_weight in list(range(total_weights)):
-    for n_weight in list(range(10,total_weights)):
-    #for n_weight in list(range(10)): 
+    for n_weight in list(range(total_weights)):
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
         i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
         plot_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
         fit_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
-        if not (plot_exist and fit_exist):
-        #if not fit_exist:            
+        #if not (plot_exist and fit_exist):
+        if not fit_exist:            
             n_weights.append(n_weight)
      
     n_weightss = list_str_divider(n_weights, chunks)
@@ -701,8 +692,7 @@ def batch_submit(*args):
         pbs_array_data.append( (root_path, n_weights) )
 
     print(len(pbs_array_data))    
-        
-    
+            
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -712,7 +702,7 @@ def batch_submit(*args):
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="4GB")       
+             mem="4GB")          
 
 
 if __name__ == '__main__':
