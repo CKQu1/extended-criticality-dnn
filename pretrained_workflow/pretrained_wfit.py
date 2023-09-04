@@ -5,7 +5,7 @@ import pandas as pd
 import random
 import scipy.io as sio
 import scipy.stats as sst
-import seaborn as sns
+#import seaborn as sns
 import sys
 import time
 
@@ -144,6 +144,13 @@ def w_conversion_submit(*args):
 def is_num_defined(num):
     return not ( np.isnan(num) or np.isposinf(num) or np.isneginf(num) )
 
+# for alleviating the computaton pressure
+def log_of_normal_pdf(x, params):
+    return -np.log(params[1] * np.sqrt(2*np.pi)) - 0.5 * ((x - params[0])/params[1])**2 
+
+def log_of_lognormal_pdf(x, params):
+    return -np.log(params[0] * (x - params[1])/params[2] * np.sqrt(2*np.pi)) - 0.5 * np.log((x - params[1])/params[2])**2/params[0]**2 - np.log(params[2])
+
 def logl_from_params(data, params, dist_type):
     assert dist_type in ['levy_stable', 'normal', 'tstudent', 'lognorm']
 
@@ -151,11 +158,14 @@ def logl_from_params(data, params, dist_type):
     if dist_type == 'levy_stable':
         logl = np.sum(np.log(levy_stable.pdf(data, *params)))
     elif dist_type == 'normal':
-        logl = np.sum(np.log(norm.pdf(data, *params)))
+        #logl = np.sum(np.log(norm.pdf(data, *params)))
+        logl = np.sum( log_of_normal_pdf(data, params) )
     elif dist_type == 'tstudent':
         logl = np.sum(np.log(sst.t.pdf(data, *params)))
     elif dist_type == 'lognorm':
-        logl = np.sum(np.log(lognorm.pdf(data, *params)))
+        #logl = np.sum(np.log(lognorm.pdf(data, *params)))
+        logl = np.sum( log_of_lognormal_pdf(data, params) )
+        
     return logl
 
 # fitting and testing goodness of fit
@@ -171,7 +181,8 @@ def fit_and_test(data, dist_type):
     elif dist_type == 'normal':
         params = distributions.norm.fit(data)
         r = norm.rvs(*params, len(data))
-        logl = np.sum(np.log(norm.pdf(data, *params)))
+        #logl = np.sum(np.log(norm.pdf(data, *params)))
+        logl = np.sum( log_of_normal_pdf(data, params) )
     elif dist_type == 'tstudent':
         params = sst.t.fit(data)
         r = sst.t.rvs(*params, len(data))
@@ -180,10 +191,10 @@ def fit_and_test(data, dist_type):
         params = lognorm.fit(data)
         r = lognorm.rvs(*params, size=len(data))
         logl = np.sum(np.log(lognorm.pdf(data, *params)))
+        if not np.isnan(logl):
+            logl = np.sum( log_of_lognormal_pdf(data, params) )
 
     is_logl_defined = is_num_defined(logl)
-    if not is_logl_defined:
-        logl = np.nan
     #assert is_logl_defined, f"Log likelihood fitting {dist_type} from fit_and_test() ill-defined, i.e. inf or nan"
 
     # statistical tests    
@@ -433,8 +444,7 @@ def remove_repeated_files(weight_path):
 
 # fitting to stable, Gaussian, Student-t, lognormal distribution
 def pretrained_allfit(weight_path, n_weight):
-    #global weights, params, df, plot_title, x, params
-    #global weight_name
+    global weights, params, df, plot_title, x, params
 
     t0 = time.time()
     n_weight = int(n_weight)
@@ -454,7 +464,7 @@ def pretrained_allfit(weight_path, n_weight):
     weight_name = df.loc[n_weight,"weight_file"]
     i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
     model_name = df.loc[n_weight,"model_name"]
-    print(f"{n_weight}: {weight_name}")
+    print(f"n_weight = {n_weight}: {weight_name}")
 
     # dir for potentially previously fitted params
     allfit_folder1 = "allfit_all" if pytorch else "allfit_all_tf"
@@ -531,40 +541,54 @@ def pretrained_allfit(weight_path, n_weight):
         print(df)
 
     elif fit_exists2:
-        print("Correct nan logls!")
+        print("Fix ill logls!")
 
         df = pd.read_csv(join(model_path2, f"{data_name}.csv"))
         # check entries 7, 13, 22, 29
         logl_idxs = [7, 13, 22, 29]
-        bd_idxs = [[3,7], [11,13], [19,22], [26,29]]
+        bd_idxs = [[3,7,11], [11,13,19], [19,22,26], [26,29,33]]
         dist_types = ['levy_stable', 'normal', 'tstudent', 'lognorm']
         weights = load_single_wmat(weight_path, weight_name, if_torch_weights)
         # values significantly smaller than zero are filtered out         
         weights = weights[np.abs(weights) >0.00001]
 
-        # recompute the loglihoods which are originally nan
-        for idx, logl_idx in enumerate(logl_idxs):
-            logl = df.iloc[0, logl_idx]
-            params = df.iloc[0, bd_idxs[idx][0]:bd_idxs[idx][1]]
-            dist_type = dist_types[idx]
-            if not is_num_defined(logl):
-                print(f"{dist_type} logl ill-defined!")
-                logl = logl_from_params(weights, params, dist_type)  
-                if is_num_defined(logl):
+        # refit the whole distribution
+        ill_logl_dists = []
+        for dist_idx, logl_idx in enumerate(logl_idxs):
+            logl = df.iloc[0, logl_idx]            
+            dist_type = dist_types[dist_idx]
+            idxs = bd_idxs[dist_idx]
+            if not is_num_defined(logl):                
+            #if not np.isnan(logl):            
+                if dist_type == "normal":
+                    params, logl, ad_siglevel, ks_stat, ks_pvalue, shapiro_stat, shapiro_pvalue, is_logl_defined = fit_and_test(weights, dist_type)
+                    df.iloc[0,idxs[1]:idxs[2]] = [logl, ad_siglevel, ks_stat, ks_pvalue, shapiro_stat, shapiro_pvalue]
+                else:
+                    params, logl, ad_siglevel, ks_stat, ks_pvalue, is_logl_defined = fit_and_test(weights, dist_type) 
+                    df.iloc[0,idxs[1]:idxs[2]] = [logl, ad_siglevel, ks_stat, ks_pvalue]   
+
+                df.iloc[0,idxs[0]:idxs[1]] = list(params)
+
+                if is_logl_defined:
                     print(f"{dist_type} logl updated!")
+                else:
+                    ill_logl_dists.append(dist_type)
+                    print(f"{dist_type} logl still ill-defined!")        
+                print('\n')
 
         all_logl_defined = True
-        for idx, logl_idx in enumerate(logl_idxs):
-            all_logl_defined = all_logl_defined and is_num_defined(df.iloc[0, logl_idx])     
+        for dist_idx, logl_idx in enumerate(logl_idxs):
+            all_logl_defined = all_logl_defined and is_num_defined(df.iloc[0, logl_idx])
+            #all_logl_defined = all_logl_defined and np.isnan(df.iloc[0, logl_idx])     
 
         if all_logl_defined:
             df.to_csv(f'{model_path1}/{data_name}.csv', index=False)
             # delete original file from the nan verion
             os.remove(join(model_path2, f"{data_name}.csv"))
-            print(f"no nan logls, old df deleted from {model_path2}")
+            print(f"no ill logls, old df deleted from {model_path2}")
         else:
             df.to_csv(f'{model_path2}/{data_name}.csv', index=False)
-            print("nan logls still exist")
+            print(f"ill logls in distributions fits from {ill_logl_dists} still exist")
 
     else:
         print("Fitting already done!")
@@ -615,7 +639,7 @@ def pre_submit(pytorch: bool):
 
 def submit(*args):
 
-    pytorch = True
+    pytorch = False
     main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)       
     allfit_folder = "allfit_all" if pytorch else "allfit_all_tf"       
     fit_path1 = join(os.path.dirname(root_path), allfit_folder) 
@@ -635,21 +659,20 @@ def submit(*args):
         if not fit_exist:
             pbs_array_data.append( (root_path, n_weight) )
  
-    #pbs_array_data = pbs_array_data[:1000] 
+    pbs_array_data = pbs_array_data[:10] 
     print(len(pbs_array_data))
-        
-    """
+            
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
 
-        qsub(f'python {sys.argv[0]} {" ".join(args)}', 
+        #qsub(f'python {sys.argv[0]} {" ".join(args)}',
+        qsub(f'singularity exec dist_fit.sif python {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="2GB")  
-    """
+             mem="4GB")      
 
 # -------------------- Single pretrained weight matrix fitting --------------------
 
@@ -692,7 +715,7 @@ def batch_submit(*args):
         pbs_array_data.append( (root_path, n_weights) )
 
     print(len(pbs_array_data))    
-            
+    
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -702,7 +725,7 @@ def batch_submit(*args):
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="4GB")          
+             mem="4GB")        
 
 
 if __name__ == '__main__':
