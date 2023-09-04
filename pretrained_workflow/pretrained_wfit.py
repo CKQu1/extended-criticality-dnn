@@ -540,7 +540,7 @@ def pretrained_allfit(weight_path, n_weight):
         pd.set_option('display.max_columns', df.shape[1])
         print(df)
 
-    elif fit_exists2:
+    elif fit_exists2 and (not fit_exists1):
         print("Fix ill logls!")
 
         df = pd.read_csv(join(model_path2, f"{data_name}.csv"))
@@ -639,10 +639,12 @@ def pre_submit(pytorch: bool):
 
 def submit(*args):
 
-    pytorch = False
+    pytorch = True
     main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)       
-    allfit_folder = "allfit_all" if pytorch else "allfit_all_tf"       
-    fit_path1 = join(os.path.dirname(root_path), allfit_folder) 
+    allfit_folder1 = "allfit_all" if pytorch else "allfit_all_tf"       
+    fit_path1 = join(os.path.dirname(root_path), allfit_folder1) 
+    allfit_folder2 = "nan_allfit_all" if pytorch else "nan_allfit_all_tf"
+    fit_path2 = join(os.path.dirname(root_path), allfit_folder2) 
 
     from qsub import qsub, job_divider
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
@@ -654,25 +656,26 @@ def submit(*args):
         weight_name = df.loc[n_weight,"weight_file"]
         i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
         plot_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
-        fit_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'allfit')}.csv") )        
-        #if not (plot_exist or fit_exist):
-        if not fit_exist:
+        fit_exist1 = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
+        fit_exist2 = isfile( join(fit_path2, model_name, f"{replace_name(weight_name,'allfit')}.csv") )        
+        #if not (plot_exist or fit_exist1):
+        if not (fit_exist1 or fit_exist2):
             pbs_array_data.append( (root_path, n_weight) )
  
-    pbs_array_data = pbs_array_data[:10] 
+    #pbs_array_data = pbs_array_data[:10] 
     print(len(pbs_array_data))
-            
+    
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
 
-        #qsub(f'python {sys.argv[0]} {" ".join(args)}',
-        qsub(f'singularity exec dist_fit.sif python {sys.argv[0]} {" ".join(args)}', 
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',
+        #qsub(f'singularity exec dist_fit.sif python {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
              path=main_path,  
              P=project_ls[pidx], 
-             mem="4GB")      
+             mem="24GB")     
 
 # -------------------- Single pretrained weight matrix fitting --------------------
 
