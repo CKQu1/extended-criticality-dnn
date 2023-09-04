@@ -44,9 +44,16 @@ def postfit_stats(pytorch, with_outliers=True):
 
     pytorch = int(pytorch)
     assert pytorch in [0,1,2], "pytorch can only take values 0, 1 or 2"
-    main_paths = ["/project/PDLAI/project2_data/pretrained_workflow/allfit_all", "/project/PDLAI/project2_data/pretrained_workflow/allfit_all_tf"]
-    if pytorch <= 1:
-        main_paths = [main_paths[pytorch]]
+    main_paths = ["/project/PDLAI/project2_data/pretrained_workflow/allfit_all",
+                  "/project/PDLAI/project2_data/pretrained_workflow/nan_allfit_all", 
+                  "/project/PDLAI/project2_data/pretrained_workflow/allfit_all_tf",
+                  "/project/PDLAI/project2_data/pretrained_workflow/nan_allfit_all_tf"
+                 ]
+    if pytorch == 0:
+        main_paths = main_paths[2:]
+    elif pytorch == 1:
+        main_paths = main_paths[0:2]           
+
     subdirs = []
     for main_path in main_paths:
         for x in next(os.walk(main_path))[1]:
@@ -90,7 +97,8 @@ def postfit_stats(pytorch, with_outliers=True):
             LLs = [ df.loc[0, LL_colname_map[dist_type] ] for dist_type in dist_types ]
             isnotnan = True
             for LL in LLs:
-                isnotnan = isnotnan and is_num_defined(LL)
+                #isnotnan = isnotnan and is_num_defined(LL)
+                isnotnan = isnotnan and not np.isnan(LL)
             
             if isnotnan:
                 # get AD and KS test pvalues
