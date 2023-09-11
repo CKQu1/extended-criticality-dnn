@@ -84,6 +84,17 @@ def qsub(command, pbs_array_data, **kwargs):
         post_command = ''
     # Create output folder.
     if not os.path.isdir(join(path,"job")): os.makedirs(join(path,"job"))
+    # source virtualenv
+    if 'source' in kwargs:
+        assert os.path.isfile(kwargs.get('source')), "source for virtualenv incorrect"
+        source_exists = 'true'
+    else:
+        source_exists = 'false'
+    # conda activate
+    if 'conda' in kwargs:
+        conda_exists = 'true'
+    else:
+        conda_exists = 'false'
     if kwargs.get('local', False):  # Run the subjobs in the current process.
         for pbs_array_args in pbs_array_data:
             str_pbs_array_args = ' '.join(map(str, pbs_array_args))
@@ -117,6 +128,12 @@ END""")
             args=($(python -c "import sys;print(' '.join(map(str, {pbs_array_data_chunk}[int(sys.argv[1])-{1000*i}])))" $PBS_ARRAY_INDEX))
             cd {kwargs.get('cd', '$PBS_O_WORKDIR')}
             echo "pbs_array_args = ${{args[*]}}"
+            if [ {source_exists} ]; then
+                source {kwargs.get('source')}
+            fi
+            if [ {conda_exists} ]; then
+                conda activate {kwargs.get('conda')}
+            fi
             {command} ${{args[*]}} {post_command}
 END"""
         os.system(f'qsub {PBS_SCRIPT}')
