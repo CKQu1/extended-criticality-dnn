@@ -169,7 +169,7 @@ def logl_from_params(data, params, dist_type):
     return logl
 
 # fitting and testing goodness of fit
-def fit_and_test(data, dist_type):
+def fit_and_test(data, dist_type, with_logl):
     
     assert dist_type in ['levy_stable', 'normal', 'tstudent', 'lognorm']
 
@@ -177,24 +177,31 @@ def fit_and_test(data, dist_type):
     if dist_type == 'levy_stable':
         params = pconv(*levy_stable._fitstart(data))
         r = levy_stable.rvs(*params, size=len(data))
-        logl = np.sum(np.log(levy_stable.pdf(data, *params)))
+        if with_logl:
+            logl = np.sum(np.log(levy_stable.pdf(data, *params)))
     elif dist_type == 'normal':
         params = distributions.norm.fit(data)
         r = norm.rvs(*params, len(data))
-        #logl = np.sum(np.log(norm.pdf(data, *params)))
-        logl = np.sum( log_of_normal_pdf(data, params) )
+        if with_logl:
+            #logl = np.sum(np.log(norm.pdf(data, *params)))
+            logl = np.sum( log_of_normal_pdf(data, params) )
     elif dist_type == 'tstudent':
         params = sst.t.fit(data)
         r = sst.t.rvs(*params, len(data))
-        logl = np.sum(np.log(sst.t.pdf(data, *params)))
+        if with_logl:
+            logl = np.sum(np.log(sst.t.pdf(data, *params)))
     elif dist_type == 'lognorm':
         params = lognorm.fit(data)
         r = lognorm.rvs(*params, size=len(data))
-        logl = np.sum(np.log(lognorm.pdf(data, *params)))
-        if not np.isnan(logl):
-            logl = np.sum( log_of_lognormal_pdf(data, params) )
+        if with_logl:
+            logl = np.sum(np.log(lognorm.pdf(data, *params)))
+            if not np.isnan(logl):
+                logl = np.sum( log_of_lognormal_pdf(data, params) )
 
-    is_logl_defined = is_num_defined(logl)
+    if with_logl:
+        is_logl_defined = is_num_defined(logl)
+    else:
+        logl, is_logl_defined = np.nan, False
     #assert is_logl_defined, f"Log likelihood fitting {dist_type} from fit_and_test() ill-defined, i.e. inf or nan"
 
     # statistical tests    
@@ -443,7 +450,7 @@ def remove_repeated_files(weight_path):
     print(f"{n} files removed from {allfit_folder2}!")
 
 # fitting to stable, Gaussian, Student-t, lognormal distribution
-def pretrained_allfit(weight_path, n_weight):
+def pretrained_allfit(weight_path, n_weight, with_logl):
     global weights, params, df, plot_title, x, params
 
     t0 = time.time()
@@ -452,6 +459,7 @@ def pretrained_allfit(weight_path, n_weight):
     pytorch = False if "_tf" in weight_path else True
     print(weight_path.split("/")[-1][:3])
     if_torch_weights = (weight_path.split("/")[-1][:3] != "np_")
+    with_logl = with_logl if isinstance(with_logl,bool) else literal_eval(with_logl)
 
 # Loading weight matrix ----------------------       
 
@@ -518,10 +526,10 @@ def pretrained_allfit(weight_path, n_weight):
         for dist_type in tqdm(["levy_stable", "normal", "tstudent", "lognorm"]):
             idxs = index_dict[dist_type]
             if dist_type == "normal":
-                params, logl, ad_siglevel, ks_stat, ks_pvalue, shapiro_stat, shapiro_pvalue, is_logl_defined = fit_and_test(weights, dist_type)
+                params, logl, ad_siglevel, ks_stat, ks_pvalue, shapiro_stat, shapiro_pvalue, is_logl_defined = fit_and_test(weights, dist_type, with_logl)
                 df.iloc[0,idxs[1]:idxs[2]] = [logl, ad_siglevel, ks_stat, ks_pvalue, shapiro_stat, shapiro_pvalue]
             else:
-                params, logl, ad_siglevel, ks_stat, ks_pvalue, is_logl_defined = fit_and_test(weights, dist_type) 
+                params, logl, ad_siglevel, ks_stat, ks_pvalue, is_logl_defined = fit_and_test(weights, dist_type, with_logl) 
                 df.iloc[0,idxs[1]:idxs[2]] = [logl, ad_siglevel, ks_stat, ks_pvalue]   
 
             all_logl_defined = all_logl_defined and is_logl_defined
@@ -559,17 +567,23 @@ def pretrained_allfit(weight_path, n_weight):
             dist_type = dist_types[dist_idx]
             idxs = bd_idxs[dist_idx]
             if not is_num_defined(logl):                
-            #if not np.isnan(logl):            
+            #if not np.isnan(logl):
+                """
                 if dist_type == "normal":
-                    params, logl, ad_siglevel, ks_stat, ks_pvalue, shapiro_stat, shapiro_pvalue, is_logl_defined = fit_and_test(weights, dist_type)
+                    params, logl, ad_siglevel, ks_stat, ks_pvalue, shapiro_stat, shapiro_pvalue, is_logl_defined = fit_and_test(weights, dist_type, with_logl)
                     df.iloc[0,idxs[1]:idxs[2]] = [logl, ad_siglevel, ks_stat, ks_pvalue, shapiro_stat, shapiro_pvalue]
                 else:
-                    params, logl, ad_siglevel, ks_stat, ks_pvalue, is_logl_defined = fit_and_test(weights, dist_type) 
-                    df.iloc[0,idxs[1]:idxs[2]] = [logl, ad_siglevel, ks_stat, ks_pvalue]   
+                    params, logl, ad_siglevel, ks_stat, ks_pvalue, is_logl_defined = fit_and_test(weights, dist_type, with_logl) 
+                    df.iloc[0,idxs[1]:idxs[2]] = [logl, ad_siglevel, ks_stat, ks_pvalue]  
 
                 df.iloc[0,idxs[0]:idxs[1]] = list(params)
+                """
+                params = list(df.iloc[0,idxs[0]:idxs[1]])
+                logl = logl_from_params(weights, params, dist_type)
+                is_logl_defined = is_num_defined(logl)
 
                 if is_logl_defined:
+                    df.iloc[0,idxs[1]] = logl
                     print(f"{dist_type} logl updated!")
                 else:
                     ill_logl_dists.append(dist_type)
@@ -611,6 +625,117 @@ def pretrained_allfit(weight_path, n_weight):
     t_last = time.time()
     print(f"{weight_name} done in {t_last - t0} s!")    
 
+# assuming the fitting is done, this is for getting the log-likelihood via dividing the weight matrix in to several batches
+def divided_logl(weight_path, n_weight, batch_idx, B):
+
+    t0 = time.time()
+    n_weight, batch_idx, B = int(n_weight), int(batch_idx), int(B)
+    #pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
+    pytorch = False if "_tf" in weight_path else True
+    print(weight_path.split("/")[-1][:3])
+    if_torch_weights = (weight_path.split("/")[-1][:3] != "np_")
+
+# Loading weight matrix ----------------------       
+
+    main_path = join(root_data,"pretrained_workflow")
+    if not os.path.isdir(main_path): os.makedirs(main_path)
+    #weight_path = join(main_path, "weights_all")
+
+    # new method
+    df = pd.read_csv(join(main_path, "weight_info.csv")) if pytorch else pd.read_csv(join(main_path, "weight_info_tf.csv"))
+    weight_name = df.loc[n_weight,"weight_file"]
+    i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+    model_name = df.loc[n_weight,"model_name"]
+    print(f"n_weight = {n_weight}: {weight_name}")
+
+    # dir for potentially previously fitted params
+    allfit_folder1 = "allfit_all" if pytorch else "allfit_all_tf"
+    model_path1 = join(os.path.dirname(weight_path), allfit_folder1, model_name)
+    allfit_folder2 = "nan_allfit_all" if pytorch else "nan_allfit_all_tf"
+    model_path2 = join(os.path.dirname(weight_path), allfit_folder2, model_name)   
+    if not os.path.exists(model_path1): os.makedirs(model_path1)
+    if not os.path.exists(model_path2): os.makedirs(model_path2)
+    print(f"model_path1: {model_path1}" + "\n" + f"model_path2: {model_path2}")
+
+    # check if previously trained
+    data_name = replace_name(weight_name,'allfit') 
+    df_name = data_name + ".csv"
+    plot_name = replace_name(weight_name,'plot') + ".pdf"
+    print(f"df_name: {df_name}")
+    print(f"plot_name: {plot_name}")
+    plot_exists = isfile( join(model_path1, plot_name) )
+    fit_exists1 = isfile( join(model_path1, df_name) )
+    fit_exists2 = isfile( join(model_path2, df_name) )
+    print(f"plot_exists: {plot_exists}, fit_exists1: {fit_exists1}, fit_exists2: {fit_exists2}")
+
+    if fit_exists1:
+        print("Fitting done already!") 
+        
+    elif fit_exists2:
+        # create appropriate dir
+        partialfit_folder = "partialfit_all" if pytorch else "partialfit_all_tf"
+        wmat_path = join(main_path, partialfit_folder, model_name, f"{n_weight}_{i}_{wmat_idx}")
+        if not os.path.isdir(wmat_path): os.makedirs(wmat_path)
+
+        df = pd.read_csv(join(model_path2, f"{data_name}.csv"))
+        # check entries 7, 13, 22, 29
+        logl_idxs = [7, 13, 22, 29]
+        bd_idxs = [[3,7,11], [11,13,19], [19,22,26], [26,29,33]]
+        dist_types = ['levy_stable', 'normal', 'tstudent', 'lognorm']
+        weights = load_single_wmat(weight_path, weight_name, if_torch_weights)
+        # values significantly smaller than zero are filtered out         
+        weights = weights[np.abs(weights) >0.00001]
+
+        # evenly divide weights       
+        nsize = int(np.ceil(len(weights)/B)) 
+        idx_pairs = [[i, min(i+nsize, len(weights))] for i in range(0, len(weights), nsize)]
+        assert idx_pairs[-1][0] < idx_pairs[-1][1], "Zero chunk!"
+
+        weights = weights[idx_pairs[batch_idx][0]:idx_pairs[batch_idx][1]]
+
+        # refit the whole distribution
+        #ill_logl_dists = []
+        for dist_idx, logl_idx in enumerate(logl_idxs):
+            logl = df.iloc[0, logl_idx]            
+            dist_type = dist_types[dist_idx]
+            idxs = bd_idxs[dist_idx]
+            if not is_num_defined(logl):                             
+                # load fitted params
+                params = list(df.iloc[0,idxs[0]:idxs[1]])
+                logl = logl_from_params(weights, params, dist_type)
+                is_partial_logl_defined = is_num_defined(logl)
+
+                # create df if not exist
+                df_divided_file = join(wmat_path, f"{dist_type}_{B}.csv")
+                if os.path.isfile(df_divided_file):
+                    df_divided = pd.read_csv(df_divided_file)
+                else:
+                    df_divided = pd.DataFrame({'partial_logl': [0]*B, 'is_defined': [False]*B, 'entries': [0]*B})                  
+
+                df_divided.iloc[batch_idx,0] = logl
+                df_divided.iloc[batch_idx,1] = is_partial_logl_defined
+                df_divided.iloc[batch_idx,2] = len(weights)
+
+                # save dataframe
+                df_divided.to_csv(df_divided_file, index=False)                
+
+                print(f"n_weight = {n_weight} with batch_idx {batch_idx} has partial LL {logl}, which is {is_partial_logl_defined}")
+
+                """
+                if is_partial_logl_defined:
+                    df.iloc[0,idxs[1]] = logl
+                    print(f"{dist_type} logl updated!")
+                else:
+                    ill_logl_dists.append(dist_type)
+                    print(f"{dist_type} logl still ill-defined!")        
+                print('\n')
+                """
+
+    # Time
+    t_last = time.time()
+    print(f"{weight_name} at batch_idx {batch_idx}/{B} done in {t_last - t0} s!")            
+
+
 def pre_submit(pytorch: bool):
 
     main_path = join(root_data, "pretrained_workflow")
@@ -650,7 +775,8 @@ def submit(*args):
     project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
     pbs_array_data = []
     
-    for n_weight in list(range(10, total_weights)):
+    with_logl = False
+    for n_weight in list(range(total_weights)):
     #for n_weight in list(range(10)): 
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
@@ -660,11 +786,11 @@ def submit(*args):
         fit_exist2 = isfile( join(fit_path2, model_name, f"{replace_name(weight_name,'allfit')}.csv") )        
         #if not (plot_exist or fit_exist1):
         if not (fit_exist1 or fit_exist2):
-            pbs_array_data.append( (root_path, n_weight) )
+            pbs_array_data.append( (root_path, n_weight, with_logl) )
  
     #pbs_array_data = pbs_array_data[:10] 
     print(len(pbs_array_data))
-        
+            
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -676,9 +802,72 @@ def submit(*args):
              path=main_path,  
              P=project_ls[pidx], 
              walltime='47:59:59',
-             mem="24GB")         
+             mem="24GB")       
 
-# -------------------- Single pretrained weight matrix fitting --------------------
+def divided_submit(*args):
+
+    pytorch = True
+    main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)       
+    allfit_folder1 = "allfit_all" if pytorch else "allfit_all_tf"       
+    fit_path1 = join(os.path.dirname(root_path), allfit_folder1) 
+    allfit_folder2 = "nan_allfit_all" if pytorch else "nan_allfit_all_tf"
+    fit_path2 = join(os.path.dirname(root_path), allfit_folder2)  
+    partialfit_folder = "partialfit_all" if pytorch else "partialfit_all_tf"    
+
+    dist_types = ['levy_stable', 'normal', 'tstudent', 'lognorm']
+
+    from qsub import qsub, job_divider
+    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
+    pbs_array_data = []
+    
+    B = 15
+    for n_weight in list(range(total_weights)):
+        model_name = df.loc[n_weight,"model_name"]
+        weight_name = df.loc[n_weight,"weight_file"]
+        i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+        plot_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
+        fit_exist1 = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'allfit')}.csv") )
+        fit_exist2 = isfile( join(fit_path2, model_name, f"{replace_name(weight_name,'allfit')}.csv") )          
+        # initial submit
+        if fit_exist2:  
+            for batch_idx in range(B):
+                pbs_array_data.append( (root_path, n_weight, batch_idx, B) )        
+
+        # remainder submit
+        """
+        wmat_path = join(main_path, partialfit_folder, model_name, f"{i}_{wmat_idx}_{B}")
+        for batch_idx in range(B):
+            partialfit_exit = False
+            for dist_type in dist_types:
+                partialfit_exit = partialfit_exit or isfile( join(wmat_path, f"{dist_type}_{n_weight}_{B}.csv") )
+                if not partialfit_exit:  
+                    pbs_array_data.append( (root_path, n_weight, batch_idx, B) )
+        """
+ 
+    #pbs_array_data = pbs_array_data[B:]
+    print(len(pbs_array_data))
+    #print(pbs_array_data)
+    
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',
+        #qsub(f'singularity exec dist_fit.sif python {sys.argv[0]} {" ".join(args)}', 
+             pbs_array_true, 
+             path=join(main_path, "divided_jobs"),  
+             P=project_ls[pidx], 
+             walltime='23:59:59',
+             mem="2GB")                
+    
+
+# -------------------- Batched pretrained weights matrix fitting --------------------             
+
+def group_batched_fit():
+    pass
+
+# -------------------- Batched pretrained weights matrix fitting --------------------
 
 def batch_pretrained_allfit(weight_path, n_weights):
     if isinstance(n_weights,str):
