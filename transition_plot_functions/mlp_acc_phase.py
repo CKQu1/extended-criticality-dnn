@@ -75,13 +75,15 @@ def get_net_ls(path):
         net_type = f"{fcn}_mnist_tanh"
         activation = "tanh"
         epoch_last = 650    # epoch network was trained till
+        optimizer = "sgd"
     else:
         net_ls = [join(path,net) for net in next(os.walk(path))[1] if fcn in net and "epochs=" in net]
         net_setup = pd.read_csv(join(net_ls[0],"log"))
         activation = net_setup.loc[0,"activation"]
+        optimizer = net_setup.loc[0,"optimizer"]
         epoch_last = int(net_setup.loc[0,"epochs"])
     
-    return net_ls, activation, dataname, epoch_last, fcn
+    return net_ls, activation, dataname, epoch_last, optimizer, fcn
 
 # get the phase transition for accuracy, loss and earliest epoch reaching accuracy threhold
 def get_accloss_phase(path, net_ls, epoch, epoch_last, acc_type, acc_threshold):
@@ -108,7 +110,8 @@ def get_accloss_phase(path, net_ls, epoch, epoch_last, acc_type, acc_threshold):
                 early_epoch = epoch_last if len(good_ls) == 0 else min(good_ls)    
                 loss, acc = metrics[epoch-1,:]
             else:
-                net_params = pd.read_csv(f"{net_path}/net_log.csv")
+                #net_params = pd.read_csv(f"{net_path}/net_log.csv")
+                net_params = pd.read_csv(f"{net_path}/log")
                 alpha100 = int(net_params.loc[0,'alpha100'])
                 g100 = int(net_params.loc[0,'g100'])
                 alpha = alpha100/100
@@ -128,7 +131,7 @@ def get_accloss_phase(path, net_ls, epoch, epoch_last, acc_type, acc_threshold):
 
             acc, loss = np.nan, np.nan
             early_epoch = np.nan
-            failed_jobs.append((alpha100,g100))
+            #failed_jobs.append((alpha100,g100))
 
         alpha_m_ls.append((alpha,mult))
         acc_ls.append(acc)
@@ -154,7 +157,7 @@ def accloss_phase(acc_type, path, acc_threshold=95, display=False):
     acc_threshold = float(acc_threshold)
     display = literal_eval(display) if isinstance(display,str) else display
 
-    net_ls, activation, dataname, epoch_last, fcn = get_net_ls(path)
+    net_ls, activation, dataname, epoch_last, optimizer, fcn = get_net_ls(path)
     print(path)
 
     # phase transition lines
@@ -261,7 +264,7 @@ def accloss_phase(acc_type, path, acc_threshold=95, display=False):
         plt.show()
     else:
         fig1_path = "/project/PDLAI/project2_data/figure_ms"
-        plt.savefig(f"{fig1_path}/{fcn}_{dataname}_{acc_type}_epoch={epoch}_grid_all.pdf", bbox_inches='tight')
+        plt.savefig(f"{fig1_path}/{fcn}_{dataname}_{optimizer}_{acc_type}_epoch={epoch}_grid_all.pdf", bbox_inches='tight')
 
     print("Figure 1")
     print(f"Trained networks: {len(net_ls)}")
