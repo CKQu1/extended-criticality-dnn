@@ -343,8 +343,11 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
 def get_optimizer(optimizer, model, **kwargs):
     if optimizer == 'sgd':
         opt = optim.SGD(model.parameters(), **kwargs)
+    # for the following use the default setting
     elif optimizer == 'adam':
         opt = optim.Adam(model.parameters(), **kwargs)
+    elif optimizer == 'rmsprop':
+        opt = optim.RMSprop(model.parameters(), **kwargs)        
     else:
         raise ValueError("THIS OPTIMIZER DOES NOT EXIST!")
     return opt
@@ -385,12 +388,15 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     Y_classes, X_clusters = int(Y_classes), int(X_clusters)
     init_path = None if init_path.lower() == "none" else init_path
     init_epoch = None if init_epoch.lower() == "none" else init_epoch
-    if not alpha100.lower() == "none" or not g100.lower() == "none": 
-        alpha100, g100 = int(alpha100), int(g100)
-        alpha, g = int(alpha100)/100., int(g100)/100.
+    if isinstance(alpha100,str)==True or isinstance(g100,str)==True:
+        if alpha100 != "None" or g100 != "None": 
+            alpha100, g100 = int(alpha100), int(g100)
+            alpha, g = int(alpha100)/100., int(g100)/100.
+        else:
+            alpha100, g100 = None, None
+            alpha, g = None, None
     else:
-        alpha100, g100 = None, None
-        alpha, g = None, None
+        alpha100, g100 = int(alpha100), int(g100)
     bs, lr = int(bs), float(lr)
     epochs = int(epochs)
     save_epoch = int(save_epoch)
@@ -425,10 +431,10 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     N = train_ds[0][0].numel()
     if name != "gaussian":
         C = len(train_ds.classes)
-        root_path += f"_{activation}" + "_{name}"
+        #root_path += f"_{activation}" + f"_{name}"
     else:
         C = len(np.unique(cluster_class_label))
-        root_path += f"_{activation}" + "_gaussian_data" + f"_{num_train}_{num_test}_{X_dim}_{Y_classes}_{X_clusters}" +  f"_{noise_sigma}_{cluster_seed}_{assignment_and_noise_seed}"
+        #root_path += f"_{activation}" + "_gaussian_data" + f"_{num_train}_{num_test}_{X_dim}_{Y_classes}_{X_clusters}" +  f"_{noise_sigma}_{cluster_seed}_{assignment_and_noise_seed}"
 
     # generate random id and date
     import uuid
@@ -812,6 +818,26 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
 
 # ---------------------------------------
 
+# wrapper for training MLPs on MNIST dataset
+def mnist_train_ht_dnn(alpha100_ls, g100,
+                       optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                       epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False,                                    
+                       loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                      
+                       weight_save=1, stablefit_save=0, eigvals_save=0,                                       
+                       with_ed=False, with_pc=False, with_ipr=False):                                                           
+
+    alpha100_ls = literal_eval(alpha100_ls) if not isinstance(alpha100_ls,list) else alpha100_ls
+    for alpha100 in alpha100_ls:
+        train_ht_dnn("mnist", 0, 0, 0, 0, 0, 0,
+                     alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                     epochs, save_epoch, net_type, activation, hidden_structure, with_bias,                                   
+                     loss_func_name, momentum, weight_decay, num_workers,                      
+                     weight_save, stablefit_save, eigvals_save,                                       
+                     with_ed, with_pc, with_ipr)
+
+
+# ---------------------------------------
+
 # wrapper for training MLPs on Gaussain generated data
 def gaussian_train_ht_dnn(seed_ls, name, Y_classes, X_clusters, num_train, num_test,
                           alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
@@ -830,11 +856,200 @@ def gaussian_train_ht_dnn(seed_ls, name, Y_classes, X_clusters, num_train, num_t
                      weight_save, stablefit_save, eigvals_save,                                       
                      with_ed, with_pc, with_ipr)
 
+        print(f"fc{depth} init at ({alpha100}, {g100}) trained with {optimizer} for {epochs} epochs done!")
+
 
 # --------------------------------------- Submit functions ---------------------------------------
 
 # train networks in array jobs
-def train_submit(*args):
+
+# batch training mnist with MLPs
+def batch_mnist_submit(*args):
+    from qsub import qsub, job_divider, project_ls
+
+    dataset_name = "mnist"
+    net_type = "fc"
+    alpha100_ls = list(range(100,201,10))
+    alpha100_ls = str(alpha100_ls).replace(" ", "")
+    g100_ls = list(range(25,301,25))
+    #alpha100_ls = '[100,200]'
+    #g100_ls = [100,200]
+    optimizer = "rmsprop"
+    bs_ls = [1024]  
+    lr_ls = [0.001]
+    depth = 10
+    epochs = 650
+    save_epoch = 50
+    #depth=2
+    #epochs=2    
+    #save_epoch=1
+    init_path, init_epoch = None, None
+    root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}")
+    root_path = join(root_data, root_folder)    
+
+    # raw submittions    
+    pbs_array_data = [(alpha100_ls, g100, 
+                       optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                       epochs, save_epoch
+                      )
+                      for g100 in g100_ls
+                      for bs in bs_ls
+                      for lr in lr_ls
+                      ]   
+
+    print(len(pbs_array_data))             
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, root_folder),
+             P=project_ls[pidx],
+             source="virt-test-qu/bin/activate",
+             ngpus=1,
+             ncpus=1,
+             #walltime='0:59:59',
+             walltime='23:59:59',
+             mem='10GB')      
+
+
+# for figure 1
+def fig1_submit(*args):
+    from qsub import qsub, job_divider, project_ls
+
+    dataset_name = "mnist"
+    net_type = "fc"
+    alpha100_ls = '[100,200]'
+    g100_ls = [100]
+    optimizer = "sgd"
+    bs_ls = [1024]  
+    lr_ls = [0.001]
+    depth = 5
+    epochs = 650
+    save_epoch = 50
+    init_path, init_epoch = None, None
+    root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_fig1")
+    root_path = join(root_data, root_folder)    
+
+    # raw submittions    
+    pbs_array_data = [(alpha100_ls, g100, 
+                       optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                       epochs, save_epoch
+                      )
+                      for g100 in g100_ls
+                      for bs in bs_ls
+                      for lr in lr_ls
+                      ]   
+
+    print(len(pbs_array_data))             
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, root_folder),
+             P=project_ls[pidx],
+             source="virt-test-qu/bin/activate",
+             ngpus=1,
+             ncpus=1,
+             #walltime='0:59:59',
+             walltime='23:59:59',
+             mem='10GB')                  
+
+
+# for training mnist with MLPs
+def mnist_submit(*args):
+    from qsub import qsub, job_divider, project_ls
+
+    dummy_ls = [0] * 6
+    Y_classes, X_clusters, cluster_seed, assignment_and_noise_seed, num_train, num_test = dummy_ls
+
+    dataset_name = "mnist"
+    net_type = "fc"
+    #alpha100_ls = [120, 200]
+    #g100_ls = [25,100,300]
+    alpha100_ls = list(range(100,201,10))
+    g100_ls = list(range(25,301,25))
+    #optimizer_ls = ["sgd"]
+    optimizer = "adam"
+    bs_ls = [1024]  
+    lr_ls = [0.001]
+    depth = 10
+    epochs = 650
+    save_epoch = 50
+    init_path, init_epoch = None, None
+    root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}")
+    root_path = join("/project/PDLAI/project2_data", root_folder)    
+
+    # raw submittions    
+    pbs_array_data = [(dataset_name, 
+                       Y_classes, X_clusters, cluster_seed, assignment_and_noise_seed, num_train, num_test,
+                       alpha100, g100, optimizer,
+                       bs, init_path, init_epoch, root_path, depth, lr,
+                       epochs, save_epoch
+                      )
+                      for alpha100 in alpha100_ls
+                      for g100 in g100_ls
+                      for bs in bs_ls
+                      for lr in lr_ls
+                      ]   
+
+    print(len(pbs_array_data))         
+
+    # resubmissions
+    """
+    alpha_g_pair = []
+    for alpha100 in alpha100_ls:
+        for g100 in g100_ls:
+            if (alpha100,g100) not in [(100,25), (100,300), (200,25), (200,100), (200,300)]:
+                alpha_g_pair.append( (alpha100,g100) )
+    
+    pbs_array_data = [(name, pair[0], pair[1], optimizer, bs, init_path, init_epoch, root_path, depth, lr, epochs)
+                      for name in dataset_ls
+                      for pair in alpha_g_pair
+                      for optimizer in optimizer_ls
+                      for bs in bs_ls
+                      for lr in lr_ls
+                      ]
+    """
+
+    """
+    pbs_array_true = []
+    pbs_array_nosubmit = []
+    net_ls = [net[0] for net in os.walk(path_names.fc_path)]
+    for nidx in range(1,len(net_ls)):
+        ag_str = net_ls[nidx].split("/")[-1].split("_")
+        pbs_array_nosubmit.append( (int(ag_str[1]), int(ag_str[2])) )
+
+    for sub in pbs_array_data:
+        if (sub[1],sub[2]) not in pbs_array_nosubmit:
+            pbs_array_true.append(sub)
+
+        #print((sub[1],sub[2]))
+        #break
+    print(len(pbs_array_true))
+    """
+    
+    """
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, root_folder),
+             P=project_ls[pidx],
+             #ngpus=1,
+             ncpus=1,
+             #walltime='0:59:59',
+             walltime='23:59:59',
+             mem='6GB') 
+    """
+
+# for training gaussian datasets
+def gaussian_submit(*args):
     from qsub import qsub, job_divider, project_ls
 
 
