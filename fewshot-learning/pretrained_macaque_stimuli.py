@@ -96,7 +96,7 @@ class Backbone(torch.nn.Module):
 
 # ---------------------- SNR Theory ----------------------
 
-from train_supervised import compute_dq
+from utils_dnn import compute_dq
 
 def load_model(model_name, pretrained):
     global model    # delete
@@ -998,8 +998,8 @@ def load_dict():
                    "dist_norm"  : "dist_norm_layerwise",
                    "css"        : "css_layerwise",         
                    "bias"       : "biases_layerwise",
-                   "R"          : "Rsmb_n_top=100_layerwise"
-                   #"R"          : "Rsmb_n_top=50_layerwise"
+                   "R_100"      : "Rsmb_n_top=100_layerwise",
+                   "R_50"       : "Rsmb_n_top=50_layerwise"
                    }
 
     name_dict = {"SNR"        : "SNR",
@@ -1008,7 +1008,8 @@ def load_dict():
                  "dist_norm"  : "Signal",
                  "css"        : "Signal-noise overlap",
                  "bias"       : "Bias",      
-                 "R"          : 'Cumulative variance'        
+                 "R_100"      : 'Cumulative variance',
+                 "R_50"       : 'Cumulative variance'        
                  }   
 
     return metric_dict, name_dict
@@ -1051,6 +1052,7 @@ def load_raw_metric(model_name, pretrained:bool, metric_name, **kwargs):
 
 # load processed metrics from network
 def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
+    global metric_R, metric_D, metric_data, metric_og, batch_idx, l, Rs
     
     pretrained = literal_eval(pretrained) if isinstance(pretrained,str) else pretrained
 
@@ -1068,7 +1070,7 @@ def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
     elif metric_name == "dist_norm":
         metric_data = load_raw_metric(model_name, pretrained, metric_name)**2
     #cumulative variance explained by n_top PCs
-    elif metric_name == "R":
+    elif metric_name == "R_100":
         metric_R = load_raw_metric(model_name, pretrained, metric_name)
         if avg:
             # (17, 32, 100)
@@ -1081,17 +1083,71 @@ def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
         # D_2's
         metric_og = load_raw_metric(model_name, pretrained, metric_name)
         # R's (eigenvalues/variance explained)     
-        metric_R = load_raw_metric(model_name, pretrained, "R")  
+        metric_R = load_raw_metric(model_name, pretrained, "R_100")  
         metric_D = load_raw_metric(model_name, pretrained, "D")  
+
+        #print(f"metric_R: {metric_R.shape}")
+        #print(f"metric_og: {metric_og.shape}")
+
         # storing weighted averaged of D_2's based on the eigenvalues/variance explained
         metric_data = np.zeros(metric_og[:,:,0].shape) 
         #print(f"Total layers {metric_data.shape[0]}")
-        for l in range(metric_data.shape[0]):  
+        for l in range(metric_data.shape[0]):              
             #n_top = round(np.nanmean(metric_D[l,:])) 
             # round to closest integer to ED of the layer
-            n_top = round(np.ma.masked_invalid(metric_D[l:]).mean())               
-            var_percentage = metric_R[l,:,:n_top]/metric_R[l,:,:n_top].sum(-1)[:,None]
+
+            # method 1 (original in manuscript, renormalized by fixed n_top as below)
+            """
+            n_top = round(np.ma.masked_invalid(metric_D[l:]).mean())    # average across pre-evaluated D
+            var_percentage = metric_R[l,:,:n_top]/metric_R[l,:,:n_top].sum(-1)[:,None]  # renormalized by n_top
             metric_data[l,:] = ( metric_og[l,:,:n_top] * var_percentage ).sum(-1)
+            #print(f"n_top = {n_top}, total PCs = {metric_R[l].shape[-1]}, avg var explained = {metric_R[l,:,:n_top].sum(-1).mean(-1)}")
+            """
+
+            # method 2 (original in manuscript, renormalized by all)     
+            """       
+            n_top = round(np.ma.masked_invalid(metric_D[l:]).mean())    # average across pre-evaluated D
+            var_percentage = metric_R[l,:,:]/metric_R[l,:,:].sum(-1)[:,None]  # renormalized by all
+            metric_data[l,:] = ( metric_og[l,:,:n_top] * var_percentage[:,:n_top] ).sum(-1)
+            #print(f"n_top = {n_top}, total PCs = {metric_R[l].shape[-1]}, avg var explained = {metric_R[l,:,:n_top].sum(-1).mean(-1)}")      
+            """      
+
+            # method 3 (no renormalization) 
+            
+            #var_percentage = metric_R[l,:,:]/metric_R[l,:,:].sum(-1)[:,None]  # renormalized by all
+            #metric_data[l,:] = ( metric_og[l,:,:] * var_percentage ).sum(-1) 
+            
+            
+            # method 4 (evaluate n_top for each batch)
+            
+            assert metric_og.shape[1] ==  metric_R.shape[1] and metric_data.shape[1] ==  metric_R.shape[1], "dimension inconsistent"
+            for batch_idx in range(metric_og.shape[1]):                
+
+                # renormalized by n_top
+                Rs = metric_R[l,batch_idx]
+                n_top = np.sum(Rs**2,axis=-1)**2 / np.sum(Rs**4, axis=-1)   # participation ratio for each batch
+                n_top = round(n_top)
+                if n_top == 0:
+                    n_top = 1
+                #print(f"n_top: {n_top}")      
+                
+                # type 1 (renormalized by fixed n_top)    
+                     
+                var_percentage = metric_R[l,batch_idx,:n_top]/metric_R[l,batch_idx,:n_top].sum(-1)  
+                metric_data[l,batch_idx] += ( metric_og[l,batch_idx,:n_top] * var_percentage ).sum(-1)  
+                
+
+                # type 2 (renormalized by all)
+                
+                #var_percentage = metric_R[l,batch_idx,:]/metric_R[l,batch_idx,:].sum(-1)  
+                #metric_data[l,batch_idx] += ( metric_og[l,batch_idx,:n_top] * var_percentage[:n_top] ).sum(-1)         
+                
+
+                # type (no renormalization)
+                #var_percentage = metric_R[l,:,:]/metric_R[l,:,:].sum(-1)[:,None]  # renormalized by all
+                #metric_data[l,:] = ( metric_og[l,:,:] * var_percentage ).sum(-1)   
+                        
+
     elif metric_name == "d2":
         metric_data = load_raw_metric(model_name, pretrained, metric_name)
     elif "d2_" in metric_name:
@@ -1345,9 +1401,11 @@ def snr_metric_plot(main=True, n_top=100, display=False):
         axs[0].plot([],[],c="gray", linestyle=lstyle, label=label)
 
     if main:
-        axs[0].set_ylim((0.7,0.95))
+        #axs[0].set_ylim((0.7,0.95))
+        axs[0].set_ylim((0.1,0.95))
     else:
-        axs[0].set_ylim((0.6,1))
+        #axs[0].set_ylim((0.6,1))
+        axs[0].set_ylim((0.1,1))
     axs[0].legend(frameon=False, ncol=2, loc="upper left", 
                   bbox_to_anchor=(-0.05, 1.2), fontsize=legend_size)
 
@@ -1461,7 +1519,6 @@ def extra_metric_plot(main=True, n_top=100, display=False):
                     # deep layers
                     #axs[metric_idx+3].scatter(d2_data.mean(-1)[deep_layers], metric_data_mean[deep_layers], 
                     #                    c='k', marker='x', alpha=trans_ls[nidx])
-
         
         for ax_idx, ax in enumerate(axs):
             ax.spines['top'].set_visible(False)
@@ -1707,7 +1764,8 @@ def snr_delta_plot(main=True, n_top=100):
     net_cat = "_".join(model_names)
     fig_name = f"pretrained_m={m_featured}_delta_{net_cat}.pdf"
     print(f"Saved as {join(fig_path, fig_name)}")
-    plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
+    #plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
+    plt.show()
 
 
 # Appendix plot for other metrics corresponding to SNR, i.e. signal (dist_norm), bias, signal-to-noise overlap (css)
@@ -1732,20 +1790,36 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
     # load dict
     metric_dict, name_dict = load_dict()
  
-    # "resnet152"
-    model_names = ["alexnet",
+    # "resnet152"    
+    """
+    model_names = ["alexnet",   # trained
                    "resnet18", "resnet34", "resnet50", "resnet101",
                    "resnext50_32x4d", "resnext101_32x8d",
                    "squeezenet1_0", "squeezenet1_1",  
-                   "wide_resnet50_2", "wide_resnet101_2"]
+                   "wide_resnet50_2", "wide_resnet101_2"]   
+    """
+    
+    """
+    model_names = ["alexnet",   # untrained
+                   "resnet18", "resnet34", "resnet50", "resnet101",
+                   "resnext50_32x4d", "resnext101_32x8d"]    
+    """
+
+    #model_names = ["alexnet"]
+    model_names = ["resnet50"]
     #model_names = ["resnet18", "resnet34", "resnet50", "resnet101"]
+    #model_names = ["resnext50_32x4d", "resnext101_32x8d"]
+    #model_names = ["squeezenet1_0", "squeezenet1_1"]
+    #model_names = ["wide_resnet50_2"]
+    #model_names = ["wide_resnet101_2"]
 
     # transparency list
     trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
 
     # need to demonstrate for pretrained and random DNNs
-    #pretrained_ls = [True, False]
-    pretrained_ls = [True]
+    pretrained_ls = [True, False]
+    #pretrained_ls = [True]
+    #pretrained_ls = [False]
     lstyle_ls = ["-", "--"]
 
     # m-shot learning 
@@ -1792,10 +1866,27 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
                         metric_data_mean = np.ma.masked_invalid(metric_data).mean((1,2))
 
                     # last layer
+                    """
                     axs[metric_idx].scatter(d2_data.mean(-1)[-1], metric_data_mean[-1], 
                                             marker=markers[nidx], 
                                             c=color)    # alpha=trans_ls[nidx]
+                    """
 
+                    # selected layers
+                    """
+                    depth_idxs = [-2,-1]
+                    axs[metric_idx].scatter(d2_data.mean(-1)[depth_idxs], metric_data_mean[depth_idxs], 
+                                            marker=markers[nidx], 
+                                            c=color)    # alpha=trans_ls[nidx]                          
+                    """
+
+                    # last n layers   
+                                    
+                    depth_idx = 1
+                    axs[metric_idx].scatter(d2_data.mean(-1)[depth_idx:], np.log(metric_data_mean[depth_idx:]), 
+                                            marker=markers[nidx], 
+                                            c=color)    # alpha=trans_ls[nidx]   
+                    
         
         for ax_idx, ax in enumerate(axs):
             ax.spines['top'].set_visible(False)
@@ -1810,7 +1901,7 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
             #    ax.set_ylim(0.17,0.242)
             # setting the bias and signal-noise-overlap to log scale
 
-            ax.set_xscale('log')
+            #ax.set_xscale('log')
             ax.grid(alpha=transparency_grid,linestyle=lstyle_grid)
 
         # legends
@@ -1829,7 +1920,7 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
             axs[0].plot([],[],c="gray", linestyle=lstyle, label=label)
         """
 
-        axs[0].legend(frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.2),
+        axs[0].legend(frameon=False, ncol=4, loc="upper center", bbox_to_anchor=(0.5, 1.2),
                       fontsize=legend_size)
         #ax2.ticklabel_format(style="sci", scilimits=(0,1), axis="y" )
 
@@ -1841,9 +1932,150 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
         # --------------- Save figure ---------------
         fig_path = join(root_data,"figure_ms/pretrained-fewshot-main")
         if not os.path.isdir(fig_path): os.makedirs(fig_path)    
-        fig_name = f"pretrained_m={m_featured}_features_all.pdf"
+        fig_name = f"pretrained-m={m_featured}-features-final_layers.pdf"
         print(f"Saved as {join(fig_path, fig_name)}")
-        plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
+        #plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
+        plt.show()
+
+
+def aggregate_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100):
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcl
+    import pubplot as ppt
+
+    # plot settings
+    c_ls = list(mcl.TABLEAU_COLORS.keys())
+
+    if ',' in metric_names:  # publication figure
+        metric_names = metric_names.split(',')
+    else:
+        metric_names = [metric_names]
+    assert len(metric_names) == 7, f"There can only be 3 metrics, you have {len(metric_names)}!"
+    #fig_size = (11/2*len(metric_names),(7.142+2)/2) # 2 by 3
+    fig_size = (11/2*3,7.142+2)
+
+    # Plot settings
+    
+    # load dict
+    metric_dict, name_dict = load_dict()
+ 
+    # "resnet152"    
+    
+    model_names = ["alexnet",   # trained
+                   "resnet18", "resnet34", "resnet50", "resnet101",
+                   "resnext50_32x4d", "resnext101_32x8d",
+                   "squeezenet1_0", "squeezenet1_1",  
+                   "wide_resnet50_2", "wide_resnet101_2"]   
+    
+    
+    """
+    model_names = ["alexnet",   # untrained
+                   "resnet18", "resnet34", "resnet50", "resnet101",
+                   "resnext50_32x4d", "resnext101_32x8d"]    
+    """
+
+    #model_names = ["alexnet"]
+    #model_names = ["resnet50"]
+    #model_names = ["resnet18", "resnet34", "resnet50", "resnet101"]
+    #model_names = ["resnext50_32x4d", "resnext101_32x8d"]
+    #model_names = ["squeezenet1_0", "squeezenet1_1"]
+    #model_names = ["wide_resnet50_2"]
+    #model_names = ["wide_resnet101_2"]
+
+    # transparency list
+    trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
+
+    # need to demonstrate for pretrained and random DNNs
+    #pretrained_ls = [True, False]
+    pretrained_ls = [True]
+    #pretrained_ls = [False]
+    lstyle_ls = ["-", "--"]
+
+    # m-shot learning 
+    ms = [5]
+
+    for midx, m_featured in enumerate(tqdm(ms)):
+        plt.rc('font', **ppt.pub_font)
+        plt.rcParams.update(ppt.plot_sizes(False))
+        fig, axs = plt.subplots(2, 3,sharex=False,sharey=False,figsize=fig_size)
+        axs = axs.flat
+
+        d2_centers = np.zeros([len(model_names), len(pretrained_ls)])
+        for pretrained_idx, pretrained in enumerate(pretrained_ls):
+            pretrained_str = "pretrained" if pretrained else "untrained"
+            lstyle = lstyle_ls[0] if pretrained else lstyle_ls[1]
+            for nidx in range(len(model_names)):
+            
+                metric_data_all = {}
+                model_name = model_names[nidx]
+                # fractional layer
+                total_layers = load_processed_metric(model_name, pretrained, "dist_norm").shape[0]
+                frac_layers = np.arange(0,total_layers)/(total_layers-1)
+                # only scatter plot the selected layers (can modify)
+                selected_layers = np.where(frac_layers >= 0)
+                # for the phase centers
+                deep_layers = np.where(frac_layers >= 0.8)
+
+                # load all data
+                for metric_idx, metric_name in enumerate(metric_names):
+                    metric_data = load_processed_metric(model_name, pretrained, metric_name, m=m_featured, n_top=n_top)
+                    metric_data_all[metric_name] = metric_data
+                    if "d2_" in metric_name:
+                        d2_data = metric_data
+                        # centers of D_2
+                        d2_centers[nidx,pretrained_idx] = np.nanmean(d2_data[deep_layers,:].flatten()) 
+
+                for metric_idx, metric_name in enumerate(metric_names[1:]):
+                    color = c_ls[metric_idx+1] if pretrained else "gray"
+
+                    metric_data = metric_data_all[metric_name]
+                    if metric_data.ndim == 2:
+                        metric_data_mean = np.ma.masked_invalid(metric_data).mean(-1)
+                    else:
+                        metric_data_mean = np.ma.masked_invalid(metric_data).mean((1,2))
+
+                    # last n layers                                       
+                    depth_idx = 1
+                    axs[metric_idx].scatter(d2_data.mean(-1)[depth_idx:].mean(), metric_data_mean[-1], 
+                                            marker=markers[nidx], 
+                                            c=color)
+                        
+        for ax_idx, ax in enumerate(axs):
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+
+            ax.set_xlabel(r"$D_2$")
+            ax.set_ylabel(name_dict[metric_names[ax_idx+1]],fontsize=label_size)
+            #if ax_idx > 0:
+            #    ax.ticklabel_format(style="sci" , scilimits=(0,100),  axis="y" )
+            # make space for legend
+            #if ax_idx == 0:
+            #    ax.set_ylim(0.17,0.242)
+            # setting the bias and signal-noise-overlap to log scale
+
+            #ax.set_xscale('log')
+            ax.grid(alpha=transparency_grid,linestyle=lstyle_grid)
+
+        # legends
+        for nidx, model_name in enumerate(model_names):
+            label = transform_model_name(model_name)
+            label = label.replace("n","N")
+            axs[0].plot([], [], c=c_ls[0],  # alpha=trans_ls[nidx]
+                        marker=markers[nidx], linestyle = 'None', label=label)
+
+        axs[0].legend(frameon=False, ncol=4, loc="upper center", bbox_to_anchor=(0.5, 1.2),
+                      fontsize=legend_size)
+
+        # adjust vertical space
+        plt.subplots_adjust(hspace=0.4)
+
+        # --------------- Save figure ---------------
+        fig_path = join(root_data,"figure_ms/pretrained-fewshot-main")
+        if not os.path.isdir(fig_path): os.makedirs(fig_path)    
+        fig_name = f"pretrained-m={m_featured}-features-aggregate_layers.pdf"
+        print(f"Saved as {join(fig_path, fig_name)}")
+        #plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
+        plt.show()
 
 
 # microscopic statistics of the neural representations (perhaps leave out)
@@ -1873,7 +2105,7 @@ def snr_microscopic_plot(small=True, log=False, display=True):
     markers = [None]*11
     transparency, lstyle = 0.4, "--"
 
-    metric_names = ["d2", "R"]
+    metric_names = ["d2", "R_100"]
     metric_dict, name_dict = load_dict()
     
     print(f"metric list: {metric_names}")
@@ -1940,10 +2172,10 @@ def snr_microscopic_plot(small=True, log=False, display=True):
 
                 # load all data
                 for metric_idx, metric_name in enumerate(metric_names):
-                    if "d2" not in metric_name and metric_name != "R":
+                    if "d2" not in metric_name and metric_name != "R_100":
                         metric_data_all[metric_name] = load_metric(model_name, pretrained, metric_name, m)
                     #cumulative variance explained by n_top PCs
-                    elif metric_name == "R":
+                    elif metric_name == "R_100":
                         metric_R = load_raw_metric(model_name, pretrained, metric_name)
                         # cumulative variance
                         metric_data_all[metric_name] = metric_R                        
@@ -1964,8 +2196,10 @@ def snr_microscopic_plot(small=True, log=False, display=True):
                 metric_D = load_raw_metric(model_name, pretrained, "D")
                 print(f"ED = {metric_D[l,:].mean(-1)}, {pretrained} shape {metric_D.shape}")
 
+                axs[0].axvline(x=metric_D[l,:].mean(-1), c=color, alpha=trans_ls[nidx])
+
                 # plot cumulative var
-                metric_data = metric_data_all["R"]
+                metric_data = metric_data_all["R_100"]
                 var_cum = metric_data[:,:,:].cumsum(-1)/metric_data.sum(-1)[:,:,None]
                 axs[1].plot(list(range(1,var_cum.shape[2]+1)), var_cum[l,:,:].mean(0), 
                                      c=color, alpha=trans_ls[nidx], marker=markers[nidx], linestyle=lstyle)
