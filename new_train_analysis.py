@@ -334,7 +334,7 @@ def submit(*args):
     #iterations = 1000 * 25
     iterations = 1000 * 50
     #save_dir = join("phdim_analysis", f"{model}_test") if model != "fc" else join("phdim_analysis", f"{model}{depth}_test")
-    save_dir = join("phdim_analysis", f"{model}_{dataset}") if model != "fc" else join("phdim_analysis", f"{model}{depth}_test")
+    save_dir = join("phdim_analysis", f"{model}_{dataset}") if model != "fc" else join("phdim_analysis", f"{model}{depth}_{dataset}")
     #ignore_previous = True    
 
     # submissions
