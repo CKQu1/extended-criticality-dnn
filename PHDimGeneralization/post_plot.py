@@ -60,8 +60,9 @@ def load_g100_nn_dir(main_path, g100):
     return sorted(ls)    
 
 def phdim_plot(main_path, *args):    
-    #cmap_name = "magma"
-    #cmap_name = "hsv"
+    global phdim_file, phd_data
+
+    # plot settings
     msize = 26    
 
     g100_exists = False
