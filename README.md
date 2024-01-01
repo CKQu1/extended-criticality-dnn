@@ -13,7 +13,12 @@ To install requirements:
 pip install -r requirements.txt
 ````
 
-
+To use singularity container:
+````
+PBS_O_WORKDIR="/project/phys_DL/" 
+cpath="../built_containers/FaContainer_v2.sif" 
+singularity shell --home ${PBS_O_WORKDIR} ${cpath}
+````
 
 ## 2. Pretrained network statistics
 
