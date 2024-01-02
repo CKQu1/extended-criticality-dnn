@@ -15,14 +15,17 @@ pip install -r requirements.txt
 
 To use singularity container:
 ````
-PBS_O_WORKDIR="/project/phys_DL/" 
+PBS_O_WORKDIR="/project/phys_DL/extended-criticality-dnn" 
 cpath="../built_containers/FaContainer_v2.sif" 
-singularity shell --home ${PBS_O_WORKDIR} ${cpath}
+bpath="/project"
+singularity shell -B ${bpath} --home ${PBS_O_WORKDIR} ${cpath}
 ````
 
 ## 2. Pretrained network statistics
 
 We extract pretrained networks from Pytorch and iteratively fit the entries of each weight matrix (not including biases or batch-normalization layers) independently as a Levy alpha-stable and Gaussian distribution respetively via maximum likelihood.
+
+---------- Old version ----------
 
 1. Download the weight matrices into the `weights_all` directory:
 
@@ -40,7 +43,25 @@ We extract pretrained networks from Pytorch and iteratively fit the entries of e
 <img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/pretrained_stablefit_grid.jpg" width="750">
 </p>
 
+---------- New version ----------
 
+1. Download weights (same as old version above)
+
+2. Fit the distribution
+
+`python pretrained_workflow/pretrained_wfit.py pretrained_allfit /project/PDLAI/project2_data/pretrained_workflow/np_weights_all 0 True`
+
+    - weight_path: the dir of the stored weights (divided into 2 networks dir from either torch or tensorflow)
+
+    - n_weight (int): integer index of the weight matrix
+
+    - with_logl (bool): return log-likelihood or not
+
+3. Summarize the results
+
+`python pretrained_workflow/pretrained_postfit.py postfit_stats True`
+
+    - pytorch (bool): whether pretrained networks are from torch library
 
 ## 3. Random DNN analysis
 
