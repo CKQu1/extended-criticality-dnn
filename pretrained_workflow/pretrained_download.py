@@ -7,8 +7,6 @@ import random
 import scipy.io as sio
 import sys
 import time
-import tensorflow as tf
-import tensorflow.keras.applications as kapp
 import torch
 
 from numpy import dot
@@ -187,9 +185,11 @@ def pretrained_store_dnn(n_model, pretrained=True, *args):
         print(f"{model_name} not implemented!")
 
 def get_pretrained_names_tf():
+    import tensorflow.keras.applications as kapp
+    #import tensorflow as tf
 
     """
-    Getting string names for all pretrained CNNs on TensorFlow (non-overlapping ones with Pytorch)
+    Getting string names for all pretrained CNNs on TensorFlow (non-overlapping ones with Pytorch)    
     """
 
     model_ls = [] 
@@ -198,8 +198,8 @@ def get_pretrained_names_tf():
 
     # use dir(kapp) to pre-explore the types of architecture
     architecture_ls = ['efficientnet', 'efficientnet_v2', 
-               'inception_resnet_v2', 'inception_v3',
-               'nasnet', 'xception']
+                       'inception_resnet_v2', 'inception_v3',
+                       'nasnet', 'xception']
 
     for arch_name in architecture_ls:
         arch = kapp.__dict__[arch_name]
@@ -211,6 +211,7 @@ def get_pretrained_names_tf():
     return model_ls
       
 def pretrained_store_tf(n_model, *args):
+    import tensorflow.keras.applications as kapp
 
     """
     Downloading all fully-connected weight matrices and 
