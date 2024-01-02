@@ -156,3 +156,29 @@ def job_divider(pbs_array: list, N: int):
     assert len(perm) == len(pbss), "perm length and pbss length not equal!"
 
     return perm, pbss
+
+# singularity exec usage
+def command_setup(ngpus, ncpus, singularity_path, **kwargs):
+    from os.path import isfile
+
+    assert isfile(singularity_path), "singularity_path does not exist!"
+
+    repo_dir = os.getcwd()
+    bind_path = kwargs.get('bind_path', '')
+
+    if len(singularity_path) > 0:
+        command = f"singularity exec"
+        if len(bind_path) > 0:
+            command += f" --bind {bind_path}"
+        command += f" --home {repo_dir} {singularity_path}"
+    else:
+        command = ""
+
+    #if max(ngpus, ncpus) <= 1:
+    command += f" python"
+    
+    if len(singularity_path) == 0:
+        command = command[1:]
+
+    return command
+
