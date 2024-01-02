@@ -2,13 +2,14 @@ import numpy as np
 import math
 import os
 import pandas as pd
-import powerlaw as plaw
+#import powerlaw as plaw
 import random
 import scipy.io as sio
 import sys
 import time
 import torch
 
+from ast import literal_eval
 from numpy import dot
 from os.path import join
 from scipy.stats import levy_stable
@@ -28,14 +29,13 @@ from path_names import root_data
 #from train_DNN_code.dataloader import get_data_loaders, get_synthetic_gaussian_data_loaders
 
 global main_path, project_ls
-main_path = "/project/dnn_maths/project2_data/pretrained_workflow"
+#main_path = "/project/dnn_maths/project2_data/pretrained_workflow"
+main_path = "/project/PDLAI/project2_data/pretrained_workflow"
 project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
 
 t0 = time.time()
 
 # ----------------------------
-
-import torchvision.models as models
 
 def log(save_path, file_name, **kwargs):
     fi = join(save_path, f"{file_name}.csv")
@@ -62,6 +62,7 @@ def log(save_path, file_name, **kwargs):
 ####### SOME OF THE MODELS DON'T EXIST DUE TO TORCH VERSION 
 
 def get_pretrained_names():
+    import torchvision.models as models
 
     """
     Getting string names for all pretrained CNNs on Pytorch
@@ -80,6 +81,7 @@ def get_pretrained_names():
     return model_ls
 
 def pretrained_store(n_model, *args):
+    import torchvision.models as models
 
     """
     Downloading all fully-connected weight matrices and 
@@ -151,10 +153,13 @@ def pretrained_store(n_model, *args):
         print(f"{model_name} not implemented!")
 
 def pretrained_store_dnn(n_model, pretrained=True, *args):
+    import torchvision.models as models
 
     """
     Downloading pretrained DNN from Pytorch in get_pretrained_names()
     """
+
+    pretrained = pretrained if isinstance(pretrained,bool) else literal_eval(pretrained)
 
     t0 = time.time()
 
@@ -169,18 +174,24 @@ def pretrained_store_dnn(n_model, pretrained=True, *args):
         # path for saving the weights
         #main_path = "/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/pretrained_workflow"
         net_path = join(main_path, "pretrained_dnns", model_name) if pretrained else join(main_path, "untrained_dnns", model_name)
+        print(net_path)
         if not os.path.exists(net_path):
             os.makedirs(net_path)
 
-        torch.save(model, join(net_path, "model.pt"))
+        if not os.path.isfile(join(net_path, "model_pt")):
+            torch.save(model, join(net_path, "model_pt"))
 
-        # create dataframe that stores the model_name
-        #log(main_path, "net_names_all", 
-        #    model_name=model_name, total_wmat=wmat_idx, saved_wmat=i)
+            # create dataframe that stores the model_name
+            #log(main_path, "net_names_all", 
+            #    model_name=model_name, total_wmat=wmat_idx, saved_wmat=i)
 
-        # clear some space
-        t_last = time.time()
-        print(f"{model_name}: stored in {t_last - t1} s!")      
+            # clear some space
+            t_last = time.time()
+            print(f"{model_name} saved under {net_path}: stored in {t_last - t1} s!")   
+
+        else:
+            print(f"Model already downloaded to {net_path}!")
+   
     except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
         print(f"{model_name} not implemented!")
 
@@ -324,25 +335,34 @@ def pretrained_store_dnn_tf(n_model, pretrained=True, *args):
         net_path = join(main_path, "pretrained_dnns_tf", model_name)
         if not os.path.exists(net_path):
             os.makedirs(net_path)
-        torch.save(model, join(net_path, "model.pt"))
 
-        # create dataframe that stores the model_name
-        #log(main_path, "net_names_all_tf", 
-        #    model_name=model_name, total_wmat=wmat_idx, saved_wmat=i)
+        if not os.path.isfile(join(net_path, "model_pt")):
+            torch.save(model, join(net_path, "model_pt"))
 
-        # clear some space
-        t_last = time.time()
-        print(f"{model_name}: stored in {t_last - t1} s!")  
-        print("All weight names") 
-        print(names)       
+            # create dataframe that stores the model_name
+            #log(main_path, "net_names_all_tf", 
+            #    model_name=model_name, total_wmat=wmat_idx, saved_wmat=i)
+
+            # clear some space
+            t_last = time.time()
+            print(f"{model_name} saved under {net_path}: stored in {t_last - t1} s!")  
+            #print("All weight names") 
+            #print(names)             
+
+        else:
+            print(f"Model already downloaded to {net_path}!")            
+      
     except (NotImplementedError,ValueError):
         print(f"({model_name},n_model) not implemented!")
 
 def submit(*args):
-    from qsub import qsub, job_divider
+    from qsub import qsub, job_divider, command_setup
     N = len(get_pretrained_names())  # number of models
-    pbs_array_data = [(f'{n_model:.1f}')
+    #pretrained_ls = [True, False]
+    pretrained_ls = [False]
+    pbs_array_data = [(f'{n_model:.1f}', pretrained)
                       for n_model in list(range(N))
+                      for pretrained in pretrained_ls
                       #for n_model in list(range(12))
                       #for n_model in list(range(2))
                       #for dummy in [0]
@@ -356,16 +376,23 @@ def submit(*args):
          mem="4GB")
     """
 
-    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    ncpus, ngpus = 1, 0
+    singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
+    bind_path = "/project"
+    command = command_setup(singularity_path, bind_path=bind_path)
+
+    #pbs_array_data = pbs_array_data[:2]  # delete
+    #perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    perm, pbss = job_divider(pbs_array_data, 1)
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
 
-        qsub(f'python {sys.argv[0]} {" ".join(args)}', 
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
              path='/project/phys_DL/project2_data', 
              P=project_ls[pidx], 
-             mem="4GB")
+             mem="6GB")
 
 def submit_tf(*args):
     from qsub import qsub
