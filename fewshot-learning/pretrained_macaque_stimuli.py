@@ -39,18 +39,19 @@ imdir = join(log_path, "image_dicarlo_hvm-public")
 imnames = np.load(join(imdir,"majaj_2015_imnames_2.npy"),allow_pickle=True)
 imnames = sorted(imnames)   # a total of 64 concepts with 50 examples each, this groups them into the respective input classes
 
-# Image preprocessing
-from torchvision import transforms
-preprocess = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
 def get_batch(i, batch_size):
     from PIL import Image
 #     ims = imnames[class_id]
+
+    # Image preprocessing
+    from torchvision import transforms
+    preprocess = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
     images = []
     for im in imnames[i*batch_size:(i+1)*batch_size]:
         #impath = os.path.join(imdir, im+ '.png')
@@ -64,6 +65,16 @@ def get_batch(i, batch_size):
 def get_full_batch():
     from PIL import Image
 #     ims = imnames[class_id]
+
+    # Image preprocessing
+    from torchvision import transforms
+    preprocess = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
     images = []
     for im in imnames:
         #impath = os.path.join(imdir, im+ '.png')
@@ -185,7 +196,7 @@ def snr_components(model_name, pretrained):
     #global manifolds, manifolds_all
     #global init_epoch, emb_path
     #global model, module_idx, layer_idx, Backbone
-    global input_fbatch, output_fbatch, Un, Rn, Vn, d2, backbone
+    #global input_fbatch, output_fbatch, Un, Rn, Vn, d2, backbone
 
     pretrained = literal_eval(pretrained) if isinstance(pretrained,str) else pretrained
 
@@ -271,7 +282,7 @@ def snr_components(model_name, pretrained):
     P = 50
 
     # analysis for top 200 PCs
-    n_top = 50 # not used
+    #n_top = 50 # not used
     
     layerwise_file = "manifolds_layerwise.npy"
     print(f"Computation for {layerwise_file}!")
@@ -556,7 +567,9 @@ def snr_d2_mbatch(model_name, pretrained, n_top=100):
     else:
         print(f"Total number of modules: { len(list(model.children())) }")
 
-        batch_size = 50
+        #batch_size = 50
+        #batch_size = 100
+        batch_size = n_top
         N_images = len(imnames)
 
         counter = 0
@@ -584,7 +597,8 @@ def snr_d2_mbatch(model_name, pretrained, n_top=100):
                         output = output.detach().numpy()
                         # scklearn PCA
                         pca = PCA(n_top)
-                        pca.transform(output)
+                        #pca.fit(output)
+                        pca.fit_transform(output)
                         Rn = pca.explained_variance_
                         Vn = pca.components_
 
@@ -621,7 +635,8 @@ def snr_d2_mbatch(model_name, pretrained, n_top=100):
                     output = output.detach().numpy()
                     # scklearn PCA
                     pca = PCA(n_top)
-                    pca.transform(output)
+                    #pca.fit(output)
+                    pca.fit_transform(output)
                     Rn = pca.explained_variance_
                     Vn = pca.components_
 
@@ -920,7 +935,7 @@ def layer_sparsity(model_name, pretrained, threshold=1e-4):
 
 
 def snr_submit(*args):
-    from qsub import qsub, job_divider, project_ls
+    from qsub import qsub, job_divider, project_ls, command_setup
 
     # get all appropriate networks
     """
@@ -951,10 +966,16 @@ def snr_submit(*args):
     # SNR
     #models = ["resnet152"]
     #models = ["squeezenet1_0"]
+    models = ['shufflenet_v2_x0_5', 'shufflenet_v2_x1_0', 
+              'mnasnet0_5', 'mnasnet1_0',
+              'mobilenet_v3_small', 'mobilenet_v2', 'mobilenet_v3_large',
+              'googlenet',
+              'densenet121', 'densenet169', 'densenet201',              
+              ]
 
     # d2
     #models = ["resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_0", "squeezenet1_1", "wide_resnet50_2"]
-    models = ["alexnet", "resnet18"]
+    #models = ["alexnet", "resnet18"]
     
 
     pretrained_ls = [True, False]
@@ -964,30 +985,41 @@ def snr_submit(*args):
                       #if not os.path.isfile(join(root_data,"pretrained_workflow/pretrained_dnns",model_name,"manifold",fname,"css_layerwise.npy"))
                       ]
 
+    pbs_array_data = pbs_array_data[:2]  # delete
     print(len(pbs_array_data))
     print(pbs_array_data)
     
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
+
+    select = 1
+    ncpus, ngpus = 1, 0
+    singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
+    bind_path = "/project"
+    command = command_setup(ngpus, ncpus, singularity_path, bind_path=bind_path)
+    print(command)  # delete
+    print('\n')  # delete
+
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              #path=join(root_data, "macaque_stimuli/new_snr"),
-             #path=join(root_data, "macaque_stimuli"),
+             path=join(root_data, "macaque_stimuli"),
              #path=join(root_data, "macaque_stimuli", "pure_rsmb"),
-             path=join(root_data, "macaque_stimuli/new_d2"),
+             #path=join(root_data, "macaque_stimuli/new_d2"),
              P=project_ls[pidx],
-             #ngpus=1,
-             ncpus=1,
+             #ngpus=ngpus,
+             ncpus=ncpus,
+             select=select,
              #walltime='47:59:59',
              walltime='23:59:59',   # small/medium
              #mem='32GB')
              #mem='24GB')
              #mem='20GB')
              #mem='16GB')
-             #mem='12GB')
-             mem='8GB') 
+             mem='12GB')
+             #mem='8GB') 
 
 # ---------------------- Plotting ----------------------
 
@@ -1052,7 +1084,7 @@ def load_raw_metric(model_name, pretrained:bool, metric_name, **kwargs):
 
 # load processed metrics from network
 def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
-    global metric_R, metric_D, metric_data, metric_og, batch_idx, l, Rs
+    #global metric_R, metric_D, metric_data, metric_og, batch_idx, l, Rs
     
     pretrained = literal_eval(pretrained) if isinstance(pretrained,str) else pretrained
 
@@ -1085,12 +1117,13 @@ def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
         # R's (eigenvalues/variance explained)     
         metric_R = load_raw_metric(model_name, pretrained, "R_100")  
         metric_D = load_raw_metric(model_name, pretrained, "D")  
+        # storing weighted averaged of D_2's based on the eigenvalues/variance explained
+        metric_data = np.zeros(metric_og[:,:,0].shape) 
 
         #print(f"metric_R: {metric_R.shape}")
         #print(f"metric_og: {metric_og.shape}")
+        #print(f"metric_data: {metric_data.shape}")
 
-        # storing weighted averaged of D_2's based on the eigenvalues/variance explained
-        metric_data = np.zeros(metric_og[:,:,0].shape) 
         #print(f"Total layers {metric_data.shape[0]}")
         for l in range(metric_data.shape[0]):              
             #n_top = round(np.nanmean(metric_D[l,:])) 
@@ -1120,6 +1153,7 @@ def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
             
             # method 4 (evaluate n_top for each batch)
             
+            #print((metric_og.shape[1], metric_R.shape[1], metric_data.shape[1]))
             assert metric_og.shape[1] ==  metric_R.shape[1] and metric_data.shape[1] ==  metric_R.shape[1], "dimension inconsistent"
             for batch_idx in range(metric_og.shape[1]):                
 
@@ -1802,23 +1836,30 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
     """
     model_names = ["alexnet",   # untrained
                    "resnet18", "resnet34", "resnet50", "resnet101",
-                   "resnext50_32x4d", "resnext101_32x8d"]    
+                   "resnext50_32x4d", "resnext101_32x8d",
+                   "squeezenet1_1",
+                   "wide_resnet101_2"]    
     """
 
     #model_names = ["alexnet"]
-    model_names = ["resnet50"]
+    #model_names = ["resnet101"]
     #model_names = ["resnet18", "resnet34", "resnet50", "resnet101"]
     #model_names = ["resnext50_32x4d", "resnext101_32x8d"]
+    #model_names = ["resnext50_32x4d"]
+    #model_names = ["resnext101_32x8d"]
     #model_names = ["squeezenet1_0", "squeezenet1_1"]
+    #model_names = ["squeezenet1_0"]
+    #model_names = ["squeezenet1_1"]
     #model_names = ["wide_resnet50_2"]
     #model_names = ["wide_resnet101_2"]
+    model_names = ["mobilenet_v3_small"]
 
     # transparency list
     trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
 
     # need to demonstrate for pretrained and random DNNs
-    pretrained_ls = [True, False]
-    #pretrained_ls = [True]
+    #pretrained_ls = [True, False]
+    pretrained_ls = [True]
     #pretrained_ls = [False]
     lstyle_ls = ["-", "--"]
 
@@ -1882,8 +1923,8 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
 
                     # last n layers   
                                     
-                    depth_idx = 1
-                    axs[metric_idx].scatter(d2_data.mean(-1)[depth_idx:], np.log(metric_data_mean[depth_idx:]), 
+                    depth_idx = 0
+                    axs[metric_idx].scatter(d2_data.mean(-1)[depth_idx:], metric_data_mean[depth_idx:], 
                                             marker=markers[nidx], 
                                             c=color)    # alpha=trans_ls[nidx]   
                     
@@ -1931,8 +1972,11 @@ def final_layers(metric_names="d2_avg,D,SNR,error,dist_norm,bias,css", n_top=100
 
         # --------------- Save figure ---------------
         fig_path = join(root_data,"figure_ms/pretrained-fewshot-main")
-        if not os.path.isdir(fig_path): os.makedirs(fig_path)    
-        fig_name = f"pretrained-m={m_featured}-features-final_layers.pdf"
+        if not os.path.isdir(fig_path): os.makedirs(fig_path)
+        if len(model_names) == 1:
+            fig_name = f"{model_names[0]}-m={m_featured}-features-layers.pdf"
+        else:
+            fig_name = f"pretrained-m={m_featured}-features-layers.pdf"
         print(f"Saved as {join(fig_path, fig_name)}")
         #plt.savefig(join(fig_path, fig_name) , bbox_inches='tight')
         plt.show()
