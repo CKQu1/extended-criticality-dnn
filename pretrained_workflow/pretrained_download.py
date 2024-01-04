@@ -92,6 +92,9 @@ def pretrained_store(n_model, *args):
 
     model_ls = get_pretrained_names()
     model_name = model_ls[int(n_model)]
+    if "vit" in model_name.lower() or "swin" in model_name.lower():
+        print("Transformers are not considered!")
+        quit()
     try:
         model = models.__dict__[model_name](pretrained=True)
 
@@ -129,14 +132,16 @@ def pretrained_store(n_model, *args):
             if 'bias' not in name and param.dim() > 1:
                 weights = param.flatten()
                 weight_file = f"{model_name}_layer_{i}_{wmat_idx}"
-                torch.save(weights, f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}")
-                #weights = weights.detach().numpy()     
 
-                # create dataframe that stores the weight info for each NN
-                log(main_path, "weight_info", 
-                    model_name=model_name, name=name, param_shape=list(param.shape),
-                    weight_num=len(weights), wmat_idx=wmat_idx, idx=i,
-                    weight_path=weight_path, weight_file=weight_file)     
+                if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}"):
+                    torch.save(weights, f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}")
+                    #weights = weights.detach().numpy()     
+
+                    # create dataframe that stores the weight info for each NN
+                    log(main_path, "weight_info", 
+                        model_name=model_name, name=name, param_shape=list(param.shape),
+                        weight_num=len(weights), wmat_idx=wmat_idx, idx=i,
+                        weight_path=weight_path, weight_file=weight_file)     
 
                 print(rf"W{i}: {wmat_idx} done!")
                 i += 1
@@ -281,13 +286,14 @@ def pretrained_store_tf(n_model, *args):
                 weights = model.trainable_variables[widx]
                 param_shape = weights.shape
                 weights = torch.from_numpy(weights.numpy().flatten())
-                torch.save(weights, f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}")
+                if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}":)
+                    torch.save(weights, f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}")
 
-                # create dataframe that stores the weight info for each NN
-                log(main_path, "weight_info_tf", 
-                    model_name=model_name, name=weight_name, param_shape=list(param_shape),
-                    weight_num=len(weights), wmat_idx=wmat_idx, idx=i,
-                    weight_path=weight_path, weight_file=weight_file)   
+                    # create dataframe that stores the weight info for each NN
+                    log(main_path, "weight_info_tf", 
+                        model_name=model_name, name=weight_name, param_shape=list(param_shape),
+                        weight_num=len(weights), wmat_idx=wmat_idx, idx=i,
+                        weight_path=weight_path, weight_file=weight_file)   
 
                 print(rf"W{i}: {wmat_idx}, dim: {model.trainable_variables[widx]._shape} done!")
                 i += 1
@@ -357,11 +363,13 @@ def pretrained_store_dnn_tf(n_model, pretrained=True, *args):
 
 def submit(*args):
     from qsub import qsub, job_divider, command_setup
-    N = len(get_pretrained_names())  # number of models
-    #pretrained_ls = [True, False]
-    pretrained_ls = [False]
-    pbs_array_data = [(f'{n_model:.1f}', pretrained)
-                      for n_model in list(range(N))
+    #N = len(get_pretrained_names())  # number of models
+    N = 85
+    pretrained_ls = [True, False]
+    #pretrained_ls = [False]
+    #pbs_array_data = [(f'{n_model:.1f}', pretrained)
+    pbs_array_data = [(n_model, pretrained)
+                      for n_model in range(N)
                       for pretrained in pretrained_ls
                       #for n_model in list(range(12))
                       #for n_model in list(range(2))
@@ -382,17 +390,19 @@ def submit(*args):
     command = command_setup(singularity_path, bind_path=bind_path)
 
     #pbs_array_data = pbs_array_data[:2]  # delete
-    #perm, pbss = job_divider(pbs_array_data, len(project_ls))
-    perm, pbss = job_divider(pbs_array_data, 1)
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    #perm, pbss = job_divider(pbs_array_data, 1)
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
 
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
-             path='/project/phys_DL/project2_data', 
+             path='/project/PDLAI/project2_data/pretrained_workflow/untrained_dnns', 
              P=project_ls[pidx], 
-             mem="6GB")
+             ncpus=ncpus,
+             ngpus=ngpus,
+             mem="2GB")
 
 def submit_tf(*args):
     from qsub import qsub
@@ -418,7 +428,7 @@ def submit_tf(*args):
 
         qsub(f'python {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
-             path='/project/phys_DL/project2_data', 
+             path='/project/PDLAI/project2_data', 
              P=project_ls[pidx], 
              mem="4GB")
 
