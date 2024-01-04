@@ -284,8 +284,7 @@ def snr_components(model_name, pretrained):
     # analysis for top 200 PCs
     #n_top = 50 # not used
     
-    layerwise_file = "manifolds_layerwise.npy"
-    print(f"Computation for {layerwise_file}!")
+    layerwise_file = "manifolds_layerwise.npy"    
     if os.path.isfile( join(emb_path, 'manifolds_layerwise.npy') ):
         #manifolds_all_load = np.load(join(emb_path, 'manifolds_layerwise.npy'))
         #manifolds_all = np.load(join(emb_path, 'manifolds_layerwise.npy'))
@@ -293,6 +292,7 @@ def snr_components(model_name, pretrained):
         manifolds_all = np.load(join(emb_path, layerwise_file))
 
     else:
+        print(f"Computation for {layerwise_file}!")
         print(f"Total number of modules: { len(list(model.children())) }")
 
         counter = 0
@@ -962,42 +962,122 @@ def snr_submit(*args):
         - level 3: "resnet101", "resnet152",  "resnext101_32x8d",  "wide_resnet101_2" (32GB)
     """
 
+    # more image classification models from https://pytorch.org/vision/stable/models.html 
+    # (does not include transformers, i.e. SwinTransformer, VisionTransformer)
+    """   
+
+    'shufflenet_v2_x0_5', 'shufflenet_v2_x1_0', 'shufflenet_v2_x1_5', 'shufflenet_v2_x2_0', (done)
+
+    'mnasnet0_5', 'mnasnet0_75', 'mnasnet1_0', 'mnasnet1_3'
+
+    'mobilenet_v2',
+    'mobilenet_v3_small', 'mobilenet_v3_large',
+
+    'googlenet',
+
+    'densenet121', 'densenet169', 'densenet201',  
+
+    'efficientnet_b0', 'efficientnet_b1', 'efficientnet_b2', 'efficientnet_b3', 'efficientnet_b4',                 
+
+    # -----------------------------------------------
+
+    'inception_v3',
+
+    'densenet161',
+
+    'convnext_tiny', 'convnext_small', 
+
+    'efficientnet_b5', 'efficientnet_b6', 'efficientnet_b7',
+
+    # -----------------------------------------------
+
+    'regnet_x_400mf', 'regnet_x_800mf', 'regnet_x_1_6gf', 'regnet_x_3_2gf',     
+    'regnet_y_400mf', 'regnet_y_800mf', 'regnet_y_1_6gf', 'regnet_y_3_2gf', 
+    
+    'regnet_x_8gf', 'regnet_x_16gf', 'regnet_x_32gf', 
+    'regnet_y_8gf', 'regnet_y_16gf', 'regnet_y_32gf', 
+
+    'regnet_y_128gf', (cannot extract)    
+
+    'efficientnet_v2_s', 'efficientnet_v2_m', 'efficientnet_v2_l/',    
+
+    'resnext101_64x4d',
+
+    'vgg11', 'vgg11_bn', 'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn',
+
+    'convnext_base', 'convnext_large',
+
+    """
 
     # SNR
     #models = ["resnet152"]
     #models = ["squeezenet1_0"]
-    models = ['shufflenet_v2_x0_5', 'shufflenet_v2_x1_0', 
-              'mnasnet0_5', 'mnasnet1_0',
-              'mobilenet_v3_small', 'mobilenet_v2', 'mobilenet_v3_large',
-              'googlenet',
-              'densenet121', 'densenet169', 'densenet201',              
-              ]
 
     # d2
     #models = ["resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_0", "squeezenet1_1", "wide_resnet50_2"]
     #models = ["alexnet", "resnet18"]
+
+    # --------------- new models ---------------
+    
+    # 24GB (20 networks)
+    # 'shufflenet_v2_x0_5', 'shufflenet_v2_x1_0', 'shufflenet_v2_x1_5', 'shufflenet_v2_x2_0', (done)
+    """
+    models = ['mnasnet0_5', 'mnasnet0_75', 'mnasnet1_0', 'mnasnet1_3',
+              'mobilenet_v2',
+              'mobilenet_v3_small', 'mobilenet_v3_large',
+              'googlenet',
+              'densenet121', 'densenet169', 'densenet201',  
+              'efficientnet_b0', 'efficientnet_b1', 'efficientnet_b2', 'efficientnet_b3', 'efficientnet_b4'
+              ]     
+    """
+
+    
+    # 32GB (7 networks)
+    """
+    models = ['inception_v3',
+              'densenet161',
+              'convnext_tiny', 'convnext_small', 
+              'efficientnet_b5', 'efficientnet_b6', 'efficientnet_b7'
+              ]
+    """
+    
+    
+    # 48GB (28 networks)
+    
+    # 'regnet_y_128gf', (cannot extract)
+    models = ['regnet_x_400mf', 'regnet_x_800mf', 'regnet_x_1_6gf', 'regnet_x_3_2gf',     
+              'regnet_y_400mf', 'regnet_y_800mf', 'regnet_y_1_6gf', 'regnet_y_3_2gf',     
+              'regnet_x_8gf', 'regnet_x_16gf', 'regnet_x_32gf', 
+              'regnet_y_8gf', 'regnet_y_16gf', 'regnet_y_32gf',                   
+              'efficientnet_v2_s', 'efficientnet_v2_m', 'efficientnet_v2_l/',    
+              'resnext101_64x4d',
+              'vgg11', 'vgg11_bn', 'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn',
+              'convnext_base', 'convnext_large'
+              ]
     
 
     pretrained_ls = [True, False]
+    #pretrained_ls = [True]
     pbs_array_data = [(model_name, pretrained)
                       for model_name in models
                       for pretrained in pretrained_ls
                       #if not os.path.isfile(join(root_data,"pretrained_workflow/pretrained_dnns",model_name,"manifold",fname,"css_layerwise.npy"))
                       ]
 
-    pbs_array_data = pbs_array_data[:2]  # delete
-    print(len(pbs_array_data))
+    #pbs_array_data = pbs_array_data[2:]  # delete
+    print(f"Total jobs: {len(pbs_array_data)} \n")
     print(pbs_array_data)
     
+    #quit()
+
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
 
     select = 1
     ncpus, ngpus = 1, 0
     singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
     bind_path = "/project"
-    command = command_setup(ngpus, ncpus, singularity_path, bind_path=bind_path)
-    print(command)  # delete
-    print('\n')  # delete
+    command = command_setup(singularity_path, bind_path=bind_path)
+    #print(command)  # delete
 
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
@@ -1005,20 +1085,22 @@ def snr_submit(*args):
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              #path=join(root_data, "macaque_stimuli/new_snr"),
-             path=join(root_data, "macaque_stimuli"),
+             #path=join(root_data, "macaque_stimuli"),
+             path=join(root_data, "macaque_stimuli/new_nets_job"),
              #path=join(root_data, "macaque_stimuli", "pure_rsmb"),
              #path=join(root_data, "macaque_stimuli/new_d2"),
              P=project_ls[pidx],
              #ngpus=ngpus,
              ncpus=ncpus,
              select=select,
-             #walltime='47:59:59',
-             walltime='23:59:59',   # small/medium
+             walltime='47:59:59',
+             #walltime='23:59:59',   # small/medium
+             mem='48GB')
              #mem='32GB')
              #mem='24GB')
              #mem='20GB')
              #mem='16GB')
-             mem='12GB')
+             #mem='12GB')
              #mem='8GB') 
 
 # ---------------------- Plotting ----------------------
@@ -1259,9 +1341,20 @@ def snr_metric_plot(main=True, n_top=100, display=False):
     Plots the scatter plot between error and D_2
     """
 
-    main = literal_eval(main) if isinstance(main, str) else main
     display = literal_eval(display) if isinstance(display, str) else display 
-    n_top = int(n_top)
+    n_top = int(n_top)    
+
+    if main in [True, False, 'True', 'False']:
+        main = literal_eval(main) if isinstance(main, str) else main
+        # get available networks
+        #all_models = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv")).loc[:,"model_name"]
+
+        model_names = get_model_names(main)
+    else:
+        if ',' in main:
+            model_names = main.split(',')
+        else:
+            model_names = [main]
 
     # Plot settings
     fig_size = (11/2*3,7.142+2) # 2 by 3
@@ -1281,11 +1374,6 @@ def snr_metric_plot(main=True, n_top=100, display=False):
             if metric_name != "d2_avg":
                 pc_idx = int(metric_name.split("_")[1])
             name_dict[metric_name] = r'Weighted $D_2$' 
-
-    # get available networks
-    #all_models = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv")).loc[:,"model_name"]
-
-    model_names = get_model_names(main)
 
     # transparency list
     trans_ls = np.linspace(0,1,len(model_names)+1)[::-1]
@@ -1448,7 +1536,11 @@ def snr_metric_plot(main=True, n_top=100, display=False):
 
     # --------------- Save figure ---------------
     if not display:
-        fig_path = join(root_data,"figure_ms/pretrained-fewshot-main") if main else join(root_data,"figure_ms/pretrained-fewshot-appendix")
+        if main in [True, False]:
+            fig_path = join(root_data,"figure_ms/pretrained-fewshot-main") if main else join(root_data,"figure_ms/pretrained-fewshot-appendix")
+        else:
+            models_cat = "_".join(model_names)
+            fig_path = join(root_data,f"figure_ms/pretrained-fewshot-all")
         if not os.path.isdir(fig_path): os.makedirs(fig_path)
         net_cat = "_".join(model_names)
         fig_name = f"pretrained_m={m_featured}_metric_{net_cat}.pdf"
