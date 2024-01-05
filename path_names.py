@@ -3,6 +3,9 @@ import pandas as pd
 
 root_data = "/project/PDLAI/project2_data"
 
+singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
+bind_path = "/project"
+
 # ---------- create logs for networks during training ----------
 
 # Record relevants attributes for trained neural networks -------------------------------------------------------
