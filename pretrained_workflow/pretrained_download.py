@@ -88,6 +88,9 @@ def log(save_path, file_name, **kwargs):
                 df = pd.concat([df_og,df], axis=0, ignore_index=True)
             else:
                 df = df_og
+            # order alphabetically
+            df = df.sort_values(by=['model_name'])
+            df = df.reset_index(drop = True)
         elif "weight_info" in file_name:
             if kwargs.get('name') not in df_og[df_og['model_name'] == kwargs.get('model_name')]['name'].unique():
                 df = pd.concat([df_og,df], axis=0, ignore_index=True)
@@ -114,7 +117,7 @@ def get_pretrained_names():
     attr_ls = list(models.__dict__.keys()) 
     for attr in attr_ls:
         obj = models.__dict__[attr]
-        if isinstance(obj, class_type):
+        if isinstance(obj, class_type) and '__wrapped__' in dir(obj):
             model_ls.append(attr)
 
     return model_ls
@@ -125,16 +128,16 @@ def get_pretrained_acc(model_name, dataset='imagenet1k_v1'):
     top_1, top_5 = df_perf.loc[df_perf["Weight"]==f"{model_name}_weights.{dataset}"].loc[:,["Acc@1","Acc@5"]].values[0]
     return top_1, top_5
 
-def pretrained_store(n_model, *args):
-    import torch
-    import torchvision.models as models
-    import pandas as pd
-    from os.path import join
-
+def pretrained_store(n_model, replace=False):
     """
     Downloading all fully-connected weight matrices and 
     convolution tensors from Pytorch pretrained CNNs in get_pretrained_names()
+        - n_model (int): the index of the model from get_pretrained_names()
+        - replace (bool): replace the stored weights if already downloaded
     """
+
+    import torch
+    import torchvision.models as models
 
     t0 = time.time()
 
@@ -181,7 +184,7 @@ def pretrained_store(n_model, *args):
                 weights = param.flatten()
                 weight_file = f"{model_name}_layer_{i}_{wmat_idx}"
 
-                if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}"):
+                if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}") or replace:
                     torch.save(weights, f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}")
                     #weights = weights.detach().numpy()     
 
@@ -221,11 +224,15 @@ def pretrained_store(n_model, *args):
 
         # clear some space
         t_last = time.time()
-        print(f"{model_name}: Ws of {i+1} out {wmat_idx+1} stored in {t_last - t1} s!")      
+        print(f"{model_name}: Ws of {i} out {wmat_idx} stored in {t_last - t1} s!")      
     except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
         print(f"{model_name} not implemented!")
 
 def pretrained_store_check():
+    """
+    Check if all weights are downloaded.
+    """
+
     import torch
     import torchvision.models as models
     from tqdm import tqdm
@@ -234,19 +241,18 @@ def pretrained_store_check():
     #warnings.filterwarnings("ignore", category=DeprecationWarning)     
     #warnings.filterwarnings('ignore')
 
-    """
-    Check all weights are downloaded.
-    """
-    global incomplete_models
+    global incomplete_models, unused_models, model_ls
+    global incomplete_idxs, unused_idxs
 
     t0 = time.time()
 
-    incomplete_models = []
-    model_ls = get_pretrained_names()    
+    incomplete_models = {}; incomplete_idxs = []
+    unused_models = []; unused_idxs = []
+    model_ls = get_pretrained_names()        
     for n_model, model_name in tqdm(enumerate(model_ls)):
 
         if "vit" in model_name.lower() or "swin" in model_name.lower():
-            print("Transformers are not considered!")
+            print(f"{model_name} is not considered!")
             continue
 
         try:
@@ -266,28 +272,42 @@ def pretrained_store_check():
                     weight_file = f"{model_name}_layer_{i}_{wmat_idx}"
 
                     if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}"):
-                        incomplete_models.append(model_name)
-                        break
+                        if model_name not in incomplete_models.keys():
+                            incomplete_models[model_name] = 0
+                        else:
+                            incomplete_models[model_name] += 1
+                        incomplete_idxs.append(n_model)
                     else:
                         # check if weight matrix can be loaded as insurance
                         try:
                             torch.load(f"{weight_path}/{weight_file}")
                             #print(rf"W{i}: {wmat_idx} already downloaded!")
                         except:
-                            incomplete_models.append(model_name)
-                            break
-
+                            if model_name not in incomplete_models.keys():
+                                incomplete_models[model_name] = 0
+                            else:
+                                incomplete_models[model_name] += 1
+                            incomplete_idxs.append(n_model)
+                                
                     i += 1  # ordering within weight matrices
                 wmat_idx += 1  # ordering over all trainable parameter sets (including biases etc)
 
             # clear some space
             t_last = time.time()
-            print(f"{model_name}: Ws of {i} checked in {t_last - t1} s!")      
+            #print(f"{model_name}: Ws of {i} checked in {t_last - t1} s!")      
         except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
-            incomplete_models.append(model_name)
-            print(f"{model_name} not implemented!")        
+            unused_models.append(model_name)
+            unused_idxs.append(n_model)
+            #print(f"{model_name} not implemented!")        
 
-    print(f"Incomplete models: {incomplete_models.append(model_name)}")
+    print(f"Incomplete models: {incomplete_models} \n")
+    print(f"Unused models: {unused_models}")
+
+    incomplete_idxs = sorted(list(set(incomplete_idxs)))
+    unused_idxs = sorted(list(set(unused_idxs)))
+
+    return incomplete_idxs, unused_idxs, incomplete_models, unused_models
+
 
 def pretrained_store_dnn(n_model, pretrained=True, *args):
     import torchvision.models as models
@@ -509,17 +529,28 @@ def pretrained_store_dnn_tf(n_model, pretrained=True, *args):
 def submit(*args):
     from qsub import qsub, job_divider, command_setup
     #N = len(get_pretrained_names())  # number of models
-    N = 85
+    remainder = True  # submit for second time
+
+    if remainder:
+        n_models, _, _, _ = pretrained_store_check()
+        n_models = sorted(list(set(n_models)))
+    else:
+        n_models = list(range(85))  # full list
+
     pretrained_ls = [True, False]
     #pretrained_ls = [False]
     #pbs_array_data = [(f'{n_model:.1f}', pretrained)
+    pbs_array_data = [(n_model) for n_model in n_models]
+
+    """
     pbs_array_data = [(n_model, pretrained)
-                      for n_model in range(N)
+                      for n_model in n_models
                       for pretrained in pretrained_ls
                       #for n_model in list(range(12))
                       #for n_model in list(range(2))
                       #for dummy in [0]
                       ]
+    """
     #qsub(f'python geometry_preplot.py {" ".join(args)}', pbs_array_data, path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/metrics_postact/', P='phys_DL')
     """
     qsub(f'python pretrained_workflow/pretrained_download.py {" ".join(args)}', 
