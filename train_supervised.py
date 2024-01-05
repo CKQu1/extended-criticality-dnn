@@ -865,7 +865,8 @@ def gaussian_train_ht_dnn(seed_ls, name, Y_classes, X_clusters, num_train, num_t
 
 # batch training mnist with MLPs
 def batch_mnist_submit(*args):
-    from qsub import qsub, job_divider, project_ls
+    from qsub import qsub, job_divider, project_ls, command_setup
+    from path_names import singularity_path, bind_path
 
     dataset_name = "mnist"
     net_type = "fc"
@@ -897,18 +898,22 @@ def batch_mnist_submit(*args):
                       for lr in lr_ls
                       ]   
 
-    print(len(pbs_array_data))             
+    print(len(pbs_array_data))                 
+
+    ncpus, ngpus = 1, 1
+    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
+
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              path=join(root_data, root_folder),
              P=project_ls[pidx],
              source="virt-test-qu/bin/activate",
-             ngpus=1,
-             ncpus=1,
+             ngpus=ngpus,
+             ncpus=ncpus,
              #walltime='0:59:59',
              walltime='23:59:59',
              mem='10GB')      
@@ -916,18 +921,20 @@ def batch_mnist_submit(*args):
 
 # for figure 1
 def fig1_submit(*args):
-    from qsub import qsub, job_divider, project_ls
+    from qsub import qsub, job_divider, project_ls, command_setup
+    from path_names import singularity_path, bind_path
 
     dataset_name = "mnist"
     net_type = "fc"
-    alpha100_ls = '[100,200]'
+    alpha100_lss = ['[100]', '[200]']
     g100_ls = [100]
     optimizer = "sgd"
     bs_ls = [1024]  
-    lr_ls = [0.001]
-    depth = 5
-    epochs = 650
-    save_epoch = 50
+    #lr_ls = [0.001, 0.003]  # too slow
+    lr_ls = [0.01]
+    depth = 3
+    epochs = 200
+    save_epoch = 101
     init_path, init_epoch = None, None
     root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_fig1")
     root_path = join(root_data, root_folder)    
@@ -937,31 +944,41 @@ def fig1_submit(*args):
                        optimizer, bs, init_path, init_epoch, root_path, depth, lr,
                        epochs, save_epoch
                       )
+                      for alpha100_ls in alpha100_lss
                       for g100 in g100_ls
                       for bs in bs_ls
                       for lr in lr_ls
                       ]   
 
-    print(len(pbs_array_data))             
+    print(len(pbs_array_data))         
+
+    ncpus, ngpus = 1, 1
+    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)      
+
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              path=join(root_data, root_folder),
              P=project_ls[pidx],
-             source="virt-test-qu/bin/activate",
-             ngpus=1,
-             ncpus=1,
-             #walltime='0:59:59',
-             walltime='23:59:59',
-             mem='10GB')                  
+             #source="virt-test-qu/bin/activate",
+             ncpus=ncpus,
+             ngpus=ngpus,
+             #ncpus=1,
+             walltime='0:09:59',
+             #walltime='23:59:59',
+             #mem='10GB'
+             #mem='2GB'  # fc3 cpu
+             mem='4GB'  # fc3 gpu
+             )                  
 
 
 # for training mnist with MLPs
 def mnist_submit(*args):
-    from qsub import qsub, job_divider, project_ls
+    from qsub import qsub, job_divider, project_ls, command_setup
+    from path_names import singularity_path, bind_path
 
     dummy_ls = [0] * 6
     Y_classes, X_clusters, cluster_seed, assignment_and_noise_seed, num_train, num_test = dummy_ls
@@ -1033,16 +1050,20 @@ def mnist_submit(*args):
     """
     
     """
+    ncpus, ngpus = 1, 0
+    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
+
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              path=join(root_data, root_folder),
              P=project_ls[pidx],
              #ngpus=1,
-             ncpus=1,
+             ngpus=ngpus,
+             ncpus=ncpus,
              #walltime='0:59:59',
              walltime='23:59:59',
              mem='6GB') 
@@ -1050,8 +1071,8 @@ def mnist_submit(*args):
 
 # for training gaussian datasets
 def gaussian_submit(*args):
-    from qsub import qsub, job_divider, project_ls
-
+    from qsub import qsub, job_divider, project_ls, command_setup
+    from path_names import singularity_path, bind_path
 
     #dataset_ls = ["mnist"]
     dataset_ls = ["gaussian"]
@@ -1142,16 +1163,19 @@ def gaussian_submit(*args):
     print(len(pbs_array_true))
     """
     
+    ncpus, ngpus = 1, 0
+    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
+
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              path=join(root_data, root_folder),
              P=project_ls[pidx],
-             #ngpus=1,
-             ncpus=1,
+             ngpus=ngpus,
+             ncpus=ncpus,
              #walltime='0:59:59',
              walltime='23:59:59',
              mem='4GB') 
@@ -1176,7 +1200,8 @@ def gaussian_submit(*args):
 
 # train networks in array jobs
 def train_ensemble_submit(*args):
-    from qsub import qsub, job_divider, project_ls
+    from qsub import qsub, job_divider, project_ls, command_setup
+    from path_names import singularity_path, bind_path
 
     # dataset     
     name = "gaussian"
@@ -1229,17 +1254,20 @@ def train_ensemble_submit(*args):
                       ]
 
     #resubmissions
+
+    ncpus, ngpus = 1, 0
+    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)       
     
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              path=join(root_data, root_folder),
              P=project_ls[pidx],
-             #ngpus=1,
-             ncpus=1,
+             ngpus=ngpus,
+             ncpus=ncpus,
              #walltime='0:59:59',
              walltime='23:59:59',
              mem='4GB') 
@@ -1248,8 +1276,8 @@ def train_ensemble_submit(*args):
 
 # version corresponding train_dnn
 def train_submit_cnn(*args):
-    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
-    from qsub import qsub, job_divider
+    from qsub import qsub, job_divider, project_ls, command_setup
+    from path_names import singularity_path, bind_path
 
     #net_type_ls = ["alexnet", "resnet14"]
     alpha100_ls = list(range(100,201,10))
@@ -1296,16 +1324,19 @@ def train_submit_cnn(*args):
         #break
     """
 
+    ncpus, ngpus = 1, 1
+    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
+
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              path=join(root_data,"trained_cnns"),
              P=project_ls[pidx],
-             ngpus=1,
-             ncpus=1,
+             ngpus=ngpus,
+             ncpus=ncpus,
              walltime='23:59:59',
              #walltime='23:59:59',
              mem='8GB')
