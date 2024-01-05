@@ -7,7 +7,7 @@ import random
 import scipy.io as sio
 import sys
 import time
-import torch
+#import torch
 
 from ast import literal_eval
 from numpy import dot
@@ -30,10 +30,49 @@ from path_names import root_data
 
 global main_path, project_ls
 #main_path = "/project/dnn_maths/project2_data/pretrained_workflow"
-main_path = "/project/PDLAI/project2_data/pretrained_workflow"
+main_path = join(root_data, "pretrained_workflow")
 project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
 
 t0 = time.time()
+
+# ----------------------------
+
+# check if two models are the same
+def compare_models(model1, model2):
+    for p1, p2 in zip(model1.parameters(), model2.parameters()):
+        if p1.data.ne(p2.data).sum() > 0:
+            return False
+    return True
+
+def check_model_pretrained_dataset():
+    from torchvision import models
+
+    model_names = get_pretrained_names()
+    total_models = len(model_names)
+
+    dataset_count = {}
+    for n_model in range(len(model_names)):
+        model_name = model_names[int(n_model)]
+        model = models.__dict__[model_name](pretrained=True)
+
+        for s in dir(models):
+            if model_name in s.lower() and 'weights' in s.lower():
+                model_weights = models.__dict__[s]
+                for dataset_name in dir(model_weights):
+                    if dataset_name not in dataset_count.keys():
+                        dataset_count[dataset_name] = 0
+
+                    if 'imagenet' in dataset_name.lower():
+                        model_v = models.__dict__[model_name](weights=model_weights[dataset_name])
+                        if compare_models(model, model_v):
+                            print(f"{model_name} pretrained version is trained on {dataset_name}")
+                            dataset_count[dataset_name] += 1
+                        #else:
+                        #    print(f"{model_name} pretrained version is trained on {dataset_name}")
+
+                break    
+
+    print(dataset_count)    
 
 # ----------------------------
 
@@ -80,8 +119,17 @@ def get_pretrained_names():
 
     return model_ls
 
+def get_pretrained_acc(model_name, dataset='imagenet1k_v1'):    
+    df_perf = pd.read_csv(join(main_path, "torch_pretrained_performance.csv"))
+    df_perf['Weight'] = df_perf['Weight'].str.lower()
+    top_1, top_5 = df_perf.loc[df_perf["Weight"]==f"{model_name}_weights.{dataset}"].loc[:,["Acc@1","Acc@5"]].values[0]
+    return top_1, top_5
+
 def pretrained_store(n_model, *args):
+    import torch
     import torchvision.models as models
+    import pandas as pd
+    from os.path import join
 
     """
     Downloading all fully-connected weight matrices and 
@@ -92,9 +140,11 @@ def pretrained_store(n_model, *args):
 
     model_ls = get_pretrained_names()
     model_name = model_ls[int(n_model)]
+
     if "vit" in model_name.lower() or "swin" in model_name.lower():
         print("Transformers are not considered!")
         quit()
+
     try:
         model = models.__dict__[model_name](pretrained=True)
 
@@ -124,9 +174,7 @@ def pretrained_store(n_model, *args):
         df_names.to_csv(f'{main_path}/net_names_all.csv', index=False)
         """
 
-        i = 0
-        #for i in range(len(wmat_name_ls)):
-        wmat_idx = 0
+        i, wmat_idx = 0, 0
         for name, param in model.named_parameters():
 
             if 'bias' not in name and param.dim() > 1:
@@ -143,19 +191,103 @@ def pretrained_store(n_model, *args):
                         weight_num=len(weights), wmat_idx=wmat_idx, idx=i,
                         weight_path=weight_path, weight_file=weight_file)     
 
-                print(rf"W{i}: {wmat_idx} done!")
-                i += 1
-            wmat_idx += 1
+                    print(rf"W{i}: {wmat_idx} done!")
+                else:
+                    # check if weight matrix can be loaded as insurance
+                    torch.load(f"{weight_path}/{weight_file}")
+                    print(rf"W{i}: {wmat_idx} already downloaded!")
+
+                i += 1  # ordering within weight matrices
+            wmat_idx += 1  # ordering over all trainable parameter sets (including biases etc)            
 
         # create dataframe that stores the model_name
-        log(main_path, "net_names_all", 
-            model_name=model_name, total_wmat=wmat_idx, saved_wmat=i)
+        df_path = join(main_path, "net_names_all.csv")
+        if os.path.isfile(df_path):
+            df = pd.read_csv(df_path)
+
+            if model_name not in df.loc[:,'model_name'].tolist():
+                top_1, top_5 = get_pretrained_acc(model_name)
+                log(main_path, "net_names_all", 
+                    model_name=model_name, total_wmat=wmat_idx, saved_wmat=i,
+                    top_1=top_1, top_5=top_5)
+
+        else:
+            top_1, top_5 = get_pretrained_acc(model_name)
+            log(main_path, "net_names_all", 
+                model_name=model_name, total_wmat=wmat_idx, saved_wmat=i,
+                top_1=top_1, top_5=top_5)            
+
+            print(f"{model_name} info logged!")
 
         # clear some space
         t_last = time.time()
-        print(f"{model_name}: Ws of {i} stored in {t_last - t1} s!")      
+        print(f"{model_name}: Ws of {i+1} out {wmat_idx+1} stored in {t_last - t1} s!")      
     except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
         print(f"{model_name} not implemented!")
+
+def pretrained_store_check():
+    import torch
+    import torchvision.models as models
+    from tqdm import tqdm
+
+    #import warnings
+    #warnings.filterwarnings("ignore", category=DeprecationWarning)     
+    #warnings.filterwarnings('ignore')
+
+    """
+    Check all weights are downloaded.
+    """
+    global incomplete_models
+
+    t0 = time.time()
+
+    incomplete_models = []
+    model_ls = get_pretrained_names()    
+    for n_model, model_name in tqdm(enumerate(model_ls)):
+
+        if "vit" in model_name.lower() or "swin" in model_name.lower():
+            print("Transformers are not considered!")
+            continue
+
+        try:
+            model = models.__dict__[model_name](pretrained=True)
+
+            t1 = time.time()
+            print(f"Loaded {model_name} in {t1 - t0} s")
+
+            # path for saved weights
+            weight_path = f"{main_path}/weights_all"
+
+            i, wmat_idx = 0, 0
+            for name, param in model.named_parameters():
+
+                if 'bias' not in name and param.dim() > 1:
+                    weights = param.flatten()
+                    weight_file = f"{model_name}_layer_{i}_{wmat_idx}"
+
+                    if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}"):
+                        incomplete_models.append(model_name)
+                        break
+                    else:
+                        # check if weight matrix can be loaded as insurance
+                        try:
+                            torch.load(f"{weight_path}/{weight_file}")
+                            #print(rf"W{i}: {wmat_idx} already downloaded!")
+                        except:
+                            incomplete_models.append(model_name)
+                            break
+
+                    i += 1  # ordering within weight matrices
+                wmat_idx += 1  # ordering over all trainable parameter sets (including biases etc)
+
+            # clear some space
+            t_last = time.time()
+            print(f"{model_name}: Ws of {i} checked in {t_last - t1} s!")      
+        except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
+            incomplete_models.append(model_name)
+            print(f"{model_name} not implemented!")        
+
+    print(f"Incomplete models: {incomplete_models.append(model_name)}")
 
 def pretrained_store_dnn(n_model, pretrained=True, *args):
     import torchvision.models as models
@@ -170,6 +302,11 @@ def pretrained_store_dnn(n_model, pretrained=True, *args):
 
     model_ls = get_pretrained_names()
     model_name = model_ls[int(n_model)]
+
+    if "vit" in model_name.lower() or "swin" in model_name.lower():
+        print("Transformers are not considered!")
+        quit()
+
     try:
         model = models.__dict__[model_name](pretrained=pretrained)
 
@@ -195,6 +332,8 @@ def pretrained_store_dnn(n_model, pretrained=True, *args):
             print(f"{model_name} saved under {net_path}: stored in {t_last - t1} s!")   
 
         else:
+            # confirm that model can be loaded
+            torch.load(net_path)
             print(f"Model already downloaded to {net_path}!")
    
     except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
@@ -227,6 +366,7 @@ def get_pretrained_names_tf():
     return model_ls
       
 def pretrained_store_tf(n_model, *args):
+    import torch
     import tensorflow.keras.applications as kapp
 
     """
@@ -286,7 +426,7 @@ def pretrained_store_tf(n_model, *args):
                 weights = model.trainable_variables[widx]
                 param_shape = weights.shape
                 weights = torch.from_numpy(weights.numpy().flatten())
-                if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}":)
+                if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}"):
                     torch.save(weights, f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}")
 
                     # create dataframe that stores the weight info for each NN
@@ -295,13 +435,17 @@ def pretrained_store_tf(n_model, *args):
                         weight_num=len(weights), wmat_idx=wmat_idx, idx=i,
                         weight_path=weight_path, weight_file=weight_file)   
 
-                print(rf"W{i}: {wmat_idx}, dim: {model.trainable_variables[widx]._shape} done!")
+                    print(rf"W{i}: {wmat_idx}, dim: {model.trainable_variables[widx]._shape} done!")
+                else:
+                    print(rf"W{i}: {wmat_idx} already downloaded!")
+
                 i += 1
             wmat_idx += 1
 
         # create dataframe that stores the model_name
-        log(main_path, "net_names_all_tf", 
-            model_name=model_name, total_wmat=wmat_idx, saved_wmat=i)
+        if model_name not in df.loc[:,'model_name'].tolist():
+            log(main_path, "net_names_all_tf", 
+                model_name=model_name, total_wmat=wmat_idx, saved_wmat=i)
 
         # clear some space
         t_last = time.time()
@@ -312,6 +456,7 @@ def pretrained_store_tf(n_model, *args):
         print(f"({model_name},n_model) not implemented!")
       
 def pretrained_store_dnn_tf(n_model, pretrained=True, *args):
+    import torch
 
     """
     Downloading all full pretrained networks from TensorFlow pretrained CNNs in get_pretrained_names_tf()
@@ -398,7 +543,7 @@ def submit(*args):
 
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
-             path='/project/PDLAI/project2_data/pretrained_workflow/untrained_dnns', 
+             path='/project/PDLAI/project2_data/pretrained_workflow/jobs_all/download_weights', 
              P=project_ls[pidx], 
              ncpus=ncpus,
              ngpus=ngpus,
