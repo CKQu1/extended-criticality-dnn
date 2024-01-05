@@ -88,11 +88,13 @@ def qsub(command, pbs_array_data, **kwargs):
     if 'source' in kwargs:
         assert os.path.isfile(kwargs.get('source')), "source for virtualenv incorrect"
         source_exists = 'true'
+        SOURCE = kwargs.get('source')
     else:
         source_exists = 'false'
     # conda activate
     if 'conda' in kwargs:
         conda_exists = 'true'
+        CONDA = kwargs.get('conda')
     else:
         conda_exists = 'false'
     if kwargs.get('local', False):  # Run the subjobs in the current process.
@@ -128,16 +130,21 @@ END""")
             args=($(python -c "import sys;print(' '.join(map(str, {pbs_array_data_chunk}[int(sys.argv[1])-{1000*i}])))" $PBS_ARRAY_INDEX))
             cd {kwargs.get('cd', '$PBS_O_WORKDIR')}
             echo "pbs_array_args = ${{args[*]}}"
-            if [ {source_exists} ]; then
-                source {kwargs.get('source')}
-            fi
-            if [ {conda_exists} ]; then
-                conda activate {kwargs.get('conda')}
-            fi
+            # <<remove1>>
             {command} ${{args[*]}} {post_command}
 END"""
         os.system(f'qsub {PBS_SCRIPT}')
         #print(PBS_SCRIPT)
+
+# <<remove1>>
+"""
+if [ {source_exists} ]; then
+   source {SOURCE}
+fi
+if [ {conda_exists} ]; then
+   conda activate {CONDA}
+fi
+"""
 
 # ----- added by CKQu1 -----
 
@@ -158,23 +165,27 @@ def job_divider(pbs_array: list, N: int):
     return perm, pbss
 
 # singularity exec usage
-def command_setup(ngpus, ncpus, singularity_path, **kwargs):
+def command_setup(singularity_path, **kwargs):
     from os.path import isfile
 
     assert isfile(singularity_path), "singularity_path does not exist!"
 
     repo_dir = os.getcwd()
     bind_path = kwargs.get('bind_path', '')
+    ncpus = kwargs.get('ncpus', 1)
+    ngpus = kwargs.get('ngpus', 0)
 
     if len(singularity_path) > 0:
-        command = f"singularity exec"
+        if ngpus == 0:
+            command = f"singularity exec"
+        else:
+            command = f"singularity exec --nv"
         if len(bind_path) > 0:
             command += f" --bind {bind_path}"
         command += f" --home {repo_dir} {singularity_path}"
     else:
         command = ""
 
-    #if max(ngpus, ncpus) <= 1:
     command += f" python"
     
     if len(singularity_path) == 0:
