@@ -44,7 +44,7 @@ def compare_models(model1, model2):
             return False
     return True
 
-def check_model_pretrained_dataset():
+def compare_model_pretrained_dataset():
     from torchvision import models
 
     model_names = get_pretrained_names()
