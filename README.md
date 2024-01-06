@@ -45,9 +45,15 @@ We extract pretrained networks from Pytorch and iteratively fit the entries of e
 
 ---------- New version ----------
 
-1. Download weights (same as old version above)
+1. Download pretrained image classification DNN performance (can use ChatGPT) from https://pytorch.org/vision/stable/models.html, this is saved in this repo as `tables/torch_pretrained_performance.csv`, need to move this to the appropripate dir as it is used in `pretrained_workflow/pretrained_download.py`.
 
-2. Fit the distribution
+2. Download weights (same as old version above)
+
+3. Check if weights are all saved:
+
+`python -W ignore -i pretrained_workflow/pretrained_download.py pretrained_store_check`
+
+4. Fit the full distribution
 
 `python pretrained_workflow/pretrained_wfit.py pretrained_allfit /project/PDLAI/project2_data/pretrained_workflow/np_weights_all 0 True`
 
@@ -57,7 +63,21 @@ We extract pretrained networks from Pytorch and iteratively fit the entries of e
 
     - with_logl (bool): return log-likelihood or not
 
-3. Summarize the results
+4. Fit the distribution tails
+
+`python pretrained_workflow/pretrained_wfit.py pretrained_ww_plfit /project/PDLAI/project2_data/pretrained_workflow/weights_all /project/PDLAI/project2_data/pretrained_workflow/ww_plfit_all 0 True`
+
+or use submission version:
+
+`python pretrained_workflow/pretrained_wfit.py batch_pretrained_plfit batch_plfit_submit`
+
+    - weight_path: the dir of the stored weights (divided into 2 networks dir from either torch or tensorflow)
+
+    - n_weight (int): integer index of the weight matrix
+
+    - with_logl (bool): return log-likelihood or not    
+
+6. Summarize the results
 
 `python pretrained_workflow/pretrained_postfit.py postfit_stats True`
 
@@ -91,7 +111,7 @@ To propagation a circular manifold as above, the following is another method
 
 `python random_dnn/random_dnn.py SEM_save N L N_theta alpha100 g100 rep`
 
-where `N`, $L$, `N_theta are the save as above`; `alpha100` = $100\alpha$ and $g100 = 100\sigma)w$; `rep` is the repetition of the randomization.
+where `N`, $L$, `N_theta are the save as above`; `alpha100` = $100\alpha$ and $g100 = 100 \sigma_w$; `rep` is the repetition of the randomization.
 
 The coefficient of variation (CV) corresponding to Eq. 6 of the main text of a MLP initialized at $(\alpha, \sigma_w)$ up to $L$ layers with `rep` amount of network ensembles can be evaluated and saved using:
 
