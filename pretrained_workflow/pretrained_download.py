@@ -230,7 +230,7 @@ def pretrained_store(n_model, replace=False):
 
 def pretrained_store_check():
     """
-    Check if all weights are downloaded.
+    Check if all weights are downloaded.     
     """
 
     import torch
@@ -241,8 +241,9 @@ def pretrained_store_check():
     #warnings.filterwarnings("ignore", category=DeprecationWarning)     
     #warnings.filterwarnings('ignore')
 
-    global incomplete_models, unused_models, model_ls
-    global incomplete_idxs, unused_idxs
+    #global incomplete_models, unused_models, model_ls
+    #global incomplete_idxs, unused_idxs
+    global main_path, model_name, name, param, weights, wmat_idx, i, weight_path, weight_file
 
     t0 = time.time()
 
@@ -265,11 +266,17 @@ def pretrained_store_check():
             weight_path = f"{main_path}/weights_all"
 
             i, wmat_idx = 0, 0
-            for name, param in model.named_parameters():
+            for name, param in model.named_parameters():               
 
                 if 'bias' not in name and param.dim() > 1:
                     weights = param.flatten()
                     weight_file = f"{model_name}_layer_{i}_{wmat_idx}"
+
+                    # make sure weight matrix info is logged in weight_info.csv
+                    log(main_path, "weight_info", 
+                        model_name=model_name, name=name, param_shape=list(param.shape),
+                        weight_num=len(weights), wmat_idx=wmat_idx, idx=i,
+                        weight_path=weight_path, weight_file=weight_file)                       
 
                     if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}"):
                         if model_name not in incomplete_models.keys():
@@ -294,8 +301,9 @@ def pretrained_store_check():
 
             # clear some space
             t_last = time.time()
-            #print(f"{model_name}: Ws of {i} checked in {t_last - t1} s!")      
-        except (NotImplementedError,ValueError):    # versions of networks which either don't exist in current lib version or don't have pretrained version
+            print(f"{model_name}: Ws of {i} checked in {t_last - t1} s!")      
+        except (NotImplementedError,ValueError):  
+            # versions of networks which either don't exist in current lib version or don't have pretrained version
             unused_models.append(model_name)
             unused_idxs.append(n_model)
             #print(f"{model_name} not implemented!")        
@@ -574,7 +582,7 @@ def submit(*args):
 
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
-             path='/project/PDLAI/project2_data/pretrained_workflow/jobs_all/download_weights', 
+             path=join(main_path,'jobs_all/download_weights'), 
              P=project_ls[pidx], 
              ncpus=ncpus,
              ngpus=ngpus,
