@@ -444,6 +444,24 @@ def fit_powerlaw(evals, xmin=None, xmax=None, total_is=1000,
         """
         # ---------------------------
 
+    # defaults for failed status
+    alpha = -1
+    Lambda = -1
+    D = -1
+    sigma = -1
+    xmin = -1  # not set / error
+    num_pl_spikes = -1
+    best_fit = UNKNOWN
+    fit = None
+    num_fingers = 0
+    
+    raw_fit = None # only for fix fingers
+    
+    fit_entropy = -1
+
+    if status != SUCCESS:
+        #return alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, best_fit, Rs_all, ps_all
+        return alpha, Lambda, xmin, None, D, sigma, num_pl_spikes, num_fingers, -1, status, "", best_fit, None, None
 
     if plot:
 
@@ -454,6 +472,8 @@ def fit_powerlaw(evals, xmin=None, xmax=None, total_is=1000,
         if status==SUCCESS:
             min_evals_to_plot = (xmin/100)
             
+            # recover in the future
+            """
             fig2 = fit.plot_pdf(color='b', linewidth=0) # invisbile
             fig2 = fit.plot_pdf(color='r', linewidth=2)
             if fit_type==POWER_LAW:
@@ -464,11 +484,18 @@ def fit_powerlaw(evals, xmin=None, xmax=None, total_is=1000,
             
             else:
                 fit.truncated_power_law.plot_pdf(color='r', linestyle='--', ax=fig2)
+            """
+
         else:
             xmin = -1
-            min_evals_to_plot = (0.4*np.max(evals)/100)
+            min_evals_to_plot = (0.4*np.max(evals)/100)            
 
+        print(f"Total original evals: {len(evals)}")
         evals_to_plot = evals[evals>min_evals_to_plot]
+        print(f"evals_to_plot size: {len(evals_to_plot)}")
+
+        print(fit)
+        print(f"xmin: {fit.xmin}")
 
         # ---------- original version ----------
 
