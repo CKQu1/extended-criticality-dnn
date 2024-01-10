@@ -25,6 +25,12 @@ from pretrained_wfit import replace_name
 pub_font = {'family' : 'sans-serif'}
 plt.rc('font', **pub_font)
 
+"""
+
+Plots the fitting results for PyTorch pretrained CNNs (image classification).
+
+"""
+
 t0 = time.time()
 
 # ---------------------------
@@ -81,27 +87,9 @@ if not os.path.isdir(grouped_stats_path): os.makedirs(grouped_stats_path)
 df_full_file = "full_dist_grouped.csv"
 df_tail_file = "tail_dist_grouped.csv"
 
-"""
-Featured CNN convolution tensor
-"""
-
-l = 1
-wmat_idx = 2
-net = "vgg11"
-w_type = f"{net}_layer_{l}_{wmat_idx}"
-param_type = f"{net}_allfit_{l}_{wmat_idx}"
-w_path = f"{prepath}/weights_all/{w_type}"
-allfit_path = f"{prepath}/allfit_all/{net}/{param_type}.csv"
-
-params_stable = pd.read_csv(allfit_path).iloc[0,3:7]
-params_normal = pd.read_csv(allfit_path).iloc[0,11:13]
-params_tstudent = pd.read_csv(allfit_path).iloc[0,19:22]
-params_lognorm = pd.read_csv(allfit_path).iloc[0,26:29]
-sample_w = torch.load(w_path).detach().numpy()
-
-# tail fit paths
-param_type_tail = f"{net}_plfit_{l}_{wmat_idx}"
-tailfit_path = f"{prepath}/ww_plfit_all/{net}/{param_type_tail}.csv"
+allfit_paths = [f"{prepath}/allfit_all", f"{prepath}/nan_allfit_all", 
+                #f"{prepath}/noremovefit_all", f"{prepath}/nan_noremovefit_all",
+                f"{prepath}/allfit_all_tf", f"{prepath}/nan_allfit_all_tf"]
 
 metric_names = ['alpha', 'sigma',    # full distribution fit  
                 'shap pvalue', 'ks pvalue stable', 'ks pvalue normal',
@@ -113,6 +101,8 @@ metric_names = ['alpha', 'sigma',    # full distribution fit
 
 metric_names_tail = ['alpha_lower', 'alpha_upper', 
                     #'total_entries', 'fit_entries', 'xmin', 'xmax', 
+                    'xmin_lower', 'xmax_lower', 'xmin_upper', 'xmax_upper',
+                    'xlogrange_lower', 'xlogrange_upper',
                     #'best_fit_1', 'best_fit_2',
                     'bf1_lower', 'bf1_upper', 'bf2_lower', 'bf2_upper',
                     'model_name', 'param_shape', 'weight_num', 'wmat_idx', 'idx', 'weight_file',
@@ -132,8 +122,6 @@ if not (isfile(join(grouped_stats_path, df_full_file)) and isfile(join(grouped_s
 
     # load two files of fitted params from Pytorch and Tensorflow
     files = []
-    #for mpath in [f"{prepath}/allfit_all", f"{prepath}/allfit_all_tf"]:
-    allfit_paths = [f"{prepath}/allfit_all", f"{prepath}/allfit_all_tf", f"{prepath}/nan_allfit_all", f"{prepath}/nan_allfit_all_tf"]
     #allfit_paths = [f"{prepath}/allfit_all"]
     for mpath in allfit_paths:
         for f1 in os.listdir(mpath):
@@ -181,7 +169,7 @@ if not (isfile(join(grouped_stats_path, df_full_file)) and isfile(join(grouped_s
             if fit_done:
                 metrics_all['dirname'].append(dirname)
             else:
-                metrics_all['dirname'].append(None)
+                metrics_all['dirname'].append(np.nan)
 
         # tail fit
         #for metric_idx in range(metric_names_tail.index('model_name'),len(metric_names_tail)):
@@ -203,7 +191,7 @@ if not (isfile(join(grouped_stats_path, df_full_file)) and isfile(join(grouped_s
             if fit_done:
                 metrics_tail['dirname'].append(dirname)
             else:
-                metrics_tail['dirname'].append(None)
+                metrics_tail['dirname'].append(np.nan)
 
     # important messages (currently just pytorch weights)        
     total_wmat = sum(metrics_all['fit_done'])
@@ -232,12 +220,15 @@ if not (isfile(join(grouped_stats_path, df_full_file)) and isfile(join(grouped_s
             nu, sigma_t, mu_t = df.loc[0,'nu'].item(), df.loc[0,'sigma_t'].item(), df.loc[0,'mu_t'].item()
             # fitting stats
             shap_stat, ks_pvalue_stable, ks_pvalue_normal, ks_pvalue_tstudent, ks_pvalue_lognorm = df.loc[0,["shap pvalue","ks pvalue stable","ks pvalue normal", \
-                                                                                                            "ks pvalue tstudent", "ks pvalue lognorm"]]
+                                                                                                             "ks pvalue tstudent", "ks pvalue lognorm"]]
             # log-likelihood
-            logl_stable, logl_norm, logl_t, logl_lognorm = df.loc[0,["logl_stable","logl_norm","logl_t", "logl_lognorm"]]
+            logl_stable, logl_norm, logl_t, logl_lognorm = df.loc[0,["logl_stable","logl_norm","logl_t","logl_lognorm"]]
         else:          
-            alpha, sigma, nu, sigma_t, mu_t, shape_stat, ks_pvalue, ks_pvalue_normal = None, None, None, None, None, None, None, None
-            ks_pvalue_tstudent, ks_pvalue_lognorm = None, None
+            alpha, sigma, nu, sigma_t, mu_t, shape_stat = [np.nan] * 6
+            ks_pvalue_stable, ks_pvalue_normal = [np.nan] * 2
+            ks_pvalue_tstudent, ks_pvalue_lognorm = [np.nan] * 2
+            logl_stable, logl_norm, logl_t, logl_lognorm = [np.nan] * 4
+
             files_failed.append( weight_foldername )
         metrics_all['alpha'].append( alpha )
         metrics_all['sigma'].append( sigma )     
@@ -264,23 +255,26 @@ if not (isfile(join(grouped_stats_path, df_full_file)) and isfile(join(grouped_s
         if fit_done:
             df_pl = pd.read_csv( join(prepath, dirname, model_name, weight_foldername) )
             # stablefit params
-            alpha_lower = df_pl.loc[0,'alpha'].item()
-            alpha_upper = df_pl.loc[1,'alpha'].item()
-            bf1_lower = df_pl.loc[0,'best_fit_1']
-            bf1_upper = df_pl.loc[1,'best_fit_1']
-            bf2_lower = df_pl.loc[0,'best_fit_2']
-            bf2_upper = df_pl.loc[1,'best_fit_2']       
+            alpha_lower = df_pl.loc[0,'alpha'].item(); alpha_upper = df_pl.loc[1,'alpha'].item()
+            bf1_lower = df_pl.loc[0,'best_fit_1']; bf1_upper = df_pl.loc[1,'best_fit_1']            
+            bf2_lower = df_pl.loc[0,'best_fit_2']; bf2_upper = df_pl.loc[1,'best_fit_2']                   
                          
+            xmin_lower, xmin_upper = df_pl.loc[:,'xmin']
+            xmax_lower, xmax_upper = df_pl.loc[:,'xmax']
+
+            xlogrange_lower = (np.log(xmax_lower) - np.log(xmin_lower)) / np.log(10)
+            xlogrange_upper = (np.log(xmax_upper) - np.log(xmin_upper)) / np.log(10)
         else:          
-            alpha_lower, alpha_upper = None, None
-            bf1_lower, bf1_upper, bf2_lower, bf2_upper = None, None, None, None
+            alpha_lower, alpha_upper = [np.nan] * 2
+            bf1_lower, bf1_upper, bf2_lower, bf2_upper = [np.nan] * 4
+            xmin_lower, xmin_upper, xmax_lower, xmax_upper = [np.nan] * 4
+
             files_failed.append( weight_foldername )
-        metrics_tail['alpha_lower'].append( alpha_lower )
-        metrics_tail['alpha_upper'].append( alpha_upper )
-        metrics_tail['bf1_lower'].append(bf1_lower)
-        metrics_tail['bf1_upper'].append(bf1_upper)
-        metrics_tail['bf2_lower'].append(bf1_lower)
-        metrics_tail['bf2_upper'].append(bf1_upper)
+
+        for prefix in ['alpha', 'bf1', 'bf2', 'xmin', 'xmax', 'xlogrange']:
+            for tail_type in ['lower', 'upper']:
+                metrics_tail[f'{prefix}_{tail_type}'].append( locals()[f'{prefix}_{tail_type}'] )
+
 
     df_full = pd.DataFrame(data=metrics_all)
     df_full.to_csv(join(grouped_stats_path, df_full_file)) 
@@ -291,28 +285,56 @@ if not (isfile(join(grouped_stats_path, df_full_file)) and isfile(join(grouped_s
 
 else:
     print("Files already created!")
-    df_full = pd.read_csv(join(grouped_stats_path, df_full_file))
-    df_tail = pd.read_csv(join(grouped_stats_path, df_tail_file))
+    df_full = pd.read_csv(join(grouped_stats_path, df_full_file), index_col=0)
+    df_tail = pd.read_csv(join(grouped_stats_path, df_tail_file), index_col=0)
 
 
-#2. Filter weight matrices/tensors with very few entries
-min_weight_num = 1000
-#cond1_idxs = np.where(metrics_all['weight_num'] >= min_weight_num)
-#cond1_idxs = [ ind for ind in range(len(metrics_all['weight_num'])) if metrics_all['weight_num'][ind] >= min_weight_num]
-#cond1_idxs = df_full.index[df_full.loc[:,'weight_num'] >= min_weight_num]
-#for metric_name in metric_names + ['top-1', 'top-5']:
-#    if metric_name != 'sample_w':
-#        metrics_all[metric_name] = [metrics_all[metric_name][ind] for ind in cond1_idxs]
-df_full = df_full[df_full.loc[:,'weight_num'] >= min_weight_num].reset_index(drop=True)
-df_tail = df_tail[df_tail.loc[:,'weight_num'] >= min_weight_num].reset_index(drop=True)
+# -------------------- remove non-existent files for df_full and df_tail (delete later) --------------------
 
-# 1. filter out None and nan values
-df_full = df_full.replace(to_replace='None', value=np.nan).dropna().reset_index(drop=True)
-df_tail = df_tail.replace(to_replace='None', value=np.nan).dropna().reset_index(drop=True)
 
-#metrics_all = df_full.to_dict() 
-#metrics_tail = df_tail.to_dict()
 
+# ---------------------------------------------------------------------
+
+
+# -------------------- add AIC and BIC for df_full --------------------
+full_dist_names = [col.split('_')[1] for col in df_full.columns if "logl_" in col]  # the columns that contain log_l
+params_dict = {'stable':4, 'norm': 2, 't': 3, 'lognorm':2}  # number of params in each type of distribution
+for ii, dist_name in enumerate(full_dist_names):
+    # AIC
+    df_full[f"aic_{dist_name}"] = 2 * params_dict[dist_name] - 2 * df_full.loc[:,f'logl_{dist_name}']
+
+for ii, dist_name in enumerate(full_dist_names):                   
+    # BIC
+    df_full[f"bic_{dist_name}"] = params_dict[dist_name] * np.log(df_full.loc[:,'weight_num']) - 2 * df_full.loc[:,f'logl_{dist_name}']
+
+# merged df
+df_tail = df_tail.rename(columns={"fit_done": "fit_done_tail"})
+df_merge = pd.concat([df_full, df_tail.iloc[:,:df_tail.columns.get_loc('model_name')]], axis=1)
+df_merge = pd.concat([df_merge, df_tail.loc[:,'fit_done_tail']], axis=1)
+
+# full dist
+dict_best = {'ks_best':'ks pvalue','logl_best':'logl_',
+             'aic_best':'aic_','bic_best':'bic_'}
+for metric_best in dict_best.keys():
+    for dist_name in full_dist_names:
+        # idxmax(axis=1), agg(lambda x : x.idxmax()), apply(lambda x: x.max())
+
+        # if any of the distributions yield 
+
+        cols = [col for col in df_merge.columns if dict_best[metric_best] in col]      
+
+        df_merge.loc[:,metric_best] = np.nan
+        # if the row contains nan, set value to nan  
+        nan_idxs = df_merge[df_merge[['ks pvalue stable', 'ks pvalue normal']].isna().any(axis=1)].index        
+
+        # deal with the remaining index
+        nonan_idxs = df_merge.index.difference(nan_idxs)
+        if 'aic' in metric_best or 'bic' in metric_best:
+            df_merge.loc[nonan_idxs,metric_best] = df_merge.loc[nonan_idxs,cols].idxmin(axis=1)
+        else:
+            df_merge.loc[nonan_idxs,metric_best] = df_merge.loc[nonan_idxs,cols].idxmax(axis=1)
+
+"""
 # -------------------- full dist conditions --------------------
 
 # best distributions based on KS p-value
@@ -344,9 +366,74 @@ for dist_name in dist_names:
     print(f"{dist_name} (lower 2): {len(lower2_idxss[dist_name])}")
     print(f"{dist_name} (upper 1): {len(upper1_idxss[dist_name])}")
     print(f"{dist_name} (upper 2): {len(upper2_idxss[dist_name])}")    
-    print('\n')
+    print('\n')    
+"""
 
-print("\n")
+# -------------------- (a) Featured CNN convolution tensor --------------------
+
+# full distribution best fitted by stable dist and tails best fitted by tpl
+# df_tpl_plus_stable = df_merge[(df_merge.loc[:,'bf1_upper']=='truncated_power_law') \
+#                      & (df_merge.loc[:,'ks pvalue stable']>=0.05)
+#                      & (df_merge.loc[:,'alpha_upper']<=2)].reset_index()
+
+df_tpl_plus_stable = df_merge[(df_merge.loc[:,'bf1_upper']=='truncated_power_law') \
+                     & (df_merge.loc[:,'ks pvalue stable']>=0.05)].reset_index()                     
+
+# full distribution best fitted by stable dist and tails best fitted by tpl
+#df_merge[(df_merge.loc[:,'bf1_upper']=='power_law') & (df_merge.loc[:,'ks pvalue stable']>=0.05)].head(5)
+
+#l, wmat_idx = 96, 260
+#net = 'efficientnet_v2_m'
+
+feat_i = 1
+l = df_tpl_plus_stable.loc[feat_i,'idx']
+wmat_idx = df_tpl_plus_stable.loc[feat_i,'wmat_idx']
+net = df_tpl_plus_stable.loc[feat_i,'model_name']
+
+w_type = f"{net}_layer_{l}_{wmat_idx}"
+param_type = f"{net}_allfit_{l}_{wmat_idx}"
+w_path = f"{prepath}/weights_all/{w_type}"
+#allfit_path = f"{prepath}/{allfit_path_dir}/{net}/{param_type}.csv"
+
+for allfit_path_dir in allfit_paths:
+    allfit_path = f"{allfit_path_dir}/{net}/{param_type}.csv"
+    print(allfit_path + "\n")
+    if isfile(allfit_path):        
+        break
+
+print(f"Featured weight matrix: {net}_{l}_{wmat_idx} \n")
+
+# tail fit paths
+param_type_tail = f"{net}_plfit_{l}_{wmat_idx}"
+tailfit_path = f"{prepath}/ww_plfit_all/{net}/{param_type_tail}.csv"
+
+params_stable = pd.read_csv(allfit_path).iloc[0,3:7]
+params_normal = pd.read_csv(allfit_path).iloc[0,11:13]
+params_tstudent = pd.read_csv(allfit_path).iloc[0,19:22]
+params_lognorm = pd.read_csv(allfit_path).iloc[0,26:29]
+sample_w = torch.load(w_path).detach().numpy()
+
+min_weight_num = 1000
+
+"""
+#2. Filter weight matrices/tensors with very few entries
+#cond1_idxs = np.where(metrics_all['weight_num'] >= min_weight_num)
+#cond1_idxs = [ ind for ind in range(len(metrics_all['weight_num'])) if metrics_all['weight_num'][ind] >= min_weight_num]
+#cond1_idxs = df_full.index[df_full.loc[:,'weight_num'] >= min_weight_num]
+#for metric_name in metric_names + ['top-1', 'top-5']:
+#    if metric_name != 'sample_w':
+#        metrics_all[metric_name] = [metrics_all[metric_name][ind] for ind in cond1_idxs]
+df_full = df_full[df_full.loc[:,'weight_num'] >= min_weight_num].reset_index(drop=True)
+df_tail = df_tail[df_tail.loc[:,'weight_num'] >= min_weight_num].reset_index(drop=True)
+
+# 1. filter out None and nan values
+df_full = df_full.replace(to_replace='None', value=np.nan).dropna().reset_index(drop=True)
+df_tail = df_tail.replace(to_replace='None', value=np.nan).dropna().reset_index(drop=True)
+
+#metrics_all = df_full.to_dict() 
+#metrics_tail = df_tail.to_dict()
+"""
+
 #print(f"{len(metrics_all[metric_name])}/{total_wmat} of tensors are taken into account!")
 
 
@@ -355,43 +442,70 @@ print("Start plotting")
 
 good = 0
 #bin_ls = [1000,50,2500]
-#bin_ls = [1000,1000,1000,100,100]
-bin_ls = [1000] * 6
-#xlabel_ls = [r"$\mathbf{{W}}^{{{}}}$ ".format(l + 1) + f"entries ({net.upper()})", r"$\alpha$", r"$\alpha$"] 
-#ylabel_ls = ["Probability density", "Probability density", r"$\sigma_w$"]
+#bin_ls = [1000] * 6
+bin_ls = [1000, 75, 500, 1000, 1000, 250]
 xlabel_ls = [r"$\mathbf{{W}}^{{{}}}$ ".format(l + 1) + f"entries ({net.upper()})"] \
             + [r"$\alpha$ (Stable)", r"$\nu$ (Student t)"] \
-            + [r"$\mathbf{{W}}^{{{}}}$ upper tail".format(l + 1), r"$k$ (lower)", r"$k$ (upper)"]
+            + [r"$\mathbf{{W}}^{{{}}}$ upper tail".format(l + 1), r"$k$ (TPL)", r"Range (TPL)"]    
+            #+ [r"$\mathbf{{W}}^{{{}}}$ upper tail".format(l + 1), r"$k$ (TPL)", r"$k$ (PL)"]            
             
 ylabel_ls = ["Probability density", "Probability density", "Probability density", 
              "Probability density", "Probability density", "Probability density"]
 
-xlim_ls = [[-0.3, 0.3], [0.5,2], [0,1e4], [1e-2, 1], [0,25], [0,25]]
-ylim_ls = [[0,12.5], [0,5], [0,1e-2], [1e-4,500], [0,0.5], [0,0.5]]
+xlim_ls = [[-0.3, 0.3], [0.5,2], [0,75], [1e-2, 1], [0,20], [0,5]]
+ylim_ls = [[0,12.5], [0,5], [0,3e-1], [1e-4,500], [0,0.3], [0,2]]
 
 axs_1 = [ax1, ax2, ax3, ax4, ax5, ax6]
-#metric_names_plot = ["sample_w", "alpha", "sigma_scaled"]
-metric_names_plot = ["sample_w", "alpha", "nu", "sample_w", "alpha_lower", "alpha_upper"]
+#metric_names_plot = ["sample_w", "alpha", "nu", "sample_w", "alpha_tail_tpl", "alpha_tail_pl"]
+metric_names_plot = ["sample_w", "alpha", "nu", "sample_w", "alpha_tail_tpl", "xlogrange_pl"]
 top_n = 'top-5'     # choose Top-1 or Top-5 accuracy
 #for i in range(3):
 for i, metric_name in enumerate(metric_names_plot):
 
-    if metric_name != '' and metric_name != 'sample_w':
-        if 1 <= i <= 2 or i == 3:
-            metric = df_full.loc[:,metric_name]
-        else:
-            metric = df_tail.loc[:,metric_name]
-        # remove None values
-        """
-        while None in metric:
-            metric.remove(None)
-        print(f"{metric_names_plot[i]} has total values of {len(metric)}")
-        """   
+    # full distribution
+    if metric_name in ['alpha','nu']:
+        # filter
+        best_ks = "ks pvalue stable" if metric_name == 'alpha' else "ks pvalue tstudent"
+        #cond = (df_merge.loc[:,'weight_num'] > min_weight_num) & (df_merge.loc[:,'ks_best'] == best_ks)
+        cond = (df_merge.loc[:,'weight_num'] > min_weight_num) & (df_merge.loc[:,'ks_best'] == best_ks) \
+               & (df_merge.loc[:,best_ks] >= 0.05)
+        selected_idxs = df_merge[cond].index
+
+        metric = df_merge.loc[selected_idxs,metric_name]
+    
+    elif metric_name in ['alpha_tail_tpl', 'alpha_tail_pl']:
+        
+
+        best_tailfit = "truncated_power_law" if metric_name == 'alpha_tail_tpl' else 'power_law'        
+
+        # filter
+        cond = (df_merge.loc[:,'weight_num'] > min_weight_num) & (df_merge.loc[:,'bf1_lower'] == best_tailfit)
+        selected_idxs = df_merge[cond].index        
+        alpha_lower = df_merge.loc[selected_idxs,'alpha_lower']
+
+        cond = (df_merge.loc[:,'weight_num'] > min_weight_num) & (df_merge.loc[:,'bf1_upper'] == best_tailfit)
+        selected_idxs = df_merge[cond].index        
+        alpha_upper = df_merge.loc[cond,'alpha_upper']
+
+        metric = pd.concat([alpha_lower, alpha_upper])
+
+    elif metric_name in ['xlogrange_pl']:
+
+        best_tailfit = "truncated_power_law"
+
+        # filter
+        cond = (df_merge.loc[:,'weight_num'] > min_weight_num) & (df_merge.loc[:,'bf1_lower'] == best_tailfit)
+        selected_idxs = df_merge[cond].index        
+        xlogrange_lower = df_merge.loc[selected_idxs,'xlogrange_lower']
+
+        cond = (df_merge.loc[:,'weight_num'] > min_weight_num) & (df_merge.loc[:,'bf1_upper'] == best_tailfit)
+        selected_idxs = df_merge[cond].index        
+        xlogrange_upper = df_merge.loc[cond,'xlogrange_upper']
+
+        metric = pd.concat([xlogrange_lower, xlogrange_upper])        
 
     axis = axs_1[i]
-
-    # figure labels
-    label = label_ls[i] 
+    #label = label_ls[i]  # figure labels
     #axis.text(-0.1, 1.2, '%s'%label, transform=axis.transAxes,      # fontweight='bold'
     #     fontsize=label_size, va='top', ha='right')
 
@@ -413,15 +527,21 @@ for i, metric_name in enumerate(metric_names_plot):
         #axis.plot(x, y_lognorm, linewidth=lwidth, c=c_ls_1[3], linestyle='dotted', label = 'Log-normal')  
 
     elif i == 1:
-        axis.hist(metric[pval_idxss['ks pvalue stable']], bin_ls[i], color=c_hist_2, density=True)
+        density = sst.gaussian_kde(metric)
+        x = np.linspace(0,2,1000) 
+        axis.plot(x, density(x))   
+
+        axis.hist(metric, bin_ls[i], color=c_hist_2, density=True)
         #axis.set_xlim(np.percentile(metric, 1), np.percentile(metric, 99))
 
     elif i == 2:
-        density = sst.gaussian_kde(metric[pval_idxss['ks pvalue tstudent']])
-        x = np.linspace(0,2,500) 
-        axis.plot(x, density(x))        
+        density = sst.gaussian_kde(metric)
+        x = np.linspace(0,160,1000) 
+        axis.plot(x, density(x))       
 
-    elif i == 3:
+        axis.hist(metric, bin_ls[i], color=c_hist_2, density=True)
+
+    elif i == 3 and isfile(tailfit_path):
         # distribution tail
         df_tailfit = pd.read_csv(tailfit_path)
         layer_idx, wmat_idx, total_entries, fit_entries, \
@@ -430,6 +550,32 @@ for i, metric_name in enumerate(metric_names_plot):
 
         print(f"Plaw to upper tail: k = {alpha}, xmin = {xmin}, xmax = {xmax}.")
 
+        # ----- method 1 -----
+        """
+        # directly do a power-law fit
+        from weightwatcher.WW_powerlaw import fit_powerlaw
+        plfit = fit_powerlaw(sample_w[sample_w>=0], xmin=xmin, total_is=None,
+                             plot=False, savefig=False)
+        plfit.plot_ccdf(ax=axis, linewidth=3, label='Empirical Data')
+        plfit.power_law.plot_ccdf(ax=axis, color='r', linestyle='--', label='Power law fit')
+        plfit.lognormal.plot_ccdf(ax=axis, color='g', linestyle='--', label='Lognormal fit')
+        plfit.exponential.plot_ccdf(ax=axis, color='b', linestyle='--', label='Exponential')
+        plfit.truncated_power_law.plot_ccdf(ax=axis, color='c', linestyle='--', label='Truncated powerlaw')    
+        """
+
+        # ----- method 2 -----
+        """
+        import powerlaw as plaw
+        plfit = plaw.Power_Law(sample_w[sample_w>=0], xmin=xmin, xmax=xmax, verbose=False)      
+
+        plfit.plot_ccdf(ax=axis, linewidth=3, label='Empirical Data')
+        plfit.power_law.plot_ccdf(ax=axis, color='r', linestyle='--', label='Power law fit')
+        plfit.lognormal.plot_ccdf(ax=axis, color='g', linestyle='--', label='Lognormal fit')
+        plfit.exponential.plot_ccdf(ax=axis, color='b', linestyle='--', label='Exponential')
+        plfit.truncated_power_law.plot_ccdf(ax=axis, color='c', linestyle='--', label='Truncated powerlaw')
+        """
+
+        # ----- method 3 -----
         # upper tail
         min_evals_to_plot = (xmin/100)
         evals = np.abs(sample_w[sample_w>=0])
@@ -458,16 +604,14 @@ for i, metric_name in enumerate(metric_names_plot):
         #ys = -alpha * xs + b
         #axs[0,0].plot(np.exp(xs), np.exp(ys), c='g')
         ys = 10**b * xs**(-alpha)
-        axis.plot(xs, ys, c='g', label='powerlaw fit')           
+        axis.plot(xs, ys, c='g', label='PL fit')           
 
         # kde
         #density = sst.gaussian_kde(metric)
         #x = np.linspace(0,2,500) 
         #axis.plot(x, density(x))
 
-        axis.set_xlim(evals_to_plot.min(), evals_to_plot.max())
-        
-        # log axis
+        axis.set_xlim(evals_to_plot.min(), evals_to_plot.max())        
         axis.set_xscale('log'); axis.set_yscale('log')     
 
         #ax1_inset.tick_params(axis='both', which='major', labelsize=tick_size - 4)
@@ -477,18 +621,23 @@ for i, metric_name in enumerate(metric_names_plot):
         #                 labelbottom=False, bottom=False)       
 
     elif i == 4:
-        axis.hist(metric[lower1_idxss['truncated_power_law']], bin_ls[i], color=c_hist_2, density=True)
-        #axis.set_xlim(np.percentile(metric, 1), np.percentile(metric, 99))
         # get kde
         #density = sst.gaussian_kde(metric)
         #x = np.linspace(0,2,500) 
-        #axis.plot(x, density(x))   
+        #axis.plot(x, density(x))  
+
+        axis.hist(metric, bin_ls[i], color=c_hist_2, density=True) 
          
     elif i == 5:
-        axis.hist(metric[upper1_idxss['truncated_power_law']], bin_ls[i], color=c_hist_2, density=True)
+        axis.hist(metric, bin_ls[i], color=c_hist_2, density=True)
       
     if i == 0 or i == 3:
         axis.legend(loc = 'upper left', fontsize = legend_size, frameon=False)
+
+    if i not in [0,3]:
+        print(f"{metric_name} size: {len(metric)} \n")
+        if i == 1:
+            print(print(f"{metric_name} smaller than 1.9: {len(metric[metric <= 1.9])} \n"))
 
     # set axis limit
     axis.set_xlim(xlim_ls[i])
@@ -507,10 +656,61 @@ for i, metric_name in enumerate(metric_names_plot):
     #axis.set_ylabel(f"{ylabel_ls[i]}", fontsize=axis_size)
     #axis.set_title(f"{ylabel_ls[i]}", fontsize=axis_size)
 
+print("---------------------------- \n")
 
 # -------------------- Statistics summary --------------------
 
+print(f"Total number of weight matrices: {df_merge.shape[0]} \n")
 
+print("Full fit \n")
+
+pval_thresh = 0.05
+cond = (df_merge.loc[:,'fit_done'] == True) &  (df_merge.loc[:,'weight_num'] >= min_weight_num)
+total_legit_wmat = df_merge[cond].shape[0]
+print(f"Total wmat that with most entries greater than {1e-5} and with entries at least {min_weight_num}: {total_legit_wmat} \n")
+
+# KS p-value > 0.05
+cond = (df_merge.loc[:,'ks pvalue stable'] >= pval_thresh) | (df_merge.loc[:,'ks pvalue normal'] >= pval_thresh) | \
+       (df_merge.loc[:,'ks pvalue tstudent'] >= pval_thresh) | (df_merge.loc[:,'ks pvalue lognorm'] >= pval_thresh)
+
+full_others_best = total_legit_wmat - df_merge[cond].shape[0]
+
+print(f"Wmats best fit by others: {full_others_best} \n")
+
+criterion = ['ks', 'logl', 'aic', 'bic']
+dist_names1 = [col_name.split(" ")[-1] for col_name in df_merge.columns if 'ks pvalue' in col_name]
+dist_names2 = [col_name.split("_")[-1] for col_name in df_merge.columns if 'logl_' in col_name]
+for crit in criterion:
+    dist_names = dist_names1 if crit == 'ks' else dist_names2
+
+    print(f"criteria {crit}:")
+    s1 = ''
+    for dist_name in dist_names:
+        if crit == 'ks':
+            amount = (df_merge.loc[cond,f'{crit}_best'] == f'ks pvalue {dist_name}').sum()
+        else:
+            amount = (df_merge.loc[cond,f'{crit}_best'] == f'{crit}_{dist_name}').sum()
+        s1 += '   ' + f'{dist_name}: {amount}'
+    print(s1 + "\n")
+
+print("---------------------------- \n")
+print("Tail fit \n")
+
+cond = (df_merge.loc[:,'fit_done_tail'] == True) &  (df_merge.loc[:,'weight_num'] >= min_weight_num)
+total_legit_wmat = df_merge[cond].shape[0]
+print(f"Total wmat that with most entries greater than {1e-5} and with entries at least {min_weight_num}: {total_legit_wmat} \n")
+
+criterion_pl = ['bf1', 'bf2']
+tail_types = ['lower', 'upper']
+dist_names_tail = df_merge.loc[:,'bf1_upper'].unique()
+for crit in criterion_pl:
+    for tail_type in tail_types:
+        print(f"criteria {crit} for {tail_type} tail: \n")
+        s1 = ''
+        for dist_name in dist_names_tail:
+            amount = (df_merge.loc[cond,f'{crit}_{tail_type}'] == dist_name).sum()
+            s1 += '   ' + f'{dist_name}: {amount}'
+        print(s1 + "\n")        
 
 
 # -------------------- Save fig --------------------
