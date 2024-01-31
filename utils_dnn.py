@@ -10,6 +10,10 @@ from path_names import root_data
 def IPR(vec, q):
     return sum(abs(vec)**(2*q)) / sum(abs(vec)**2)**q
 
+# computes for array of vecs as columns
+def IPR_all(vecs, q):
+    return sum(abs(vecs)**(2*q), axis=0) / sum(abs(vecs)**2, axis=0)**q
+
 # pytorch version
 def compute_IPR(vec,q):
     if isinstance(vec, torch.Tensor):
@@ -24,6 +28,10 @@ def compute_IPR(vec,q):
 # numpy version
 def D_q(vec, q):
     return np.log(IPR(vec, q)) / (1-q) / np.log(len(vec))
+
+# computes for array of vecs as columns
+def D_q_all(vecs, q):
+    return np.log(IPR(vecs, q)) / (1-q) / np.log(vecs.shape[0])
 
 # pytorch version
 def compute_dq(vec,q):
