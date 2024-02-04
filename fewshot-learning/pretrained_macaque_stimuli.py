@@ -102,8 +102,41 @@ class Backbone(torch.nn.Module):
             x = self.features(x)
         x = self.flatten(x)
         return x
+
 # backbone = Backbone(model)
-# backbone.to('cuda').eval()
+# backbone.to('cuda').eval()        
+
+# preserves shape
+class Backbone_og(torch.nn.Module):
+    def __init__(self, model, module_idx, layer_idx=None):
+        super(Backbone_og, self).__init__()
+        self.layer_idx = layer_idx
+        self.pre_features = torch.nn.Sequential(*list(model.children())[:module_idx])
+        if layer_idx:
+            self.features = torch.nn.Sequential(*list(model.children())[module_idx][:layer_idx])
+        self.flatten = torch.nn.Flatten()
+        
+    def forward(self, x):
+        x = self.pre_features(x)
+        if self.layer_idx:
+            x = self.features(x)
+        return x        
+
+# extracts all features
+class Backbone_full(torch.nn.Module):
+    def __init__(self, model, module_idx, layer_idx=None):
+        super(Backbone_og, self).__init__()
+        self.layer_idx = layer_idx
+        self.pre_features = torch.nn.Sequential(*list(model.children())[:module_idx])
+        if layer_idx:
+            self.features = torch.nn.Sequential(*list(model.children())[module_idx][:layer_idx])
+        self.flatten = torch.nn.Flatten()
+        
+    def forward(self, x):
+        x = self.pre_features(x)
+        if self.layer_idx:
+            x = self.features(x)
+        return x         
 
 # ---------------------- SNR Theory ----------------------
 
@@ -116,6 +149,11 @@ def load_model(model_name, pretrained):
     else:
         model = torch.load(join(untrained_path, model_name, "model_pt")) 
     return model
+
+
+def load_shared_info(model_name):
+    assert os.path.isfile(join(root_data, "macaque_stimuli", model_name, "shared_info")), f'shared_info does not exist for {model_name}'
+    return pd.read_csv(join(root_data, "macaque_stimuli", model_name, "shared_info"))    
 
 
 # get the direct error from few-shot learning
@@ -182,21 +220,718 @@ def get_error(model_name, pretrained):
     emb_path = join(root_data, "macaque_stimuli", model_name, "pretrained") if pretrained else join(root_data, "macaque_stimuli", model_name, "untrained")
     np.save(join(emb_path,"err_all"), err_all)
 
-# obtain the SNR and its associated geometrical metrics
-def snr_components(model_name, pretrained):
+
+def get_num_layers(model_name, *args):
+    """
+    Get the total number of analyzable layers of the network, knowing this will allow parallelization over the layers
+    and not just over the networks.
+    """
+
+    global df, backbone, module_idx, layer_idx, has_child
 
     import numpy.linalg as LA
     import scipy
     from scipy.stats import levy_stable
 
-    #global Us, manifolds_all, Rs_all, dists_all, PRs_all, css_all, SNRs_all
-    #global U, R, V, Rs, Us
-    #global d2s_all
-    #global layers
-    #global manifolds, manifolds_all
-    #global init_epoch, emb_path
-    #global model, module_idx, layer_idx, Backbone
-    #global input_fbatch, output_fbatch, Un, Rn, Vn, d2, backbone
+    emb_path = join(root_data, "macaque_stimuli", model_name)
+    if not os.path.isfile(join(emb_path, "shared_info")):
+
+        print(f"Setting up path for {model_name}.")            
+
+        print("Loading model!")
+        pretrained = True
+        model = load_model(model_name, pretrained)      
+
+        # finds out the total amount of layers needed for evaluation (this is not rlly needed as well)    
+        batch_size = 2
+
+        # create df
+        dict_ls = []
+        df = pd.DataFrame(columns=['module_idx', 'layer_idx', 'has_child'])    
+
+        layers = []
+        for module_idx in tqdm(range(len(list(model.children())))):
+            ########## Case 1: when the child has submodules ##########
+            try:
+                has_child = True
+                len_module = len(list(model.children())[module_idx])
+                for layer_idx in range(len_module):
+                    
+                    backbone = Backbone(model, module_idx, layer_idx)
+                    backbone.to(dev).eval()
+
+                    # Get test batch
+                    input_tensor = get_batch(0,batch_size)
+                    with torch.no_grad():
+                        output = backbone(input_tensor.to(dev))
+                    layers.append(list(model.children())[module_idx][layer_idx])
+
+                    ##### self info #####
+                    print('Computing embeddings module '+str(module_idx)+', layer '+str(layer_idx) )
+                    has_weight = ('weight' in dir(list(model.children())[module_idx][layer_idx]) )
+                    if has_weight:
+                        weight_shape = tuple(list(model.children())[module_idx][layer_idx].weight.shape)
+                        print(f'which has weight with shape {weight_shape}')
+                    else:
+                        weight_shape = None
+                        print(f'has no weight')
+
+                    # save to df
+                    row_data = {'module_idx': module_idx, 'layer_idx': layer_idx, 'has_child': has_child,
+                                'has_weight': has_weight, 'weight_shape': weight_shape}
+                    dict_ls.append(row_data)                   
+
+            ########## Case 2: when the child does not have submodules ##########
+            except:
+                has_child = False
+                layer_idx = 0
+                layer = 'layer_' + str(module_idx) + '_' + str(layer_idx)
+                
+                backbone = Backbone(model, module_idx)
+                backbone.to(dev).eval()
+
+                # Get test batch
+                input_tensor = get_batch(0,batch_size)
+                with torch.no_grad():
+                    output = backbone(input_tensor.to(dev))
+                try:
+                    layers.append(list(model.children())[module_idx])
+                except:
+                    layers.append('avgpool')
+
+                ##### self info #####
+                print('Computing embeddings module '+str(module_idx)+', layer '+str(layer_idx) )   
+                has_weight = ('weight' in dir(list(model.children())[module_idx]) )
+                if has_weight:
+                    weight_shape = tuple(list(model.children())[module_idx].weight.shape)
+                    print(f'which has weight with shape {weight_shape}')
+                else:
+                    weight_shape = None
+                    print(f'has no weight')         
+
+                # save to df
+                row_data = {'module_idx': module_idx, 'layer_idx': layer_idx, 'has_child': has_child,
+                            'has_weight': has_weight, 'weight_shape': weight_shape}
+                dict_ls.append(row_data)                      
+                
+
+        print(f"Total number of layers: {len(layers)}")    
+
+        num_layers = len(layers)
+
+        # save df
+        df = pd.DataFrame.from_dict(dict_ls)    
+        if not os.path.isdir(emb_path): os.makedirs(emb_path)
+        df.to_csv(join(emb_path, "shared_info"), index=False)
+
+        print(f"{model_name} has total analyzable layers {len(layers)}")
+
+    else:
+        print(f"{model_name} done")
+
+
+# only for pytorch, make sure the input wmat has correct dimensions
+def tensor_svd_dq(wmat, q):
+    import numpy.linalg as LA
+    from utils_dnn import D_q_all
+    assert wmat.ndim > 1, "wmat must have ndim greater than 1"
+
+    """
+    if wmat.ndim == 2:  # from dq_analysis/wmat_fcn.py
+                                
+        r_nan_count = 0; l_nan_count = 0
+        ##### right singvec #####   
+        D_2ss = D_q_all(Vh.T, q)        
+        
+        r_nan_count = np.count_nonzero(~np.isnan(data))  
+        r_d2_principal = D_2ss[0]      
+        # case 1: average d2
+        r_d2_means = D_2ss.mean()
+        r_d2_stds = D_2ss.std()              
+
+        ##### left singvec #####
+        D_2ss = D_q_all(U, q)
+        
+        
+        l_nan_count = np.count_nonzero(~np.isnan(data))  
+        l_d2_principal = D_2ss[0]      
+        # case 1: average d2
+        l_d2_means = D_2ss.mean()
+        l_d2_stds = D_2ss.std()    
+
+        # case 1: average d2
+        l_d2_means = D_2ss.mean()
+        l_d2_stds = D_2ss.std()                         
+
+    elif wmat.ndim == 3:
+        pass
+    elif wmat.ndim == 4:  # from dq_analysis/wmat_cnn.py
+
+        d2_shape = [wshape[-2], wshape[-1]]
+
+        d2_means = np.zeros(d2_shape)
+        d2_stds = np.zeros(d2_shape)         
+
+        nan_count = 0
+        for csize1 in range(wshape[-2]):
+            for csize2 in range(wshape[-1]):
+                D_2ss = []
+
+                # channel       
+                wmat_ch = wmat[:,:,csize1,csize2] 
+                # left eigenvector
+                #if reig == 0:
+                #    wmat_ch = wmat_ch.T                 
+                _, singvals, Vh = LA.svd(wmat_ch)
+
+                
+                for i in range(len(singvals)):  
+                    singvec = Vh[i,:]
+                    IPR_2 = IPR(singvec ,2)
+                    D_2s = np.log(IPR_2) / (1-q) / np.log(len(singvec))
+                    
+                    # option 1: do not include nan
+                    #if not any(np.isnan(D_2s)): D_2ss.append(D_2s)
+                    #else: nan_count += 1  
+
+                    # option 2: include nan
+                    D_2ss.append(D_2s)
+                    if np.isnan(D_2s): 
+                        nan_count += 1   
+
+                    # get principal D_2
+                    if i == 0:
+                        d2_principal = D_2s                                     
+
+                D_2ss = np.array(D_2ss)
+
+                # case 1: average d2
+                d2_means[csize1, csize2] = D_2ss.mean()
+                d2_stds[csize1, csize2] = D_2ss.std()
+    """
+
+    wmat_shape = list(wmat.shape)
+    if wmat.ndim == 2:
+        U, singvals, Vh = LA.svd(wmat)
+
+        r_D_2ss = D_q_all(Vh.T, q)
+        l_D_2ss = D_q_all(U, q)   
+    else:
+        # notes
+        """
+        U, singvals, Vh = LA.svd(wmat.transpose(2,0,1))
+        U, singvals, Vh = LA.svd(wmat.transpose(2,3,0,1))
+        """
+
+        wmat_shape_idxs = list(range(wmat.ndim))
+        wmat_reshape_idxs = list(wmat_shape_idxs[2:]) + list(wmat_shape_idxs[:2])
+        wmat_reshape = [wmat_shape[idx] for idx in wmat_reshape_idxs]
+        U, singvals, Vh = LA.svd(wmat.transpose(wmat_reshape_idxs))
+        l_shape = wmat_reshape[:wmat.ndim - 2] + [U.shape[-1]]
+        r_shape = wmat_reshape[:wmat.ndim - 2] + [Vh.shape[-2]]
+        r_D_2ss = np.zeros(r_shape); l_D_2ss = np.zeros(l_shape)
+        if wmat.ndim == 3:
+            for k1_idx in range(U.shape[0]):
+                l_D_2ss[k1_idx] = D_q_all(U[k1_idx],q)
+            for k1_idx in range(Vh.shape[1]):
+                r_D_2ss[k1_idx] = D_q_all(Vh[k1_idx].T,q)
+        elif wmat.ndim == 4:
+            for k1_idx in range(U.shape[0]):
+                for k2_idx in range(U.shape[1]):
+                    l_D_2ss[k1_idx,k2_idx] = D_q_all(U[k1_idx,k2_idx],q)
+            for k1_idx in range(Vh.shape[0]):
+                for k2_idx in range(Vh.shape[1]):
+                    r_D_2ss[k1_idx,k2_idx] = D_q_all(Vh[k1_idx,k2_idx].T,q)
+
+        else:
+            print("ndim greater than 4")
+            return
+
+    """    
+    return r_d2_means, r_d2_stds, r_d2_principal, r_nan_count,\
+           l_d2_means, l_d2_stds, l_d2_principal, l_nan_count
+    """
+
+    return r_D_2ss, l_D_2ss
+
+#only for pytorch, make sure the input wmat has correct dimensions
+def tensor_fft_svd_dq(wmat, input_shape, q):
+    import numpy.linalg as LA
+    from utils_dnn import D_q_all
+    assert wmat.ndim > 2, "wmat must have ndim greater than 1"
+
+    wmat_shape = list(wmat.shape)
+    if wmat.ndim <= 4:
+
+        wmat_shape_idxs = list(range(wmat.ndim))
+        wmat_reshape_idxs = list(wmat_shape_idxs[2:]) + list(wmat_shape_idxs[:2])
+        wmat_reshape = [wmat_shape[idx] for idx in wmat_reshape_idxs]
+
+        transforms = np.fft.fft2(wmat.transpose(wmat_reshape_idxs), input_shape, axes=[0,1])
+        U, singvals, Vh = LA.svd(transforms)
+
+        tshape = list(transforms.shape)
+        l_shape = tshape[:wmat.ndim - 2] + [U.shape[-1]]
+        r_shape = tshape[:wmat.ndim - 2] + [Vh.shape[-2]]
+        r_D_2ss = np.zeros(r_shape); l_D_2ss = np.zeros(l_shape)
+        if wmat.ndim == 3:
+            for k1_idx in range(U.shape[0]):
+                l_D_2ss[k1_idx] = D_q_all(U[k1_idx],q)
+            for k1_idx in range(Vh.shape[1]):
+                r_D_2ss[k1_idx] = D_q_all(Vh[k1_idx].T,q)
+        elif wmat.ndim == 4:
+            for k1_idx in range(U.shape[0]):
+                for k2_idx in range(U.shape[1]):
+                    l_D_2ss[k1_idx,k2_idx] = D_q_all(U[k1_idx,k2_idx],q)
+            for k1_idx in range(Vh.shape[0]):
+                for k2_idx in range(Vh.shape[1]):
+                    r_D_2ss[k1_idx,k2_idx] = D_q_all(Vh[k1_idx,k2_idx].T,q)
+
+    else:
+        print("ndim greater than 4")
+        return
+
+    return r_D_2ss, l_D_2ss    
+
+# new version
+def layerwise_snr_components(model_name, lidx, pretrained, n_top=100, replace=False):
+    """
+    Obtain the SNR and its associated geometrical metrics for one model at a time:
+        - lidx (int): the lidx th layer in the model   
+
+    Note that D_2 computed for the singular vector is for both the left and right singular vector
+    """
+
+    import numpy.linalg as LA
+    import scipy
+    from scipy.stats import levy_stable
+    from sklearn.decomposition import PCA    
+
+    """
+    global Us, manifolds_all, Rs_all, dists_all, PRs_all, css_all, SNRs_all
+    global U, R, V, Rs, Us
+    global d2s_all
+    global layers
+    global manifolds, manifolds_all
+    global init_epoch, emb_path
+    global model, module_idx, layer_idx, Backbone
+    global input_fbatch, output_fbatch, Un, Rn, Vn, d2, backbone
+    """
+
+    global wmat, model, r_D_2ss, l_D_2ss, input_shape, df, backbone
+
+    lidx = int(lidx)
+    pretrained = literal_eval(pretrained) if isinstance(pretrained,str) else pretrained
+
+    print(f"Setting up path for {model_name}.")        
+    # where the desired manifolds.npy/manifolds_N={N}.npy, etc is located
+    emb_path = join(root_data, "macaque_stimuli", model_name, "pretrained") if pretrained else join(root_data, "macaque_stimuli", model_name, "untrained")
+    if not os.path.isdir(emb_path): os.makedirs(emb_path)
+
+    print("Loading model!")
+    model = load_model(model_name, pretrained)     
+
+    # -------------------
+
+    # same variables as in cnn_macaque_stimuli.py
+    N = 2048
+    N_dq = 500
+    navg_dq = 10
+
+    batch_size = 50
+    #batch_size = 10
+    K = 64
+    P = 50
+
+    # analysis for top 200 PCs
+    #n_top = 50 # not used
+
+    # loading file
+    df = pd.read_csv(join(root_data, "macaque_stimuli", model_name, "shared_info")) 
+    module_idx,layer_idx,has_child,has_weight,weight_shape = df.loc[lidx,:]         
+
+    #################### 1. Compute singular vector multifractality ####################
+
+    """
+    multifrac_file1 = f"r_singvec_mean_lidx={lidx}.npy"
+    multifrac_file2 = f"r_singvec_std_lidx={lidx}.npy"
+    multifrac_file3 = f"r_singvec_principal_lidx={lidx}.npy"
+    # left
+    multifrac_file4 = f"l_singvec_mean_lidx={lidx}.npy"
+    multifrac_file5 = f"l_singvec_std_lidx={lidx}.npy"
+    multifrac_file6 = f"l_singvec_principal_lidx={lidx}.npy"  
+    """
+
+    multifrac_file1 = f"r_singvec_dq_lidx={lidx}.npy"  
+    multifrac_file2 = f"l_singvec_dq_lidx={lidx}.npy"
+
+    multifrac_file3 = f"r_fftsingvec_dq_lidx={lidx}.npy"  
+    multifrac_file4 = f"l_fftsingvec_dq_lidx={lidx}.npy" 
+    do_singvec_files = not os.path.isfile( join(emb_path, multifrac_file1) ) or not os.path.isfile( join(emb_path, multifrac_file2) ) or replace
+    do_singvec_files = do_singvec_files or not os.path.isfile( join(emb_path, multifrac_file3) )  
+    do_singvec_files = do_singvec_files or not os.path.isfile( join(emb_path, multifrac_file4) )
+    if do_singvec_files:
+        if has_weight:     
+            if has_child:       
+                wmat = list(model.children())[module_idx][layer_idx].weight  # could be any dimension
+            else:
+                wmat = list(model.children())[module_idx].weight
+            wmat = wmat.detach().numpy()
+            wshape = wmat.shape
+            print(f"wmat shape: {wshape}, wmat ndim: {wmat.ndim}")
+
+            if wmat.ndim > 1:              
+
+                q = 2
+                #r_d2_means, r_d2_stds, r_d2_principal, r_nan_count,\
+                #l_d2_means, l_d2_stds, l_d2_principal, l_nan_count = tensor_svd(wmat, q)                
+
+                #np.save(join(emb_path, multifrac_file1), d2_means) 
+                #np.save(join(emb_path, multifrac_file2), d2_stds)                       
+                #np.save(join(emb_path, multifrac_file3), d2_principal)  
+
+                #if nan_count > 0:
+                #    print(f"nan_count: {nan_count}")                  
+
+                r_D_2ss, l_D_2ss = tensor_svd_dq(wmat, q)
+                np.save(join(emb_path, multifrac_file1), r_D_2ss) 
+                np.save(join(emb_path, multifrac_file2), l_D_2ss)   
+
+                if wmat.ndim == 4:
+                    if lidx == 0:
+                        input_shape = [224,224]
+                    else:
+                        previous_module_idx,previous_layer_idx,_,_,_ = df.loc[lidx-1,:]  
+                        backbone = Backbone_og(model, previous_module_idx, previous_layer_idx)
+                        backbone.to(dev).eval()
+
+                        with torch.no_grad():
+                            input_shape = backbone(torch.ones([1,3,224,224]).to(dev)).shape
+
+                        input_shape = list(input_shape[2:])                        
+                    print(f"input_shape: {input_shape}")  # delete                        
+
+                    r_D_2ss, l_D_2ss = tensor_fft_svd_dq(wmat, input_shape, q)
+                    np.save(join(emb_path, multifrac_file3), r_D_2ss) 
+                    np.save(join(emb_path, multifrac_file4), l_D_2ss)  
+
+                    print(f'FFT SVD can be computed and data is saved!')                   
+
+        print("Computation related to singular vectors complete! \n")
+
+    else:
+        print(f'Computation related to singular vectors complete and not to be replaced! \n')
+
+    #################### 2. Compute PD D_2 ####################
+
+    d2_file = f"d2smb_n_top={n_top}_layerwise_lidx={lidx}.npy"
+    Rsmb_file = f"Rsmb_n_top={n_top}_layerwise_lidx={lidx}.npy"
+    d2_exist = os.path.isfile( join(emb_path, d2_file) )
+    Rsmb_exist = os.path.isfile( join(emb_path, Rsmb_file) ) 
+    print(f"Computation for {d2_file}!")
+    if d2_exist and Rsmb_exist and not replace:
+        print(f"{d2_file} and {Rsmb_file} computed already, no computation required. \n")        
+    else:
+
+        N_images = len(imnames)
+
+        # d2smb_all = []    # only compute D_2's
+        # Rsmb_all = []   # the corresponding singularvalues (from large to small)
+
+        #len_module = len(list(model.children())[module_idx])
+        #for layer_idx in range(len_module):
+
+        print('Computing embeddings module '+str(module_idx)+', layer '+str(layer_idx) )
+
+        if has_child:
+            backbone = Backbone(model, module_idx, layer_idx).to(dev)
+        else:
+            backbone = Backbone(model, module_idx).to(dev)
+        backbone.eval()
+
+        d2s = []
+        Rs = []
+        # batch_size set to n_top
+        for i in tqdm(range(N_images//n_top)):
+            input_tensor = get_batch(i,n_top)
+            with torch.no_grad():
+                output = backbone(input_tensor.to(dev))      
+            output -= output.mean(0)
+            output = output.detach().numpy()
+            # scklearn PCA
+            pca = PCA(n_top)
+            #pca.fit(output)
+            pca.fit_transform(output)
+            Rn = pca.explained_variance_
+            Vn = pca.components_
+
+            d2 = [compute_dq(Vn[eidx,:], 2) for eidx in range(len(Rn))]
+            d2s.append(d2)
+            Rs.append(Rn)
+
+        d2s = np.stack(d2s)
+        Rs = np.stack(Rs)
+        # d2smb_all.append(d2s)
+        # Rsmb_all.append(Rs)
+                
+        print(f"PD d2 computation complete for lidx = {lidx} layers! \n")
+
+        # d2smb_all = np.stack(d2smb_all)
+        # Rsmb_all = np.stack(Rsmb_all)
+        np.save(join(emb_path, d2_file), d2s) 
+        np.save(join(emb_path, Rsmb_file), Rs)   
+
+
+    #################### 3. Compute SNR quantities ####################
+
+    # check if relevant files exist even from the older versions    
+    layerwise_file1 = "manifolds_layerwise.npy"    
+    layerwise_file2 = f'manifolds_layerwise_lidx={lidx}.npy'    
+    if os.path.isfile( join(emb_path, layerwise_file1) ) and not replace:
+        #manifolds_all_load = np.load(join(emb_path, 'manifolds_layerwise.npy'))
+        #manifolds_all = np.load(join(emb_path, 'manifolds_layerwise.npy'))
+        print(f"{layerwise_file1} computed already, loading now.")
+        manifolds_all = np.load(join(emb_path, layerwise_file1))
+        manifolds = manifolds_all[lidx]
+
+    elif os.path.isfile( join(emb_path, layerwise_file2) ) and not replace:
+        print(f"{layerwise_file2} computed already, loading now.")
+        manifolds = np.load(join(emb_path, layerwise_file2))
+
+    else:
+        print(f"Computation for {layerwise_file2}!")
+        #print(f"Total number of modules: { len(list(model.children())) }")   
+
+        if has_child:
+            print('Computing embeddings module '+str(module_idx)+', layer '+str(layer_idx) )
+            
+            backbone = Backbone(model, module_idx, layer_idx)
+            backbone.to(dev).eval()
+
+            print('Get test batch')
+            # Get test batch
+            input_tensor = get_batch(0,batch_size)
+            print('Input loaded')
+            with torch.no_grad():
+                output = backbone(input_tensor.to(dev))
+            print('Output computed')                     
+
+        else:
+            print('Computing embeddings module '+str(module_idx)+', layer '+str(layer_idx) )
+            layer = 'layer_' + str(module_idx) + '_' + str(layer_idx)
+            
+            backbone = Backbone(model, module_idx)
+            backbone.to(dev).eval()
+
+            print('Get test batch')
+            # Get test batch
+            input_tensor = get_batch(0,batch_size)
+            print('Input loaded')
+            with torch.no_grad():
+                output = backbone(input_tensor.to(dev))
+            print('Output computed')
+        
+        N_all = output.shape[-1]
+        print(f'N_all = {N_all}')     
+
+        if N_all > N or "resnet" in model_name:
+            O = torch.randn(N_all,N) / np.sqrt(N)   # Gaussin projection
+            #O = torch.Tensor(levy_stable.rvs(alpha, 0, size=(N_all,N), scale=(0.5/N)**(1./alpha)))
+            O = O.to(dev)                
+
+        print('Starting batch manifolds')
+        manifolds = []
+        for i in tqdm(range(K*P//batch_size)):
+            input_tensor = get_batch(i,batch_size)
+            with torch.no_grad():
+                output = backbone(input_tensor.to(dev))
+
+            if N_all > N or "resnet" in model_name:
+                manifolds.append((output@O).cpu().numpy())
+            else:
+                manifolds.append(output.cpu().numpy())
+
+        #manifolds = np.stack(manifolds).reshape(K,P,N)
+        manifolds = np.stack(manifolds).reshape(K,P,N) if (N_all > N or "resnet" in model_name) else np.stack(manifolds).reshape(K,P,N_all)         
+
+        np.save(join(emb_path, layerwise_file2), manifolds)
+        #manifolds_all_load = manifolds_all
+        print(f"{layerwise_file2} saved!")
+
+    """
+    # random projection
+    N = 2048
+    M = 88
+    A = np.random.randn(N,M)/np.sqrt(M)
+
+    manifolds_all = []
+    for manifolds in manifolds_all_load:
+        manifolds_all.append(manifolds@A)
+    """
+
+    # ------------------
+
+    def geometry(centers,Rs,Us,m):
+        K = len(centers)
+        P = Rs.shape[1]
+        dists = np.sqrt(((centers[:,None] - centers[None])**2).sum(-1))
+        dist_norm = dists / np.sqrt((Rs**2).sum(-1)[:,None] / P)
+
+        Ds = np.sum(Rs**2,axis=-1)**2 / np.sum(Rs**4, axis=-1)
+
+        # ----- Overlaps -----
+        # Subspace-subspace
+        ss = []
+        # Center-subspace
+        csa = []
+        csb = []
+
+        for a in range(K):
+            for b in range(K):
+                if a!=b:
+                    # Center-subspace
+                    dx0 = centers[a] - centers[b]
+                    dx0hat = dx0 / np.linalg.norm(dx0)
+                    costheta_a = Us[a]@dx0hat
+                    csa.append((costheta_a**2 * Rs[a]**2).sum() / (Rs[a]**2).sum())
+                    costheta_b = Us[b]@dx0hat
+                    csb.append((costheta_b**2 * Rs[b]**2).sum() / (Rs[a]**2).sum())
+
+                    # Subspace-subspace
+                    cosphi = Us[a]@Us[b].T
+                    ss_overlap = (cosphi**2*Rs[a][:,None]**2*Rs[b]**2).sum() / (Rs[a]**2).sum()**2
+                    ss.append(ss_overlap)
+                else:
+                    csa.append(np.nan)
+                    csb.append(np.nan)
+                    ss.append(np.nan)
+        csa = np.stack(csa).reshape(K,K)
+        csb = np.stack(csb).reshape(K,K)
+        ss = np.stack(ss).reshape(K,K)
+
+        css = (csa + csb/m) * dist_norm**2
+
+        bias = (Rs**2).sum(-1) / (Rs**2).sum(-1)[:,None] - 1
+        if m == np.inf:
+            SNR = 1/2*(dist_norm**2)/ np.sqrt(css)
+        else:
+            SNR = 1/2*(dist_norm**2 + bias/m)/ np.sqrt(1/Ds[:,None]/m + css + ss/m)
+        
+        # additionally returning bias
+        return dist_norm, Ds, csa, ss, SNR, bias
+
+    print("Computing SNR metrics!")
+    from scipy.spatial.distance import pdist, squareform
+
+    ms = [1,5,10,100,1000,10000,np.inf]
+
+    K = len(manifolds)
+    #K = len(manifolds_all[0])
+    # PRs_all = []
+    # Rs_all = []
+    # dists_all = []
+    # css_all = []    
+    # biases_all = []
+    SNRs_all = {}
+    for midx, m in enumerate(ms):
+        SNRs_all[midx] = []
+
+    #for mf_idx, manifolds in tqdm(enumerate(manifolds_all)):    
+    manifolds = np.stack(manifolds)
+
+    # get a general version of cov mat (# Method 1: full batch)     
+    """
+    eigvals, eigvecs = LA.eigh( np.cov( manifolds.reshape( manifolds.shape[0] * manifolds.shape[1], manifolds.shape[2] ).T ) )
+    ii = np.argsort(np.abs(eigvals))[::-1]
+    eigvals = eigvals[ii]
+    eigvals = eigvecs[:,ii]
+    #EDs_all.append( eigvals )
+    d2s = []
+    for eidx in range(len(eigvals)):
+        d2s.append( compute_dq(eigvecs[:,eidx],2) )
+    """
+
+    # save correlation dimension D_2 layer by layer
+    #d2s = []
+    Rs = []
+    centers = []
+    Us = []
+    for manifold in manifolds:
+        centers.append(manifold.mean(0))
+        # this is equivalent to PCA!!!
+        U,R,V = np.linalg.svd(manifold - manifold.mean(0),full_matrices=False)
+        Rs.append(R)
+        Us.append(V)
+
+    Rs = np.stack(Rs)
+    # Rs_all.append(Rs)
+    centers = np.stack(centers)
+    Us = np.stack(Us)
+
+    #dist_norm, Ds, csa, ss, SNR = geometry(centers,Rs,Us,m)
+    dist_norm, Ds, csa, ss, SNR, bias = geometry(centers,Rs,Us,m)
+    # dists_all.append(dist_norm)
+    # PRs_all.append(Ds)
+    # css_all.append(csa)
+    # biases_all.append(bias)
+
+    for midx, m in enumerate(ms):
+        # only the SNR is affected by the No. of learning examples m
+        _, _, _, _, SNR, _ = geometry(centers,Rs,Us,m)
+        SNRs_all[midx].append(SNR)
+        
+    # Rs_all = np.stack(Rs_all)
+    # dists_all = np.stack(dists_all)
+    # PRs_all = np.stack(PRs_all)
+    # css_all = np.stack(css_all)
+    # biases_all = np.stack(biases_all)
+
+    #d2s_all = np.stack(d2s_all)
+
+    for midx, m in enumerate(ms):
+        SNRs_all[midx] = np.stack(SNRs_all[midx])
+        if m == np.inf:
+            np.save(os.path.join(emb_path,f'SNRs_layerwise_lidx={lidx}_m=inf.npy'),SNRs_all[midx])
+        else:
+            np.save(os.path.join(emb_path,f'SNRs_layerwise_lidx={lidx}_m={m}.npy'),SNRs_all[midx])
+
+    np.save(os.path.join(emb_path,f'Rs_layerwise_lidx={lidx}.npy'),Rs)    
+    np.save(os.path.join(emb_path,f'Ds_layerwise_lidx={lidx}.npy'),Ds)
+    np.save(os.path.join(emb_path,f'dist_norm_layerwise_lidx={lidx}.npy'),dist_norm)
+    np.save(os.path.join(emb_path,f'css_layerwise_lidx={lidx}.npy'),csa)
+    np.save(os.path.join(emb_path,f'biases_layerwise_lidx={lidx}.npy'),bias)
+
+    print("All SNR quantities saved! \n")
+
+    # save manifolds_all dimension
+    #np.save( join(emb_path, "manifold_dim.npy"), np.array([len(manifolds_all), len(manifolds), manifold.shape[0], manifold.shape[1]]) )
+
+    # np.load(os.path.join(emb_path,f'Rs_layerwise_lidx={lidx}.npy'))    
+    # np.load(os.path.join(emb_path,f'Ds_layerwise_lidx={lidx}.npy'))
+    # np.load(os.path.join(emb_path,f'dist_norm_layerwise_lidx={lidx}.npy'))
+    # np.load(os.path.join(emb_path,f'css_layerwise_lidx={lidx}.npy'))
+    # np.load(os.path.join(emb_path,f'biases_layerwise_lidx={lidx}.npy'))
+    
+    # print("All SNR quantities can be loaded! \n")
+
+
+def snr_components(model_name, pretrained, replace=True):
+    """
+    Obtain the SNR and its associated geometrical metrics for one model at a time.
+    """
+
+    import numpy.linalg as LA
+    import scipy
+    from scipy.stats import levy_stable
+
+    global Us, manifolds_all, Rs_all, dists_all, PRs_all, css_all, SNRs_all
+    global U, R, V, Rs, Us
+    global d2s_all
+    global layers
+    global manifolds, manifolds_all
+    global init_epoch, emb_path
+    global model, module_idx, layer_idx, Backbone
+    global input_fbatch, output_fbatch, Un, Rn, Vn, d2, backbone
 
     pretrained = literal_eval(pretrained) if isinstance(pretrained,str) else pretrained
 
@@ -285,7 +1020,7 @@ def snr_components(model_name, pretrained):
     #n_top = 50 # not used
     
     layerwise_file = "manifolds_layerwise.npy"    
-    if os.path.isfile( join(emb_path, 'manifolds_layerwise.npy') ):
+    if os.path.isfile( join(emb_path, 'manifolds_layerwise.npy') ) and not replace:
         #manifolds_all_load = np.load(join(emb_path, 'manifolds_layerwise.npy'))
         #manifolds_all = np.load(join(emb_path, 'manifolds_layerwise.npy'))
         print("manifolds_layerwise.npy computed already, loading now.")
@@ -1103,6 +1838,147 @@ def snr_submit(*args):
              #mem='12GB')
              #mem='8GB') 
 
+# get_num_layers()
+def snr_submit_v2(*args):
+    global pbs_array_data
+
+    from qsub import qsub, job_divider, project_ls, command_setup
+
+    # get all appropriate networks
+    net_names = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv"))    # locally available pretrained nets
+    models = []
+    for model_name in net_names.loc[:, "model_name"]:
+        models.append(model_name)
+    
+    pbs_array_data = []
+    for model_name in models:
+        if not os.path.isfile(join(root_data, "macaque_stimuli", model_name, "shared_info")):
+            pbs_array_data.append((model_name, True))
+
+    #pbs_array_data = pbs_array_data[2:]  # delete
+    print(f"Total jobs: {len(pbs_array_data)} \n")
+    print(pbs_array_data)
+    
+    #quit()
+
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+
+    select = 1
+    ncpus, ngpus = 1, 0
+    singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
+    bind_path = "/project"
+    command = command_setup(singularity_path, bind_path=bind_path)
+
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             #path=join(root_data, "macaque_stimuli/new_snr"),
+             #path=join(root_data, "macaque_stimuli"),
+             path=join(root_data, "macaque_stimuli/get_layers_job"),
+             #path=join(root_data, "macaque_stimuli", "pure_rsmb"),
+             #path=join(root_data, "macaque_stimuli/new_d2"),
+             P=project_ls[pidx],
+             #ngpus=ngpus,
+             ncpus=ncpus,
+             select=select,             
+             walltime='23:59:59',   # small/medium
+             mem='1GB')           
+
+
+# layerwise_snr_components
+def snr_submit_v3(*args):
+    global pbs_array_data, net_names, models, file3_check, df_info, do_fft, has_weight
+
+    from qsub import qsub, job_divider, project_ls, command_setup
+        
+    pretrained_ls = [True, False]
+    #pretrained_ls = [True]
+
+    # specified models
+    # models = ['alexnet', 'resnet18', 'resnet34', 'resnet50', 'resnet101', 'densenet121',
+    #           'squeezenet1_0', 'squeezenet1_1',
+    #           'vgg11', 'vgg13', 'vgg16',
+    #           'vgg11_bn', 'vgg13_bn', 'vgg16_bn',
+    #           'shufflenet_v2_x0_5','shufflenet_v2_x1_0','shufflenet_v2_x1_5','shufflenet_v2_x2_0']
+
+    # models = ['resnet18', 'resnet34', 'resnet50', 
+    #           'densenet121',
+    #           'squeezenet1_0']
+
+    models = ['alexnet']
+
+    # all models
+    # models = []    
+    # net_names = pd.read_csv(join(root_data, "pretrained_workflow", "net_names_all.csv"))    # locally available pretrained nets
+    # for model_name in net_names.loc[:, "model_name"]:
+    #     if os.path.isfile(join(root_data, "macaque_stimuli", model_name, "shared_info")):
+    #         models.append(model_name)   
+        
+    
+    pbs_array_data = []
+    for model_name in models:
+        df = load_shared_info(model_name)
+        for lidx in range(df.shape[0]):
+        #for lidx in range(1,6):
+        #for lidx in [1,2]:
+            for pretrained_type in pretrained_ls:
+                pretrained_name = 'pretrained' if pretrained_type else 'untrained'
+                file1_check = os.path.isfile( join(root_data, "macaque_stimuli", model_name, pretrained_name,
+                                                   f'd2smb_n_top=100_layerwise_lidx={lidx}.npy') )
+                file2_check = os.path.isfile( join(root_data, "macaque_stimuli", model_name, pretrained_name,
+                                                   f'dist_norm_layerwise_lidx={lidx}.npy') )    
+
+                df_info = pd.read_csv(join(root_data, "macaque_stimuli", model_name, "shared_info"))
+                module_idx,layer_idx,has_child,has_weight,weight_shape = df_info.loc[lidx,:]  
+                file3_check = has_weight                
+                #print(f'file3_check ={type(file3_check)}')
+                if file3_check:
+                    do_fft = (len(literal_eval(weight_shape)) == 4)
+                    #file3_check = os.path.isfile( join(root_data, "macaque_stimuli", model_name, pretrained_name,
+                    #                                f'singvec_mean_lidx={lidx}.npy') )   
+                    file3_check = os.path.isfile( join(root_data, "macaque_stimuli", model_name, pretrained_name,
+                                                    f'r_singvec_dq_lidx={lidx}.npy') )  
+                    file3_check = file3_check and os.path.isfile( join(root_data, "macaque_stimuli", model_name, pretrained_name,
+                                                                       f'l_singvec_dq_lidx={lidx}.npy') )  
+                    if do_fft:
+                        file3_check = file3_check and os.path.isfile( join(root_data, "macaque_stimuli", model_name, pretrained_name,
+                                                                        f'r_fftsingvec_dq_lidx={lidx}.npy') )  
+                        file3_check = file3_check and os.path.isfile( join(root_data, "macaque_stimuli", model_name, pretrained_name,
+                                                                        f'l_fftsingvec_dq_lidx={lidx}.npy') )                                                                                                                                                                                                                         
+                else:
+                    file3_check = True
+                if not (file1_check and file2_check and file3_check):
+                    pbs_array_data.append( (model_name, lidx, pretrained_type) )
+
+
+    #pbs_array_data = pbs_array_data[2:]  # delete
+    print(f"Total jobs: {len(pbs_array_data)} \n")
+
+    quit()
+
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+
+    select = 1
+    ncpus, ngpus = 1, 0
+    singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
+    bind_path = "/project"
+    command = command_setup(singularity_path, bind_path=bind_path)
+
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, "macaque_stimuli/jobs_all/snr_v2"),
+             P=project_ls[pidx],
+             #ngpus=ngpus,
+             ncpus=ncpus,
+             select=select,             
+             walltime='23:59:59',   # small/medium
+             mem='16GB')                  
+
 # ---------------------- Plotting ----------------------
 
 def load_dict():
@@ -1127,6 +2003,9 @@ def load_dict():
                  }   
 
     return metric_dict, name_dict
+
+
+# ---------------------- Extracting metrics ----------------------
 
 # load raw metrics from network
 def load_raw_metric(model_name, pretrained:bool, metric_name, **kwargs):
@@ -1212,20 +2091,20 @@ def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
             # round to closest integer to ED of the layer
 
             # method 1 (original in manuscript, renormalized by fixed n_top as below)
-            """
-            n_top = round(np.ma.masked_invalid(metric_D[l:]).mean())    # average across pre-evaluated D
-            var_percentage = metric_R[l,:,:n_top]/metric_R[l,:,:n_top].sum(-1)[:,None]  # renormalized by n_top
-            metric_data[l,:] = ( metric_og[l,:,:n_top] * var_percentage ).sum(-1)
-            #print(f"n_top = {n_top}, total PCs = {metric_R[l].shape[-1]}, avg var explained = {metric_R[l,:,:n_top].sum(-1).mean(-1)}")
-            """
+            
+            # n_top = round(np.ma.masked_invalid(metric_D[l:]).mean())    # average across pre-evaluated D
+            # var_percentage = metric_R[l,:,:n_top]/metric_R[l,:,:n_top].sum(-1)[:,None]  # renormalized by n_top
+            # metric_data[l,:] = ( metric_og[l,:,:n_top] * var_percentage ).sum(-1)
+            # #print(f"n_top = {n_top}, total PCs = {metric_R[l].shape[-1]}, avg var explained = {metric_R[l,:,:n_top].sum(-1).mean(-1)}")
+            
 
             # method 2 (original in manuscript, renormalized by all)     
-            """       
-            n_top = round(np.ma.masked_invalid(metric_D[l:]).mean())    # average across pre-evaluated D
-            var_percentage = metric_R[l,:,:]/metric_R[l,:,:].sum(-1)[:,None]  # renormalized by all
-            metric_data[l,:] = ( metric_og[l,:,:n_top] * var_percentage[:,:n_top] ).sum(-1)
-            #print(f"n_top = {n_top}, total PCs = {metric_R[l].shape[-1]}, avg var explained = {metric_R[l,:,:n_top].sum(-1).mean(-1)}")      
-            """      
+                   
+            # n_top = round(np.ma.masked_invalid(metric_D[l:]).mean())    # average across pre-evaluated D
+            # var_percentage = metric_R[l,:,:]/metric_R[l,:,:].sum(-1)[:,None]  # renormalized by all
+            # metric_data[l,:] = ( metric_og[l,:,:n_top] * var_percentage[:,:n_top] ).sum(-1)
+            # #print(f"n_top = {n_top}, total PCs = {metric_R[l].shape[-1]}, avg var explained = {metric_R[l,:,:n_top].sum(-1).mean(-1)}")      
+
 
             # method 3 (no renormalization) 
             
@@ -1278,6 +2157,7 @@ def load_processed_metric(model_name, pretrained:bool, metric_name,**kwargs):
         return metric_data[conv_idxs]
     else:
         return metric_data
+
 
 # transform model string name into formal name with capitals
 def transform_model_name(s):
