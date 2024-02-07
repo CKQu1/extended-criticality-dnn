@@ -1020,7 +1020,7 @@ def pretrained_allfit(weight_path, n_weight, with_logl, remove_weights=True):
     if not os.path.exists(model_path2): os.makedirs(model_path2)
     print(f"model_path1: {model_path1}" + "\n" + f"model_path2: {model_path2}")
 
-    # check if previously trained
+    # check if previously fitted
     data_name = replace_name(weight_name,'allfit') 
     df_name = data_name + ".csv"
     plot_name = replace_name(weight_name,'plot') + ".pdf"
@@ -1195,7 +1195,7 @@ def divided_logl(weight_path, n_weight, batch_idx, B):
 
 # Loading weight matrix ----------------------       
 
-    main_path = join(root_data,"pretrained_workflow")
+    main_path = join(root_data, "pretrained_workflow")
     if not os.path.isdir(main_path): os.makedirs(main_path)
     #weight_path = join(main_path, "weights_all")
 
@@ -1215,7 +1215,7 @@ def divided_logl(weight_path, n_weight, batch_idx, B):
     if not os.path.exists(model_path2): os.makedirs(model_path2)
     print(f"model_path1: {model_path1}" + "\n" + f"model_path2: {model_path2}")
 
-    # check if previously trained
+    # check if previously fitted
     data_name = replace_name(weight_name,'allfit') 
     df_name = data_name + ".csv"
     plot_name = replace_name(weight_name,'plot') + ".pdf"
@@ -1250,9 +1250,10 @@ def divided_logl(weight_path, n_weight, batch_idx, B):
         # evenly divide weights       
         nsize = int(np.ceil(len(weights)/B)) 
         idx_pairs = [[i, min(i+nsize, len(weights))] for i in range(0, len(weights), nsize)]
-        assert idx_pairs[-1][0] < idx_pairs[-1][1], "Zero chunk!"
+        #assert idx_pairs[-1][0] < idx_pairs[-1][1], "Zero chunk!"
 
-        weights = weights[idx_pairs[batch_idx][0]:idx_pairs[batch_idx][1]]
+        if idx_pairs[-1][0] < idx_pairs[-1][1]:  # zero chunk
+            weights = weights[idx_pairs[batch_idx][0]:idx_pairs[batch_idx][1]]
 
         # refit the whole distribution
         #ill_logl_dists = []
@@ -1260,27 +1261,161 @@ def divided_logl(weight_path, n_weight, batch_idx, B):
             logl = df.iloc[0, logl_idx]            
             dist_type = dist_types[dist_idx]
             idxs = bd_idxs[dist_idx]
-            if not is_num_defined(logl):                             
-                # load fitted params
-                params = list(df.iloc[0,idxs[0]:idxs[1]])
-                logl = logl_from_params(weights, params, dist_type)
-                is_partial_logl_defined = is_num_defined(logl)
-
-                # create df if not exist
-                df_divided_file = join(wmat_path, f"{dist_type}_{B}.csv")
+            if not is_num_defined(logl):      
+                df_divided_file = join(wmat_path, f"{dist_type}_batch={batch_idx}_B={B}.csv")
                 if os.path.isfile(df_divided_file):
                     df_divided = pd.read_csv(df_divided_file)
+                    is_partial_logl_defined = df_divided.iloc[0,1]
                 else:
-                    df_divided = pd.DataFrame({'partial_logl': [0]*B, 'is_defined': [False]*B, 'entries': [0]*B})                  
+                    is_partial_logl_defined = False
 
-                df_divided.iloc[batch_idx,0] = logl
-                df_divided.iloc[batch_idx,1] = is_partial_logl_defined
-                df_divided.iloc[batch_idx,2] = len(weights)
+                if bool(is_partial_logl_defined) == False:
 
-                # save dataframe
-                df_divided.to_csv(df_divided_file, index=False)                
+                    # load fitted params
+                    if idx_pairs[-1][0] < idx_pairs[-1][1]:
+                        params = list(df.iloc[0,idxs[0]:idxs[1]])
+                        logl = logl_from_params(weights, params, dist_type)
+                        is_partial_logl_defined = is_num_defined(logl)
+                    else:
+                        logl = 0
+                        is_partial_logl_defined = True
 
-                print(f"n_weight = {n_weight} with batch_idx {batch_idx} has partial LL {logl}, which is {is_partial_logl_defined}")
+                    # ----- version 1 -----
+
+                    # # create df if not exist
+                    # df_divided_file = join(wmat_path, f"{dist_type}_{B}.csv")
+                    # if os.path.isfile(df_divided_file):
+                    #     df_divided = pd.read_csv(df_divided_file)
+                    # else:
+                    #     df_divided = pd.DataFrame({'partial_logl': [0]*B, 'is_defined': [False]*B, 'entries': [0]*B})                  
+
+                    # df_divided.iloc[batch_idx,0] = logl
+                    # df_divided.iloc[batch_idx,1] = is_partial_logl_defined
+                    # df_divided.iloc[batch_idx,2] = len(weights)                
+
+                    # ----- version 2 (2024-01-17) -----
+
+                    if os.path.isfile(df_divided_file):
+                        df_divided = pd.read_csv(df_divided_file)
+                    else:
+                        df_divided = pd.DataFrame({'partial_logl': [0]*1, 'is_defined': [False]*1, 'entries': [0]*1})                  
+
+                    df_divided.iloc[0,0] = logl
+                    df_divided.iloc[0,1] = is_partial_logl_defined
+                    df_divided.iloc[0,2] = len(weights)
+
+                    # save dataframe
+                    df_divided.to_csv(df_divided_file, index=False)                
+
+                    print(f"n_weight = {n_weight} with batch_idx {batch_idx} has partial LL {logl}, which is {is_partial_logl_defined}")
+
+                    """
+                    if is_partial_logl_defined:
+                        df.iloc[0,idxs[1]] = logl
+                        print(f"{dist_type} logl updated!")
+                    else:
+                        ill_logl_dists.append(dist_type)
+                        print(f"{dist_type} logl still ill-defined!")        
+                    print('\n')
+                    """
+
+                else:
+                    print(f"Partial logl for {dist_type} done already!")
+
+
+    # Time
+    t_last = time.time()
+    print(f"{weight_name} at batch_idx {batch_idx}/{B} done in {t_last - t0} s!")        
+
+
+def group_divided_logl(weight_path, n_weight, B=15):
+    """
+    Grouping together the divided logl's
+    """
+
+    t0 = time.time()
+    n_weight, B = int(n_weight), int(B)
+    #pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
+    pytorch = False if "_tf" in weight_path else True
+    print(weight_path.split("/")[-1][:3])
+    if_torch_weights = (weight_path.split("/")[-1][:3] != "np_")
+
+    #assert "allfit" or "noremovefit" in weight_path, "weight_path incorrect"
+    remove_weights = True
+    #if "noremovefit" in weight_path:
+    #    remove_weights = False    
+
+# Loading weight matrix ----------------------       
+
+    main_path = join(root_data,"pretrained_workflow")
+    if not os.path.isdir(main_path): os.makedirs(main_path)
+    #weight_path = join(main_path, "weights_all")
+
+    # new method
+    df_info = pd.read_csv(join(main_path, "weight_info.csv")) if pytorch else pd.read_csv(join(main_path, "weight_info_tf.csv"))
+    weight_name = df_info.loc[n_weight,"weight_file"]
+    layer_idx, wmat_idx = int(df_info.loc[n_weight,"idx"]), int(df_info.loc[n_weight,"wmat_idx"])
+    model_name = df_info.loc[n_weight,"model_name"]
+    print(f"n_weight = {n_weight}: {weight_name}")
+
+    # dir for potentially previously fitted params
+    allfit_folder1 = "allfit_all" if pytorch else "allfit_all_tf"
+    model_path1 = join(os.path.dirname(weight_path), allfit_folder1, model_name)
+    allfit_folder2 = "nan_allfit_all" if pytorch else "nan_allfit_all_tf"
+    model_path2 = join(os.path.dirname(weight_path), allfit_folder2, model_name)   
+    if not os.path.exists(model_path1): os.makedirs(model_path1)
+    if not os.path.exists(model_path2): os.makedirs(model_path2)
+    print(f"model_path1: {model_path1}" + "\n" + f"model_path2: {model_path2}")
+
+    # check if previously fitted
+    data_name = replace_name(weight_name,'allfit') 
+    df_name = data_name + ".csv"
+    plot_name = replace_name(weight_name,'plot') + ".pdf"
+    print(f"df_name: {df_name}")
+    print(f"plot_name: {plot_name}")
+    plot_exists = isfile( join(model_path1, plot_name) )  # if the distribution hist was plotted
+    fit_exists1 = isfile( join(model_path1, df_name) )  # if the fitted distribution log-likelihood does not have nan values
+    fit_exists2 = isfile( join(model_path2, df_name) )  # if the fitted distribution log-likelihood has nan values
+    print(f"plot_exists: {plot_exists}, fit_exists1: {fit_exists1}, fit_exists2: {fit_exists2}")
+
+    # there are no nan-valued logl for all fitted distributions
+    if fit_exists1:
+        print("Fitting done already!") 
+        
+    # nan-valued logl for all fitted distributions exist
+    elif fit_exists2:        
+        partialfit_folder = "partialfit_all" if pytorch else "partialfit_all_tf"
+        wmat_path = join(main_path, partialfit_folder, model_name, f"{n_weight}_{layer_idx}_{wmat_idx}")  
+                
+        df = pd.read_csv(join(model_path2, f"{data_name}.csv"))
+        # check entries 7, 13, 22, 29
+        logl_idxs = [7, 13, 22, 29]
+        bd_idxs = [[3,7,11], [11,13,19], [19,22,26], [26,29,33]]  # not useful
+        dist_types = ['levy_stable', 'normal', 'tstudent', 'lognorm']
+
+        # refit the whole distribution
+        #ill_logl_dists = []
+        for dist_idx, logl_idx in enumerate(logl_idxs):
+            logl = df.iloc[0, logl_idx]            
+            dist_type = dist_types[dist_idx]
+            idxs = bd_idxs[dist_idx]
+            if not is_num_defined(logl):                                 
+
+                # ----- version 2 (2024-02-08) -----
+
+                for bidx in range (B):
+                    df_divided_file = join(wmat_path, f"{dist_type}_batch={batch_idx}_B={bidx}.csv")
+                    if os.path.isfile(df_divided_file):
+                        df_divided = pd.read_csv(df_divided_file)
+                        df_divided.iloc[0,0] = logl
+                        df_divided.iloc[0,1] = is_partial_logl_defined
+                        df_divided.iloc[0,2] = len(weights)   
+                        if not is_partial_logl_defined:
+                            break                     
+                    else:
+                        break               
+
+
 
                 """
                 if is_partial_logl_defined:
@@ -1294,7 +1429,7 @@ def divided_logl(weight_path, n_weight, batch_idx, B):
 
     # Time
     t_last = time.time()
-    print(f"{weight_name} at batch_idx {batch_idx}/{B} done in {t_last - t0} s!")            
+    print(f"{weight_name} at batch_idx {batch_idx}/{B} done in {t_last - t0} s!")        
 
 
 def pre_submit(pytorch: bool, prefix="weights_all"):
@@ -1416,7 +1551,7 @@ def submit_terminal():
 
 #  functions: divided_logl()
 def divided_submit(*args):
-    global df_divided, wmat_path_dir_files, wmat_path_dirs, wmat_paths, partialfit_folder, wmat_info, batch_idxs
+    global df_divided, wmat_path_dir_files, wmat_path_dirs, wmat_paths, partialfit_folder, wmat_info, batch_idxs, pbs_array_data     
 
     pytorch = True
     main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)       
@@ -1425,7 +1560,7 @@ def divided_submit(*args):
     allfit_folder2 = "nan_allfit_all" if pytorch else "nan_allfit_all_tf"
     fit_path2 = join(os.path.dirname(root_path), allfit_folder2)  
     partialfit_folder = "partialfit_all" if pytorch else "partialfit_all_tf"
-    partialfit_folder = join(join(root_data, "pretrained_workflow"), partialfit_folder)    
+    partialfit_folder = join(main_path, partialfit_folder)    
 
     dist_types = ['levy_stable', 'normal', 'tstudent', 'lognorm']
 
@@ -1434,8 +1569,8 @@ def divided_submit(*args):
     pbs_array_data = []
     
     B = 15
-    # initial submit
-    """
+    # initial submit    
+    n_weights = []
     for n_weight in list(range(total_weights)):
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
@@ -1445,12 +1580,14 @@ def divided_submit(*args):
         fit_exist2 = isfile( join(fit_path2, model_name, f"{replace_name(weight_name,'allfit')}.csv") )                  
         if fit_exist2:  
             for batch_idx in range(B):
-                pbs_array_data.append( (root_path, n_weight, batch_idx, B) )        
-    """
+                pbs_array_data.append( (root_path, n_weight, batch_idx, B) )  
 
+        n_weights.append(n_weight)
+    
     
     # remainder submit
-
+    
+    # neworks paths that have nan logl values
     wmat_paths = [join(partialfit_folder,f) for f in os.listdir(partialfit_folder) if os.path.isdir(join(partialfit_folder,f))]
     for wmat_path in wmat_paths:
 
@@ -1473,9 +1610,9 @@ def divided_submit(*args):
  
     #pbs_array_data = pbs_array_data[B:]
     print(len(pbs_array_data))
-    #print(pbs_array_data)
+    #print(pbs_array_data)    
 
-    quit()    
+    #quit()    
     
     ncpus, ngpus = 1, 0
     command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)    
@@ -1488,12 +1625,12 @@ def divided_submit(*args):
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}',
         #qsub(f'singularity exec dist_fit.sif python {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
-             path=join(main_path, "jobs_all", "divided_jobs"),  
+             path=join(main_path, "jobs_all", "divided_logl_jobs"),  
              P=project_ls[pidx], 
              walltime='23:59:59',
              ncpus=ncpus,
              ngpus=ngpus,
-             mem="2GB")     
+             mem="4GB")     
     
 
 # -------------------- Grouping batched pretrained weights matrix fitting --------------------             
