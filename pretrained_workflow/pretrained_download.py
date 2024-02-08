@@ -177,6 +177,8 @@ def pretrained_store(n_model, replace=False):
         df_names.to_csv(f'{main_path}/net_names_all.csv', index=False)
         """
 
+        weight_threshold = 0.00001
+
         i, wmat_idx = 0, 0
         for name, param in model.named_parameters():
 
@@ -191,7 +193,8 @@ def pretrained_store(n_model, replace=False):
                     # create dataframe that stores the weight info for each NN
                     log(main_path, "weight_info", 
                         model_name=model_name, name=name, param_shape=list(param.shape),
-                        weight_num=len(weights), wmat_idx=wmat_idx, idx=i,
+                        weight_num=len(weights), fit_size=len(weights[torch.abs(weights) > weight_threshold]),
+                        wmat_idx=wmat_idx, idx=i,
                         weight_path=weight_path, weight_file=weight_file)     
 
                     print(rf"W{i}: {wmat_idx} done!")
@@ -230,7 +233,7 @@ def pretrained_store(n_model, replace=False):
 
 def pretrained_store_check():
     """
-    Check if all weights are downloaded.     
+    Check if all weights are downloaded, can log extra info regarding weights in needed.     
     """
 
     import torch
@@ -265,6 +268,8 @@ def pretrained_store_check():
             # path for saved weights
             weight_path = f"{main_path}/weights_all"
 
+            weight_threshold = 0.00001
+
             i, wmat_idx = 0, 0
             for name, param in model.named_parameters():               
 
@@ -275,7 +280,8 @@ def pretrained_store_check():
                     # make sure weight matrix info is logged in weight_info.csv
                     log(main_path, "weight_info", 
                         model_name=model_name, name=name, param_shape=list(param.shape),
-                        weight_num=len(weights), wmat_idx=wmat_idx, idx=i,
+                        weight_num=len(weights), fit_size=len(weights[torch.abs(weights) > weight_threshold]),
+                        wmat_idx=wmat_idx, idx=i,
                         weight_path=weight_path, weight_file=weight_file)                       
 
                     if not os.path.isfile(f"{weight_path}/{model_name}_layer_{i}_{wmat_idx}"):
