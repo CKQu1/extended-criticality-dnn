@@ -46,7 +46,7 @@ import random
 from os.path import join
 
 #project_ls = ["PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
-project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
+project_ls = ["phys_DL", "PDLAI", "dnn_maths", "dyson", "vortex_dl", "frac_attn"]
 #project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson"]
 
 def qsub(command, pbs_array_data, **kwargs):
@@ -158,7 +158,11 @@ def job_divider(pbs_array: list, N: int):
         if idx != ncores - 1:
             pbss.append( pbs_array[idx*delta:(idx+1)*delta] )
         else:
-            pbss.append( pbs_array[idx*delta::] )    
+            if len(pbs_array[idx*delta:]) < 2:
+                pbss[-1] = pbss[-1] + pbs_array[idx*delta:]
+            else:    
+                pbss.append( pbs_array[idx*delta:] )   
+    ncores = len(pbss)
     perm = list(np.random.choice(N,ncores,replace=False))
     assert len(perm) == len(pbss), "perm length and pbss length not equal!"
 
