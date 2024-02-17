@@ -213,6 +213,104 @@ def npc_layerwise_ed(data_path, post, alpha100, g100, epochs):
 
     print(f"ED via method batches is saved for epochs {epochs}!")
 
+
+def hidden_layerwise_d2(data_path, post, alpha100, g100, epochs):
+    """
+    computes 1. the correlation dimension D2 of the layerwise neural representations corresponding to input images
+        - data_path: /project/PDLAI/project2_data/trained_mlps/fcn_grid/fc10_grid
+
+        - post = 1: post-activation jacobian
+               = 0: pre-activation jacobian
+               = 2: all layers including both pre- and post- activation
+    """
+    global C_ls, C_dims, dqs, hidden_layer, net, trainloader, C, dqs_hidden
+
+    import scipy.io as sio
+    import sys
+    import torch
+    from torch.utils.data import TensorDataset
+
+    from NetPortal.models import ModelFactory
+    from train_supervised import get_data, set_data
+    from utils_dnn import D_q_all    
+
+    post = int(post)
+    alpha100, g100 = int(alpha100), int(g100)
+    assert post == 2 or post == 1 or post == 0, "No such option!"
+    epochs = literal_eval(epochs) if isinstance(epochs, str) else epochs
+
+    # Extract numeric arguments.
+    alpha, g = int(alpha100)/100., int(g100)/100.
+    # load MNIST
+    image_type = 'mnist'
+    trainloader, _ = set_data(image_type, rshape=True)
+    trainloader = DataLoader(trainloader, batch_size=len(trainloader), shuffle=False)
+    #assert len(trainloader) == 1, "The computation of D_2 in npc_layerwise_d2() is not over the full-batch images!"
+
+    # getting network setting from path
+    fcn, activation, epoch_last, net_folder = setting_from_path(data_path, alpha100, g100)
+    L = int(fcn[2:])
+    batch_size = 60000
+    if "fcn_grid" in data_path or "gaussian_data" not in data_path:
+        # load MNIST
+        image_type = 'mnist'
+        trainloader, _ = get_dataset(image_type, batch_size)
+    else:
+        image_type = "gaussian"
+        gaussian_data_setting = pd.read_csv(join(data_path, "gaussian_data_setting.csv"))
+        gaussian_data_kwargs = {}
+        for param_name in gaussian_data_setting.columns:
+            gaussian_data_kwargs[param_name] = gaussian_data_setting.loc[0,param_name]
+        trainloader, _, _ = get_dataset(image_type, batch_size, **gaussian_data_kwargs)
+
+    # load nets and weights
+    epoch = 0
+    hidden_N = [784]*L + [10]
+    with_bias = False
+    kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+              "init_path": join(data_path, net_folder), "init_epoch": epoch,
+              "activation": 'tanh', "with_bias": with_bias,
+              "architecture": 'fc'}
+    net = ModelFactory(**kwargs)
+
+    # compute effective dimension for a single input manifold
+    C_dims = np.zeros([len(net.sequential)])   # record dimension of correlation matrix
+    if post == 0 or post == 1:
+        l_remainder = post
+    else:
+        l_remainder = None
+    l_start = l_remainder
+    if post == 0 or post == 1:
+        depth_idxs = list(range(l_start,len(net.sequential),2))
+        L = len(depth_idxs)
+    else:
+        L = len(net.sequential)
+    dq_hidden_save_path = join(data_path, net_folder, f"dq_hidden-fullbatch_{post_dict[post]}")
+    if not os.path.isdir(dq_hidden_save_path): os.makedirs(dq_hidden_save_path)
+    print("Computation starting.")    
+    with torch.no_grad():
+        for epoch in tqdm(epochs):
+            l = 0
+            # load nets and weights
+            kwargs = {"dims": hidden_N, "alpha": None, "g": None,
+                      "init_path": join(data_path, net_folder), "init_epoch": epoch,
+                      "activation": 'tanh', "with_bias": with_bias,
+                      "architecture": 'fc'}
+            net = ModelFactory(**kwargs)
+            # compute the associated D2 quantities over the full batch
+            hidden_layer = torch.squeeze(torch.stack([e[0] for e in trainloader]).to(dev))        
+            for lidx in range(len(net.sequential)):
+                hidden_layer = net.sequential[lidx](hidden_layer)                                
+                if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
+                    # save data
+                    dqs_hidden = D_q_all(hidden_layer.detach().numpy().T,2)
+                    #quit()  # delete
+                    np.save(join(dq_hidden_save_path, f"D2_{l}_{epoch}"), dqs_hidden)
+                    l += 1
+
+    print(f"D2 for hidden layers from full batch of images is saved for epochs {epochs}!")
+
+
 def npc_layerwise_d2(data_path, post, alpha100, g100, epochs):
     """
     computes 1. the correlation dimension D2 of the layerwise neural representations' top eigenvectors
@@ -220,6 +318,7 @@ def npc_layerwise_d2(data_path, post, alpha100, g100, epochs):
 
     - post = 1: post-activation jacobian
            = 0: pre-activation jacobian
+           = 2: all layers including both pre- and post- activation
     """
     from torch.utils.data import TensorDataset
     from sklearn.decomposition import PCA
@@ -411,8 +510,9 @@ def class_separation_pca(data_path, alpha100, g100, epochs):
     np.save(join(save_path, "target"), targets.detach().numpy())                
 
 
+# functions: hidden_layerwise_d2(), npc_layerwise_d2()
 def submit(*args):
-    from qsub import qsub, job_divider, project_ls
+    from qsub import qsub, job_divider, project_ls, command_setup
     input_idxs = str( list(range(1,50)) ).replace(" ", "")
     #post = 1
     #epochs = [0,1] + list(range(50,651,50))
@@ -434,20 +534,26 @@ def submit(*args):
     print(f"Total jobs: {len(pbs_array_data)}")
     print(epochs_ls)
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
+
+    ncpus, ngpus, select = 1, 1, 0
+    singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
+    bind_path = "/project"
+    command = command_setup(singularity_path, bind_path=bind_path)    
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data, "geometry_data"),
+             path=join(root_data, "geometry_data", "jobs_all", "hidden_layerwise_d2"),
              P=project_ls[pidx],
              ncpus=1,
              walltime='23:59:59',
              #mem='1GB')
              mem='2GB') 
 
+# functions: class_separation_pca()
 def pca_submit(*args):
-    from qsub import qsub, job_divider, project_ls
+    from qsub import qsub, job_divider, project_ls, command_setup
     #epochs = [0,650]
     epochs = [0,1] + list(range(50,651,50))
     perm_epoch, pbss_epoch = job_divider(epochs, 1)
@@ -461,10 +567,15 @@ def pca_submit(*args):
     print(f"Total jobs: {len(pbs_array_data)}")
     print(epochs_ls)
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
+
+    ncpus, ngpus, select = 1, 1, 0
+    singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
+    bind_path = "/project"
+    command = command_setup(singularity_path, bind_path=bind_path)       
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              path=join(root_data, "trained_mlps/PCA_jobs"),
              P=project_ls[pidx],
@@ -617,12 +728,17 @@ def submit_preplot(*args,post=1,reig=0):
     pbs_array_data = set(pbs_array_data)
     """
 
-    from qsub import qsub, job_divider, project_ls
+    from qsub import qsub, job_divider, project_ls, command_setup
+    ncpus, ngpus, select = 1, 1, 0
+    singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
+    bind_path = "/project"
+    command = command_setup(singularity_path, bind_path=bind_path)
+
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
-        qsub(f'python {sys.argv[0]} {" ".join(args)}',    
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
              path=join(root_data, "geometry_data"),
              P=project_ls[pidx],
