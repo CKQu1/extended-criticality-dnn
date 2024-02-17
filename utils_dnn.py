@@ -6,15 +6,30 @@ from path_names import root_data
 
 # ---------- Computation related to D_q ----------
 
-# numpy version
+# ----- numpy version -----
 def IPR(vec, q):
+    # single vector
     return sum(abs(vec)**(2*q)) / sum(abs(vec)**2)**q
 
-# computes for array of vecs as columns
-def IPR_all(vecs, q):
-    return sum(abs(vecs)**(2*q), axis=0) / sum(abs(vecs)**2, axis=0)**q
+def D_q(vec, q):
+    # single vector
+    return np.log(IPR(vec, q)) / (1-q) / np.log(len(vec))    
 
-# pytorch version
+# ----- computes for array of vecs as columns -----
+# first dim is the vectors dimension
+def IPR_all(vecs, q):
+    if isinstance(vecs, torch.Tensor):
+        return torch.sum(torch.abs(vecs)**(2*q), axis=0) / torch.sum(torch.abs(vecs)**2, axis=0)**q
+    else:        
+        return np.sum(np.abs(vecs)**(2*q), axis=0) / np.sum(np.abs(vecs)**2, axis=0)**q
+
+def D_q_all(vecs, q):
+    if isinstance(vecs, torch.Tensor):
+        return torch.log(IPR_all(vecs, q)) / (1-q) / torch.log(vecs.shape[0])
+    else:
+        return np.log(IPR_all(vecs, q)) / (1-q) / np.log(vecs.shape[0])       
+
+# ----- pytorch/numpy version -----
 def compute_IPR(vec,q):
     if isinstance(vec, torch.Tensor):
         vec = torch.abs(vec.detach().cpu())
@@ -25,15 +40,6 @@ def compute_IPR(vec,q):
 
     return ipr
 
-# numpy version
-def D_q(vec, q):
-    return np.log(IPR(vec, q)) / (1-q) / np.log(len(vec))
-
-# computes for array of vecs as columns
-def D_q_all(vecs, q):
-    return np.log(IPR(vecs, q)) / (1-q) / np.log(vecs.shape[0])
-
-# pytorch version
 def compute_dq(vec,q):
     if isinstance(vec, torch.Tensor):
         return  (torch.log(IPR(vec,q))/np.log(len(vec)))/(1 - q)
