@@ -25,7 +25,7 @@ def IPR_all(vecs, q):
 
 def D_q_all(vecs, q):
     if isinstance(vecs, torch.Tensor):
-        return torch.log(IPR_all(vecs, q)) / (1-q) / torch.log(vecs.shape[0])
+        return torch.log(IPR_all(vecs, q)) / (1-q) / torch.log(torch.Tensor([vecs.shape[0]]))
     else:
         return np.log(IPR_all(vecs, q)) / (1-q) / np.log(vecs.shape[0])       
 
