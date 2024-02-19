@@ -34,7 +34,9 @@ legend_size = 14.1 * 0.8
 lwidth = 1.8
 msize = 10
 text_size = 14
-c_ls_targets = list(mcl.TABLEAU_COLORS.keys())
+#c_ls_targets = list(mcl.TABLEAU_COLORS.keys())
+#cmap = plt.get_cmap('tab10') 
+cmap = plt.get_cmap('PiYG')
 c_ls = ["darkblue", "darkred"]
 linestyle_ls = ["--", "-"]
 #marker_ls = ["o", "."]
@@ -45,15 +47,23 @@ axw, axh = figw * 0.7, figh * 0.7
 global post_dict, reig_dict, all_metric_ls
 post_dict = {0:'pre', 1:'post', 2:'all'}
 reig_dict = {0:'l', 1:'r'}    
-all_metric_ls = ["class_sep", "ED", "D2_npc", "D2_npd", "cum_var", "eigvals_ordered"]
+all_metric_ls = ["class_sep", "ED", "D2_npc", "D2_npd", "D2_hidden", "cum_var", "eigvals_ordered"]
 
+# data_path = /project/PDLAI/project2_data/trained_mlps/fcn_grid/fc10_grid
 def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
+    """
+    Plots the class separation for MLPs in the first two columns, plots the ED/localization properties of 
+    the neural representation PCs:
+        - data_path (str): /project/PDLAI/project2_data/trained_mlps/fcn_grid/fc10_grid
+        - post (int): is either 0 or 1, if 1 plots post activation 
+    """
+
     from sklearn.linear_model import LinearRegression
     from sklearn.decomposition import PCA
     from NetPortal.models import ModelFactory
 
     global epoch_plot, metric_means, metric_data, D2_mean, D2_std, axs
-    global depth, X_pca, indices, target_indices
+    global depth, X_pca, indices, target_indices, sample_indices
 
     """
 
@@ -74,7 +84,8 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
     #metric_ls = ["D2", "ED"]
     #metric_ls = ["ED", "D2", "cum_var", "eigvals_ordered"]
     #metric_ls = ["ED", "D2_npc", "D2_npd", "cum_var"]
-    metric_ls = ["class_sep", "ED", "D2_npd", "cum_var"]
+    #metric_ls = ["class_sep", "ED", "D2_npd", "cum_var"]
+    metric_ls = ["class_sep", "ED", "D2_hidden", "cum_var"]
     for metric_name in metric_ls:
         assert metric_name in all_metric_ls
 
@@ -133,8 +144,23 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
                     sample_indices = target_indices[cl_idx]
                     #plot_points = 5000
                     #sample_indices = list(target_indices[cl_idx][0:plot_points]) + [False] * (60000 - plot_points)
-                    axs[gidx,aidx].scatter(X_pca[sample_indices,0], X_pca[sample_indices,1], c=c_ls_targets[iidx],
-                                           s=1.5, alpha=0.2)   
+                    # old version
+                    #axs[gidx,aidx].scatter(X_pca[sample_indices,0], X_pca[sample_indices,1], c=c_ls_targets[iidx],
+                    #                       s=1.5, alpha=0.2)   
+                    # new version
+
+                    if gidx == 0 and aidx == 0:
+                        im = axs[gidx,aidx].scatter(X_pca[sample_indices,0], X_pca[sample_indices,1], 
+                                                    vmin=0, vmax=len(selected_target_idxs)-1,
+                                                    c=np.full(sample_indices.sum(),iidx), 
+                                                    #c=c_ls_targets[iidx],
+                                                    s=1.5, alpha=0.2, cmap=cmap)  
+                    else:
+                        axs[gidx,aidx].scatter(X_pca[sample_indices,0], X_pca[sample_indices,1], 
+                                               vmin=0, vmax=len(selected_target_idxs)-1,
+                                               c=np.full(sample_indices.sum(),iidx), 
+                                               #c=c_ls_targets[iidx],
+                                               s=1.5, alpha=0.2, cmap=cmap)                       
                     #print(X_pca[indices,0].shape)  # delete
 
                 axs[gidx,aidx].set_xlim([-xax_limit,xax_limit]); axs[gidx,aidx].set_ylim([-yax_limit,yax_limit])
@@ -191,6 +217,8 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
                                 metric_data = np.load(join(data_path, net_folder, f"dq_npc-fullbatch_{post_dict[post]}", f"D2_{l}_{epoch_plot}.npy"))
                             elif metric_name == "D2_npd":
                                 metric_data = np.load(join(data_path, net_folder, f"dq_npd-fullbatch_{post_dict[post]}", f"D2_{l}_{epoch_plot}.npy"))
+                            elif metric_name == 'D2_hidden':
+                                metric_data = np.load(join(data_path, net_folder, f"dq_hidden-fullbatch_{post_dict[post]}", f"D2_{l}_{epoch_plot}.npy"))
                             #n_top = round(ED_all[aidx, gidx, l])    # top PCs of the mean ED of that layer  
                             if n_top != None:                          
                                 D2_mean.append(metric_data[:n_top].mean())
@@ -292,6 +320,19 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
             file_full += f"_epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf"
         print(f"Figure saved as {file_full}")
         plt.savefig(file_full, bbox_inches='tight')
+        plt.close()
+
+        # horizontal colorbar (can check geometry_analysis/greatcircle_proj2.py)
+        fig_cbar = plt.figure()
+        #cbar_ax = fig.add_axes([0.85, 0.20, 0.03, 0.75])  # vertical cbar
+        cbar_ax = fig_cbar.add_axes([0.85, 0.20, 0.75, 0.03])  # horizontal cbar
+        cbar_ticks = list(range(10))
+        cbar = fig_cbar.colorbar(im, cax=cbar_ax, ticks=cbar_ticks, orientation='horizontal')
+        cbar.ax.set_xticklabels(cbar_ticks)
+        cbar.ax.tick_params(axis='x', labelsize=tick_size)
+        
+        plt.savefig(join(plot_path, f'pca_cbar_post={post}.pdf'), bbox_inches='tight')           
+
     else:
         plt.show()
 
