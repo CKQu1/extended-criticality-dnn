@@ -1,4 +1,5 @@
 import numpy as np
+from ast import literal_eval
 from tqdm import tqdm
 from os.path import join, isdir, isfile
 
@@ -88,6 +89,7 @@ def gcircle_prop(N, L, N_thetas, alpha100, g100, *args):
     hs_all[0,:,:] = hs.T
     from scipy.stats import levy_stable
     for l in tqdm(range(L)):
+        # preactivations (same case as in random_dnn/random_dnn.py)
         hs = np.dot(levy_stable.rvs(alpha, 0, size=[N,N], scale=g*(0.5/N)**(1./alpha)),
                     np.tanh(hs))    
         hs_all[l + 1,:,:] = hs.T
@@ -119,25 +121,121 @@ def gcircle_save(N, L, N_thetas,
                 f"{path}/gcircles_alpha_{alpha100}_g_{g100}_ensemble={ensemble}")        
 
 
-def layer_survival_plot(alpha100, g100, *args):
+def avalanche_prop(N, alpha100, g100, seed, *args):
+
+    global hs_all, hs, S_acts, S_actss, S_actss_arr, Ls
+
+    import torch
+    from scipy.stats import levy_stable
+
+    threshold = 0
+    #threshold = 1e-10
+
+    N = int(N)
+    alpha, g = int(alpha100)/100., int(g100)/100.  
+    seed = int(seed)  
+    wmat = levy_stable.rvs(alpha, 0, size=[N,N], scale=g*(0.5/N)**(1./alpha), random_state=seed)  # quenched
+
+    S_actss = []
+    Ls = np.zeros([N])   
+    for idx in tqdm(range(N)):
+    #for idx in [0]:  # test
+
+        hs = np.zeros([N])
+        hs[idx] = 1
+        S_act = 1  # dummy
+        S_acts = []  # number of activated neurons
+        L = 0
+        while S_act > 0:
+            # preactivations (same case as in random_dnn/random_dnn.py)
+            hs = np.dot(wmat, np.tanh(hs))   
+            S_act = (np.abs(hs) > threshold).sum()
+            S_acts.append(S_act)
+            L += 1
+            #if L % 10 == 0:
+            #    print(f'L = {L}, min: {hs.min()}, max: {hs.max()}')
+
+        S_actss.append(S_acts)   
+        Ls[idx] = L     
+        #print(S_acts)
+
+    assert len(S_actss) == len(Ls)
+
+    L_max = int(Ls.max())
+    S_actss_arr = np.full((N+1,L_max), np.nan)
+    for idx in range(len(S_actss)):
+        S_acts = S_actss[idx]
+        S_actss_arr[idx,:len(S_acts)] = S_acts
+
+    return S_actss_arr, Ls   
+
+
+def avalanche_save(N, alpha100, g100, seed, path, *args):
+    """
+    Saves data from avalanche_prop().
+    """
+
+    import torch        
+    if not os.path.exists(f'{path}'): os.makedirs(f'{path}')
+
+    S_actss_arr, Ls = avalanche_prop(N, alpha100, g100, seed)
+    np.save(f"{path}/size_alpha100={alpha100}_g100={g100}_seed={seed}", S_actss_arr)
+    np.save(f"{path}/lifetime_alpha100={alpha100}_g100={g100}_seed={seed}", Ls)
+
+
+def avalanche_plot(N, alpha100s, g100s, *args):
     '''
-    Plots the activation norm across the depth, given that the input is a 2D circular manifold.
+    Plots the avalanche size and lifetime, data obtained from avalanche_save()
     '''
-    global hs_all, hs_all_length
+    global S_actss, Ls, S_ag, L_ag, L, alpha, g
 
     import matplotlib.pyplot as plt
     import torch
 
-    path = join(root_data, 'geometry_data', 'gcircle3d_data')
-    hs_all = torch.load(f"{path}/gcircles_alpha_{alpha100}_g_{g100}")    
-    hs_all_length = ((hs_all**2).sum(-1))**0.5
+    N = int(N)
+    alpha100s = literal_eval(alpha100s)
+    g100s = literal_eval(g100s)
 
-    L = hs_all_length.shape[0]
-    plt.plot(list(range(L)), hs_all_length.mean(-1).detach().numpy())
+    nrows, ncols = 2, len(alpha100s)
+    fig_size = (11/2*ncols,9.142/2*nrows)
+    fig, axs = plt.subplots(nrows, len(alpha100s),sharex = False,sharey=False,figsize=fig_size)
+    total_seeds = 10
+    path = join(root_data, 'geometry_data', f'avalanche_data_N={N}')
+
+    for aidx, alpha100 in enumerate(alpha100s):
+        for gidx, g100 in tqdm(enumerate(g100s)):
+            alpha, g = int(alpha100)/100, int(g100)/100
+            S_ag = np.array([])
+            L_ag = np.array([])
+            for seed in range(total_seeds):
+                S_actss = np.load(f"{path}/size_alpha100={alpha100}_g100={g100}_seed={seed}.npy")
+                Ls = np.load(f"{path}/lifetime_alpha100={alpha100}_g100={g100}_seed={seed}.npy")     
+                for idx in range(N):
+                    L = int(Ls[idx])
+                    #S_ag = np.concatenate((S_ag, S_actss[idx,:L]))
+                    S_ag = np.hstack((S_ag, S_actss[idx,:L]))
+                #L_ag = np.concatenate((L, L_ag))               
+                L_ag = np.hstack((L, L_ag))
+
+            # avalanche size distribution
+            axs[0,aidx].hist(S_ag, bins=50, density=True, label=rf'$g$ = {g}')
+            
+            # avalanche lifetime distribution         
+            axs[1,aidx].hist(L_ag, bins=50, density=True, label=rf'$g$ = {g}')
+
+            # log-log scale
+            axs[0,aidx].set_xscale('log'); axs[0,aidx].set_yscale('log')
+            axs[1,aidx].set_xscale('log'); axs[1,aidx].set_yscale('log')
+
+        axs[0,aidx].set_title(rf'$\alpha$ = {alpha}')
+
+    axs[0,0].set_ylabel('Avalanche size')
+    axs[1,0].set_ylabel('Avalanche lifetime')
 
     plot_path = join(root_data, 'figure_ms', 'gcircle')
     if not os.path.isdir(plot_path): os.makedirs(plot_path)    
-    plt.savefig(join(plot_path, f'survival_alpha100={alpha100}_g100={g100}.pdf'))    
+    plt.legend()
+    plt.savefig(join(plot_path, f'avalanche_N={N}_alpha100s={alpha100s}_g100s={g100s}_total={total_seeds}.pdf'))    
 
 
 # functions: gcircle_save()
@@ -187,8 +285,6 @@ def submit_v2(*args):
                       for g100 in [10, 100, 300]
                       for ensemble in range(50)
                       ]
-    #qsub(f'python geometry_analysis/greatcircle_proj_trial.py {sys.argv[0]} {" ".join(args)}',
-    #qsub(f'python greatcircle_proj_trial.py {sys.argv[0]} {" ".join(args)}',   
 
     select, ncpus, ngpus = 1, 1, 0
     singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
@@ -208,7 +304,47 @@ def submit_v2(*args):
              ncpus=ncpus,
              select=select,             
              walltime='23:59:59',   # small/medium
-             mem='2GB')               
+             mem='2GB')           
+
+
+# functions: avalanche_save()
+def submit_avalanche(*args):
+    from qsub import qsub, job_divider, project_ls, command_setup
+    #N = 1000
+    N = 10000
+    total_seeds = 10
+    path = join(root_data, 'geometry_data', f'avalanche_data_N={N}')
+    # test
+    pbs_array_data = [(N, 120, 5, 0, path), (N, 120, 10, 0, path)]
+
+    # pbs_array_data = [(N, alpha100, g100, seed, path)
+    #                   for alpha100 in [120,150,180,200]
+    #                   for g100 in [5,10,15,20,25,30]
+    #                   for seed in range(total_seeds)
+    #                   ]
+
+    select, ncpus, ngpus = 1, 1, 0
+    #singularity_path = "/project/phys_DL/built_containers/FaContainer_v2.sif"
+    singularity_path = ''
+    bind_path = "/project"
+    command = command_setup(singularity_path, bind_path=bind_path)
+
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             ##path='/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/',
+             path=join(root_data,'geometry_data', 'jobs_all', 'avalanche_jobs'),
+             P=project_ls[pidx],
+             ngpus=ngpus,
+             ncpus=ncpus,
+             select=select,             
+             walltime='23:59:59',   # small/medium
+             #mem='6GB'  # N = 1000
+             mem='26GB'  # N = 10000
+             )                   
 
 
 # ----- preplot -----
