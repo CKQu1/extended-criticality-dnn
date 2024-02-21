@@ -170,9 +170,7 @@ def job_divider(pbs_array: list, N: int):
 
 # singularity exec usage
 def command_setup(singularity_path, **kwargs):
-    from os.path import isfile
-
-    assert isfile(singularity_path), "singularity_path does not exist!"
+    from os.path import isfile    
 
     repo_dir = os.getcwd()
     bind_path = kwargs.get('bind_path', '')
@@ -180,6 +178,7 @@ def command_setup(singularity_path, **kwargs):
     ngpus = kwargs.get('ngpus', 0)
 
     if len(singularity_path) > 0:
+        assert isfile(singularity_path), "singularity_path does not exist!"
         if ngpus == 0:
             command = f"singularity exec"
         else:
