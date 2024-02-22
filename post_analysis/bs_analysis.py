@@ -45,7 +45,7 @@ text_size = 14
 title_size = 14.5
 tick_size = 14.5
 label_size = 14.5
-axis_size = 14.5
+axis_size = 10
 legend_size = 10.5
 
 #linestyle_ls = ["-", "--", ":"]
@@ -174,8 +174,8 @@ for eidx, epoch_plot in enumerate(epoch_plots):
             ax.tick_params(bottom=True, top=False, left=True, right=False)
             ax.tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
 
-            ax.tick_params(axis="x", direction="out", labelsize=axis_size - 1)
-            ax.tick_params(axis="y", direction="out", labelsize=axis_size - 1)
+            ax.tick_params(axis="x", direction="out", labelsize=axis_size)
+            ax.tick_params(axis="y", direction="out", labelsize=axis_size)
 
             # set invisible top and right borders
             ax.spines['top'].set_visible(False)
