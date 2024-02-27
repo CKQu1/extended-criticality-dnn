@@ -93,7 +93,7 @@ class WWFit(object):
         #self.alphas = np.zeros(self.N-1, dtype=np.float64)
         #self.Ds     = np.ones(self.N-1, dtype=np.float64)
         self.alphas = np.zeros(self.actual_is, dtype=np.float64)
-        self.Ds     = np.ones(self.actual_is, dtype=np.float64)        
+        self.Ds     = np.ones(self.actual_is, dtype=np.float64)  # KS distance        
 
         # --------- delete ----------
         """
@@ -417,6 +417,8 @@ def fit_powerlaw(evals, xmin=None, xmax=None, total_is=1000,
         # remove the distributed that is already fitted
         #unfitted_dists = [dist for dist in all_dists if dist != fit_type]
 
+        # moved to pretrained_wfit.py func pretrained_ww_plfit()
+        """
         Rs = [0.0]
         Rs_all = []
         ps_all = []
@@ -431,7 +433,8 @@ def fit_powerlaw(evals, xmin=None, xmax=None, total_is=1000,
                 dists.append(dist)
                 Rs.append(R)
                 logger.debug("compare dist={} R={:0.3f} p={:0.3f}".format(dist, R, p))
-        best_fit = dists[np.argmax(Rs)]        
+        best_fit = dists[np.argmax(Rs)]    
+        """    
 
         # --------- delete ----------
         """
@@ -445,23 +448,25 @@ def fit_powerlaw(evals, xmin=None, xmax=None, total_is=1000,
         # ---------------------------
 
     # defaults for failed status
-    alpha = -1
-    Lambda = -1
-    D = -1
-    sigma = -1
-    xmin = -1  # not set / error
-    num_pl_spikes = -1
-    best_fit = UNKNOWN
-    fit = None
-    num_fingers = 0
-    
-    raw_fit = None # only for fix fingers
-    
-    fit_entropy = -1
+    if status != SUCCESS:
+        alpha = -1
+        Lambda = -1
+        D = -1
+        sigma = -1
+        xmin = -1  # not set / error
+        num_pl_spikes = -1
+        best_fit = UNKNOWN    
+        fit = None
+        num_fingers = 0
+        
+        raw_fit = None # only for fix fingers
+        
+        fit_entropy = -1
 
     if status != SUCCESS:
         #return alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, best_fit, Rs_all, ps_all
-        return alpha, Lambda, xmin, None, D, sigma, num_pl_spikes, num_fingers, -1, status, "", best_fit, None, None
+        #return alpha, Lambda, xmin, None, D, sigma, num_pl_spikes, num_fingers, -1, status, "", best_fit, None, None
+        return alpha, Lambda, xmin, None, D, sigma, num_pl_spikes, num_fingers, -1, status, "", fit
 
     if plot:
 
@@ -594,7 +599,8 @@ def fit_powerlaw(evals, xmin=None, xmax=None, total_is=1000,
             title = title + r"$\alpha=${0:.3f}; ".format(alpha) + \
                 r'$D_{KS}=$'+"{0:.3f}; ".format(D) + \
                 r"$x_{min}=$"+"{0:.3f} ".format(xmin) + \
-                r"$\sigma=$"+"{0:.3f}".format(sigma) + "\n"
+                r"$\sigma=$"+"{0:.3f}".format(sigma) + \
+                f" fitted: {len(evals[evals>=xmin])}, total: {num_evals}" + "\n"
         else:
             title = title + " PL FIT FAILED"
         # eye guide
@@ -684,4 +690,5 @@ def fit_powerlaw(evals, xmin=None, xmax=None, total_is=1000,
         
     #return alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning
     #return alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, best_fit
-    return alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, best_fit, Rs_all, ps_all
+    #return alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, best_fit, Rs_all, ps_all
+    return alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, fit
