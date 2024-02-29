@@ -8,7 +8,10 @@ import string
 import sys
 sys.path.append(f'{os.getcwd()}')
 import path_names
-from os.path import join
+
+from ast import literal_eval
+from os import makedirs
+from os.path import join, isdir
 from tqdm import tqdm
 from path_names import root_data, id_to_path, model_log
 from path_names import get_model_id, get_alpha_g
@@ -55,6 +58,17 @@ def load_accloss(net_path, acc_type):
 
     return metrics
 
+
+def get_net_ls(net_type):
+
+    if net_type == "alexnet":
+        nets_dir = join(root_data, "trained_cnns", "alexnet_htcw_ufw_tanh")
+    elif net_type == "resnet14_ht":
+        nets_dir = join(root_data, "trained_cnns", "resnet14_ht_new")
+    net_ls = [join(nets_dir, dirname) for dirname in next(os.walk(nets_dir))[1]]
+    return net_ls, nets_dir
+
+
 # 1 by 3 figure including phase transition for accuracy, loss and stopping epoch (train/test)
 def accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, epoch=500, display=False):
     global model_info, net_ls
@@ -62,14 +76,9 @@ def accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, epoch=
     acc_threshold, epoch = int(acc_threshold), int(epoch)
     display = literal_eval(display) if isinstance(display,str) else display
 
-    if net_type == "alexnet":
-        net_path = join(root_data, "trained_cnns", "alexnet_htcw_ufw_tanh")
-    elif net_type == "resnet14_ht":
-        net_path = join(root_data, "trained_cnns", "resnet14_ht_new")
-    #net_ls = [net[0] for net in os.walk(net_path) if "epochs=" in net[0]]
-    net_ls = [join(net_path, dirname) for dirname in next(os.walk(net_path))[1]]
+    net_ls, nets_dir = get_net_ls(net_type)
     epoch_last = int(net_ls[0][net_ls[0].index("epochs=")+7:])
-    print(net_path)
+    print(f'nets_dir: {nets_dir}')
     print(f"Total of networks: {len(net_ls)}.")
 
     #fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))     # with text
@@ -184,7 +193,10 @@ def accloss_phase(net_type="alexnet", acc_type="train", acc_threshold=70, epoch=
     #net_type = model_info.loc[model_info.index[0],'net_type']
     #dataname = model_info.loc[model_info.index[0],'name']
     dataname = "cifar10"
-    plt.savefig(f"{root_data}/figure_ms/{net_type}_{dataname}_{acc_type}_epoch={epoch}_grid_all.pdf", bbox_inches='tight')
+    fig1_path = "/project/PDLAI/project2_data/figure_ms/trained_dnn_performance"
+    if not isdir(fig1_path):  makedirs(fig1_path)  
+    fname =  join(fig1_path, f"{net_type}_{dataname}_{acc_type}_epoch={epoch}_grid_all.pdf")    
+    plt.savefig(fname, bbox_inches='tight')
 
     print(f"Loaded networks: {good}")
     print(f"Existing networks folders: {len(net_ls)}")
@@ -275,13 +287,91 @@ def pure_phase(acc_type="train", epoch_ls=[10,50,200], display=False):
     dataname = model_info.loc[model_info.index[0],'name']
     epoch_str = [str(epoch) for epoch in epoch_ls]
     epoch_str = "_".join(epoch_str)
-    fname = f"{root_data}/figure_ms/{net_type}_{dataname}_{acc_type}_accloss_epoch={epoch_str}.pdf"
+    fig1_path = "/project/PDLAI/project2_data/figure_ms/trained_dnn_performance"
+    if not isdir(fig1_path):  makedirs(fig1_path)  
+    fname =  join(fig1_path, f"{net_type}_{dataname}_{acc_type}_accloss_epoch={epoch_str}.pdf")
     print(fname)
     plt.savefig(fname, bbox_inches='tight')
 
     print(f"Loaded networks: {good}")
     print(f"Existing networks folders: {len(net_ls)}")
     print(f"Successfully data initialisations loaded: {len(alpha_m_ls)}")
+
+
+def epochs_all(alpha100s, g100s, acc_type, net_type='alexnet', display=False):
+    """
+    Plots the all epoch accuracy/loss for specified (\alpha, \sigma_w)
+    """
+
+    global net_ls, dataname, epoch_last, fcn, net_paths, alpha, g, metrics_all
+
+    assert acc_type in ["test", "train"], "acc_type does not exist!"
+    alpha100s = literal_eval(alpha100s); g100s = literal_eval(g100s)
+    display = literal_eval(display) if isinstance(display,str) else display
+
+    net_ls, nets_dir = get_net_ls(net_type)
+    print(f'nets_dir: {nets_dir}')
+    print(f"Total networks {len(net_ls)}")
+
+    #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = True,sharey=True,figsize=(9.5,7.142))
+    #fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))     # window size with text
+    nrows, ncols = 1, 2
+    fig, axs = plt.subplots(nrows,ncols,sharex = True,sharey=True,figsize=(8.4/2*ncols+0.45,3.471*nrows))     # without text
+    axs = axs.flat
+
+    metrics_all = []
+    title_ls = ['Test accuracy', 'Test loss' + '\n' + 'test acc. threshold ']
+    for aidx, alpha100 in enumerate(alpha100s):
+        axis = axs[aidx]
+        for g100 in g100s:
+            alpha, g = alpha100/100, g100/100
+
+            net_paths = [net_path for net_path in net_ls if f'{net_type}_{alpha100}_{g100}_' in net_path]
+            net_path = net_paths[0]
+            metrics = load_accloss(net_path, acc_type)
+            metrics_all.append(metrics)
+
+
+            #axis.plot(metrics.iloc[:,1], label=rf'$\sigma_w$ = {g}')
+            axis.plot(metrics.iloc[:501,1], label=rf'$\sigma_w$ = {g}')
+
+            #axis.spines['top'].set_visible(False); axis.spines['right'].set_visible(False)             
+
+            # # ticks
+            # axis.tick_params(axis='both',labelsize=tick_size)
+            # # major ticks
+            # axis.set_xticks(xticks)
+            # axis.set_xticklabels(xtick_ls)
+
+            #if i == 2 or i == 3:
+            #axis.set_xlabel(r'$\alpha$', fontsize=axis_size)
+            #axis.set_title(f"{title_ls[i]}", fontsize=axis_size)
+
+            # # setting ticks
+            # axs[i].tick_params(bottom=True, top=False, left=True, right=False)
+            # axs[i].tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
+
+            # axs[i].tick_params(axis="x", direction="out")
+            # axs[i].tick_params(axis="y", direction="out")
+
+            # minor ticks
+            #axs[i].xaxis.set_minor_locator(AutoMinorLocator())
+            #axs[i].yaxis.set_minor_locator(AutoMinorLocator())
+
+    axs[0].legend(frameon=False)
+    #axs[1].set_yticklabels([])
+
+    plt.tight_layout()
+    if display:
+        plt.show()
+    else:
+        fig1_path = "/project/PDLAI/project2_data/figure_ms/trained_dnn_performance"
+        if not isdir(fig1_path):  makedirs(fig1_path)
+        file_name = f'{net_type}_cifar10_sgd_{acc_type}_alpha100={alpha100s}_g100={g100s}.pdf'
+        plt.savefig(join(fig1_path, file_name), bbox_inches='tight')
+
+        print(f"Figure saved: {join(fig1_path, file_name)}")
+
 
 if __name__ == '__main__':
     import sys
