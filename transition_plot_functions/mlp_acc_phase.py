@@ -11,7 +11,8 @@ from matplotlib.ticker import AutoMinorLocator
 from tqdm import tqdm
 sys.path.append(os.getcwd())
 import path_names
-from os.path import join
+from os.path import join, isdir
+from os import makedirs
 from path_names import root_data, id_to_path, model_log
 from utils_dnn import load_transition_lines
 
@@ -85,6 +86,48 @@ def get_net_ls(path):
     
     return net_ls, activation, dataname, epoch_last, optimizer, fcn
 
+
+def get_accloss(net_path, acc_type, net_type):
+    if "fcn_grid" in net_path:         
+        net_params = sio.loadmat(net_path + "/net_params_all.mat") 
+        alpha = list(net_params['net_init_params'][0][0])[1][0][0]
+        mult = list(net_params['net_init_params'][0][0])[2][0][0]
+
+        acc_loss = sio.loadmat(f"{net_path}/{net_type}_loss_log.mat")
+        metrics = acc_loss['training_history'] if acc_type=="train" else acc_loss['testing_history'] 
+        losses = metrics[:,0]
+        accs = metrics[:,1]
+    else:
+        #net_params = pd.read_csv(f"{net_path}/net_log.csv")
+        net_params = pd.read_csv(f"{net_path}/log")
+        alpha100 = int(net_params.loc[0,'alpha100'])
+        g100 = int(net_params.loc[0,'g100'])
+        alpha = alpha100/100
+        mult = g100/100
+
+        acc_loss = pd.read_csv(f"{net_path}/acc_loss")
+        metrics = acc_loss.iloc[:,0:2] if acc_type=="train" else acc_loss.iloc[:,2:]           
+        losses = metrics.iloc[:,0]   
+        accs = metrics.iloc[:,1] * 100      
+
+    return accs, losses
+
+
+def get_net_paths(net_ls, alpha100, g100):
+    net_paths = []
+    is_fcn_grid = ("fcn_grid" in net_ls[0])
+    for net_path in net_ls:
+        if is_fcn_grid:
+            alpha, g = alpha100/100, g100/100
+            if f'stable{alpha}_{g}_' in net_path:
+                net_paths.append(net_path)
+        else:
+            if f'_{alpha100}_{g100}_' in net_path:
+                net_paths.append(net_path)
+
+    return net_paths
+
+
 # get the phase transition for accuracy, loss and earliest epoch reaching accuracy threhold
 def get_accloss_phase(path, net_ls, epoch, epoch_last, acc_type, acc_threshold):
 
@@ -148,10 +191,16 @@ def get_accloss_phase(path, net_ls, epoch, epoch_last, acc_type, acc_threshold):
     return alpha_m_ls, acc_ls, loss_ls, early_ls, acc_mesh, loss_mesh, early_mesh, failed_jobs
 
 
-# includes accuracy, loss and stopping epoch for MLP (main text plot)
 def accloss_phase(acc_type, path, acc_threshold=95, display=False):
+    '''
+    Includes accuracy, loss and stopping epoch for MLP (main text plot)
+        - acc_type (str): test or train
+        - path: /project/PDLAI/project2_data/trained_mlps/fcn_grid/fc10_grid
+        - acc_threshold (int): the accuracy threshold to determine speed of training
+    '''
+
     global acc_ls, alpha_m_ls, acc_mesh, cmap_bd
-    global net_ls, dataname, epoch_last, fcn
+    global net_ls, dataname, epoch_last, fcn, early_ls
 
     assert acc_type == "test" or acc_type == "train", "acc_type does not exist!"
     acc_threshold = float(acc_threshold)
@@ -159,6 +208,7 @@ def accloss_phase(acc_type, path, acc_threshold=95, display=False):
 
     net_ls, activation, dataname, epoch_last, optimizer, fcn = get_net_ls(path)
     print(path)
+    print(f"Total networks {len(net_ls)}, activation: {activation}, dataname: {dataname}, epoch_last: {epoch_last}, optimizer: {optimizer}, fcn: {fcn}")
 
     # phase transition lines
     bound1, boundaries = load_transition_lines()
@@ -381,6 +431,82 @@ def pure_metric(acc_type="test", fcn = "fc10", epoch_ls = [10, 50, 200], display
         print("Figure saved!")
     else:
         plt.show()
+
+
+def epochs_all(alpha100s, g100s, acc_type, path, display=False):
+    """
+    Plots the all epoch accuracy/loss for specified (\alpha, \sigma_w)
+    """
+
+    global net_ls, dataname, epoch_last, fcn, net_paths, net_path, alpha, g, accs_all, losses_all
+
+    assert acc_type == "test" or acc_type == "train", "acc_type does not exist!"
+    alpha100s = literal_eval(alpha100s); g100s = literal_eval(g100s)
+    display = literal_eval(display) if isinstance(display,str) else display
+
+    net_ls, activation, dataname, epoch_last, optimizer, fcn = get_net_ls(path)
+    net_type = f"{fcn}_mnist_tanh"
+    print(path)
+    print(f"Total networks {len(net_ls)}, activation: {activation}, dataname: {dataname}, epoch_last: {epoch_last}, optimizer: {optimizer}, fcn: {fcn}")
+
+    #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = True,sharey=True,figsize=(9.5,7.142))
+    #fig, ((ax1,ax2)) = plt.subplots(1, 2,sharex = True,sharey=True,figsize=(9.5,7.142/2 + 0.5))     # window size with text
+    nrows, ncols = 1, 2
+    fig, axs = plt.subplots(nrows,ncols,sharex = True,sharey=True,figsize=(8.4/2*ncols+0.45,3.471*nrows))     # without text
+    axs = axs.flat
+
+    title_ls = ['Test accuracy', 'Test loss' + '\n' + 'test acc. threshold ']
+
+    accs_all, losses_all = [], []
+    for aidx, alpha100 in enumerate(alpha100s):
+        axis = axs[aidx]
+        for g100 in g100s:
+            alpha, g = alpha100/100, g100/100
+
+            # '/project/PDLAI/project2_data/trained_mlps/fcn_grid/fc10_grid/fc10_mnist_tanh_id_stable1.5_3.0_epoch650_algosgd_lr=0.001_bs=1024_data_mnist'
+            net_paths = get_net_paths(net_ls, alpha100, g100)
+            net_path = net_paths[0]
+            accs, losses = get_accloss(net_path, acc_type, net_type)
+            accs_all.append(accs); losses_all.append(losses)
+
+            axis.plot(accs, label=rf'$\sigma_w$ = {g}')
+            #axis.spines['top'].set_visible(False); axis.spines['right'].set_visible(False)             
+
+            # # ticks
+            # axis.tick_params(axis='both',labelsize=tick_size)
+            # # major ticks
+            # axis.set_xticks(xticks)
+            # axis.set_xticklabels(xtick_ls)
+
+            #if i == 2 or i == 3:
+            #axis.set_xlabel(r'$\alpha$', fontsize=axis_size)
+            #axis.set_title(f"{title_ls[i]}", fontsize=axis_size)
+
+            # # setting ticks
+            # axs[i].tick_params(bottom=True, top=False, left=True, right=False)
+            # axs[i].tick_params(labelbottom=True, labeltop=False, labelleft=True, labelright=False)
+
+            # axs[i].tick_params(axis="x", direction="out")
+            # axs[i].tick_params(axis="y", direction="out")
+
+            # minor ticks
+            #axs[i].xaxis.set_minor_locator(AutoMinorLocator())
+            #axs[i].yaxis.set_minor_locator(AutoMinorLocator())
+
+    axs[0].legend(frameon=False)
+    #axs[1].set_yticklabels([])
+
+    plt.tight_layout()
+    if display:
+        plt.show()
+    else:
+        fig1_path = "/project/PDLAI/project2_data/figure_ms/trained_dnn_performance"
+        if not isdir(fig1_path):  makedirs(fig1_path)
+        file_name = f'{fcn}_{dataname}_{optimizer}_{acc_type}_alpha100={alpha100s}_g100={g100s}.pdf'
+        plt.savefig(join(fig1_path, file_name), bbox_inches='tight')
+
+        print(f"Figure saved: {join(fig1_path, file_name)}")
+
 
 if __name__ == '__main__':
     import sys
