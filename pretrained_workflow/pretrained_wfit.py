@@ -89,8 +89,12 @@ def wmat_torch_to_np(weight_path, n_weight):
     else:
         np_weight_path = join(main_path, "np_weights_all_tf")
     if not os.path.isdir(np_weight_path): os.makedirs(np_weight_path)
-    np.save(join(np_weight_path, weight_name), weights)
-    print("Weights saved in numpy!")
+
+    if not os.path.isfile(join(np_weight_path, f'{weight_name}.npy')):
+        np.save(join(np_weight_path, f'{weight_name}.npy'), weights)
+        print("Weights saved in numpy!")
+    else:
+        print("Weights already saved!")
 
 def ensemble_wmat_torch_to_np(weight_path, n_weights):
     if isinstance(n_weights,str):
@@ -99,16 +103,22 @@ def ensemble_wmat_torch_to_np(weight_path, n_weights):
     for n_weight in n_weights:
         wmat_torch_to_np(weight_path, n_weight)
 
-# function: wmat_torch_to_np()
+# function: ensemble_wmat_torch_to_np()
 def w_conversion_submit(*args):
     """
     Converting saved torch weights (via torch.save) into np arrays and saving them.
     This was initially needed since a singularity container was not used.
     """
-    pytorch = False
-    
-    main_path = join(root_data, "pretrained_workflow")
-    if not os.path.isdir(main_path): os.makedirs(main_path)    
+    global total_weights_idxs
+
+    pytorch = True
+
+    main_path = join(root_data,"pretrained_workflow")
+    if not os.path.isdir(main_path): os.makedirs(main_path)
+    if pytorch:
+        np_weight_path = join(main_path, "np_weights_all")
+    else:
+        np_weight_path = join(main_path, "np_weights_all_tf")            
 
     if pytorch:
         # --- Pytorch ---
@@ -125,16 +135,28 @@ def w_conversion_submit(*args):
     weights_all = next(os.walk(root_path))[2]
     weights_all.sort()
     total_weights = len(weights_all)
-    total_weights_idxs = list(range(total_weights))
+    #total_weights_idxs = list(range(total_weights))
+    total_weights_idxs = []
+    for n_weight in range(total_weights):
+        weight_name = df.loc[n_weight,"weight_file"]
+        i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+        model_name = df.loc[n_weight, "model_name"]
+        #print(f"{n_weight}: {weight_name}")
+
+        if not os.path.isfile(join(np_weight_path, f'{weight_name}.npy')):
+            total_weights_idxs.append(n_weight)
     
+    print(f'Remaining weights to be converted: {len(total_weights_idxs)}')
+
     print(df.shape)
-    assert total_weights == df.shape[0]
+    assert total_weights == df.shape[0]    
 
-    from qsub import qsub, job_divider, command_setup
+    from qsub import qsub, job_divider, command_setup, project_ls
     from path_names import singularity_path, bind_path
-    project_ls = ["phys_DL", "PDLAI", "dnn_maths", "ddl", "dyson", "vortex_dl"]
 
-    chunks = 15  # number of elements in each list
+    # number of elements in each list
+    #chunks = 15  
+    chunks = 1
     nweightss = list_str_divider(total_weights_idxs, chunks)
 
     pbs_array_data = []    
@@ -143,6 +165,8 @@ def w_conversion_submit(*args):
  
     #pbs_array_data = pbs_array_data[:1000] 
     print(len(pbs_array_data))    
+
+    #quit()
 
     ncpus, ngpus = 1, 0
     command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)    
@@ -153,12 +177,12 @@ def w_conversion_submit(*args):
         print(project_ls[pidx])
 
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}', 
-             pbs_array_true, 
-             path=join(main_path,'jobs_all/w_conversion_submit'),  
-             P=project_ls[pidx], 
-             ncpus=ncpus,
-             ngpus=ngpus,
-             mem="4GB")        
+               pbs_array_true, 
+               path=join(main_path,'jobs_all/w_conversion_submit'),  
+               P=project_ls[pidx], 
+               ncpus=ncpus,
+               ngpus=ngpus,
+               mem="6GB")        
 
 # check if number is nan or inf
 def is_num_defined(num):
@@ -527,7 +551,22 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
         fig, axs = plt.subplots(1, len(weights_tails), figsize=(17/3*2, 5.67))
         for ii, tail_name in enumerate(weights_tails):
 
-            total_is = len(locals()[tail_name]) - 1
+            # full iteration
+            #total_is = len(locals()[tail_name]) - 1
+
+            # more efficient iteration
+            if len(locals()[tail_name]) < 1.2e6:
+                ratio = 1
+            elif len(locals()[tail_name]) >= 1.2e6 and len(locals()[tail_name]) < 2.4e6:
+                ratio = 2
+            elif len(locals()[tail_name]) >= 2.4e6 and len(locals()[tail_name]) < 5e6:
+                ratio = 5
+            elif len(locals()[tail_name]) >= 5e6 and len(locals()[tail_name]) < 1e7:
+                ratio = 10
+            else:
+                ratio = 15
+
+            total_is = int((len(locals()[tail_name]) - 1) / ratio)
             
             # 1. pl_fit direct
             #plfit = pl_fit(locals()[tail_name])
@@ -563,6 +602,10 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
                 # output of fit_powerlaw()
                 #alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, best_fit_1, Rs_all, ps_all = plfit            
                 alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, FIT = plfit
+                if warning == '':
+                    warning = f'ratio={ratio}'
+                else:
+                    warning = str(warning) + f'_ratio={ratio}'
 
                 if status == 'success':                                    
                     Rs = [0.0]
@@ -1062,7 +1105,8 @@ def batch_plfit_submit(*args):
     global pbss, n_weightss, pbs_array_data, total_weights
 
     pytorch = True
-    chunks = 5
+    #chunks = 5
+    chunks = 1
 
     main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)
     #allfit_folder = "ww_plfit_all" if pytorch else "ww_plfit_all_tf"
@@ -1095,7 +1139,7 @@ def batch_plfit_submit(*args):
     pbs_array_data = []
     for n_weights in n_weightss:
         pbs_array_data.append( (root_path, n_weights) )
-
+    
     print(f'Total jobs: {len(pbs_array_data)}')    
     
     ncpus, ngpus = 1, 0
@@ -1119,7 +1163,7 @@ def batch_plfit_submit(*args):
              ncpus=ncpus,
              ngpus=ngpus,
              #mem="1GB")
-             mem="4GB")    
+             mem="6GB")    
     
     
 # -------------------- Single pretrained weight matrix fitting --------------------
@@ -1397,7 +1441,7 @@ def pretrained_allfit(weight_path, n_weight, with_logl, remove_weights=True):
             print(f"ill logls in distributions fits from {ill_logl_dists} still exist")
 
     else:
-        df = pd.read_csv(fit_exists1)
+        df = pd.read_csv(join(model_path1, df_name))
         print("Fitting already done!")
 
     # plot hist and fit
@@ -1704,7 +1748,6 @@ def divided_logl(weight_path, n_weight, batch_idx, B):
 
                 else:
                     print(f"Partial logl for {dist_type} done already!")
-
 
     # Time
     t_last = time.time()
