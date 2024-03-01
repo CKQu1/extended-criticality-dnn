@@ -58,6 +58,80 @@ def list_str_divider(ls, chunks):
         lss.append(str( ls[start:] ).replace(" ",""))    
     return lss
 
+def nets_summary(pytorch=True):
+    """
+    Get a summary of the how many weight matrices/tensors each CNN type has
+    """
+
+    global df, counter_dict, saved_wmat
+
+    pytorch = pytorch if isinstance(pytorch,bool) else literal_eval(pytorch)
+
+    main_path = join(root_data,"pretrained_workflow")
+
+    # method 1
+    df = pd.read_csv(join(main_path, "weight_info.csv")) if pytorch else pd.read_csv(join(main_path, "weight_info_tf.csv"))
+    if pytorch:
+        net_types = ['alexnet', 'convnext', 'densenet', 'efficientnet', 'googlenet', 'mnasnet', 'mobilenet',
+                     'regnet', 'resnet', 'resnext', 'shufflenet', 'squeezenet', 'vgg', 'WRN']
+
+        counter_dict = {}
+        for row in tqdm(range(df.shape[0])):
+            model_name = df.loc[row,'model_name']            
+            
+            if 'wide_resnet' in model_name:
+                net_type = 'WRN'
+            elif 'resnet' in model_name:
+                net_type = 'resnet'
+            else:
+                for net_type in net_types:
+                    if net_type in model_name:
+                        break
+
+            if net_type not in counter_dict.keys():
+                counter_dict[net_type] = 1
+            else:
+                counter_dict[net_type] += 1
+
+            del net_type
+    
+    # method 2
+    # df = pd.read_csv(join(main_path, "net_names_all.csv")) if pytorch else pd.read_csv(join(main_path, "net_names_all_tf.csv"))
+    # if pytorch:
+    #     net_types = ['alexnet', 'convnext', 'densenet', 'efficientnet', 'googlenet', 'mnasnet', 'mobilenet',
+    #                  'regnet', 'resnet', 'resnext', 'shufflenet', 'squeezenet', 'vgg', 'WRN']
+
+    #     counter_dict = {}
+    #     #for row in tqdm(range(df.shape[0])):
+    #     for row in tqdm(range(df.shape[0])):
+    #         model_name = df.loc[row,'model_name'] 
+    #         saved_wmat = df.loc[row,'saved_wmat']            
+            
+    #         if 'wide_resnet' in model_name:
+    #             net_type = 'WRN'
+    #         elif 'resnet' in model_name:
+    #             net_type = 'resnet'
+    #         else:
+    #             for net_type in net_types:
+    #                 if net_type in model_name:
+    #                     break
+
+    #         # print(f'row {row}: {model_name} is {net_type} has {saved_wmat}')  # delete
+    #         # if net_type == 'alexnet':  # delete
+    #         #     break
+
+    #         if net_type not in counter_dict.keys():
+    #             counter_dict[net_type] = saved_wmat
+    #         else:
+    #             counter_dict[net_type] += saved_wmat
+
+    #         del net_type    
+
+    print('\n')
+    print(counter_dict)
+    print(f'Total wmat = {sum(counter_dict.values())}')
+        
+
 # convert torch saved weight matrices into numpy
 def wmat_torch_to_np(weight_path, n_weight):
     """
@@ -419,6 +493,94 @@ def convert_sigfig(num, sigfigs=None):
         assert isinstance(sigfigs, int)
         return round(integer, sigfigs-1) * 10**power
 
+
+# two-sided powerlaw fit (based on weightwatcher: https://github.com/CalculatedContent/WeightWatcher/blob/master/weightwatcher/WW_powerlaw.py)
+def pretrained_moments(weight_path, save_dir, n_weight, replace=True):
+    """
+    Computes the mean, std, skewness and kurtosis before and after entry-removal
+    """
+    import powerlaw
+    import sys
+    lib_path = os.getcwd()
+    sys.path.append(f'{lib_path}')   
+
+    global model_path, df_mmt, df_path, col_names, weights
+
+    t0 = time.time()
+    n_weight = int(n_weight)    
+    pytorch = False if "_tf" in weight_path else True
+    if_torch_weights = (weight_path.split("/")[-1][:3] != "np_")
+    replace = replace if isinstance(replace,bool) else literal_eval(replace)
+
+
+# Loading weight matrix ----------------------
+
+    col_names = ['layer_idx', 'wmat_idx',
+                 'size_1', 'mean_1', 'std_1', 'skewness_1', 'kurtosis_1',  # before removal
+                 'size_2', 'mean_2', 'std_2', 'skewness_2', 'kurtosis_2'   # after removal
+                 ]
+
+    # path for loading the weights
+    main_path = join(root_data, "pretrained_workflow")
+    if not os.path.isdir(main_path): os.makedirs(main_path)
+
+    df = pd.read_csv(join(main_path, "weight_info.csv")) if pytorch else pd.read_csv(join(main_path, "weight_info_tf.csv"))
+    weight_name = df.loc[n_weight,"weight_file"]
+    layer_idx, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+    model_name = df.loc[n_weight,"model_name"]
+
+    print(f"{n_weight}: {weight_name}")
+
+    model_path = join(save_dir, model_name)
+
+    if not os.path.exists(model_path): os.makedirs(model_path)
+    print(f"{model_path} directory set up!")
+    print("\n")
+
+# Setting up dir ----------------------
+
+    data_name = replace_name(weight_name,'mmt')
+    df_path = f'{model_path}/{data_name}.csv'
+
+# Powerlaw fitting ----------------------
+
+    if not os.path.isfile(df_path) or replace:
+        if if_torch_weights:
+            import torch
+            weights = torch.load(f"{weight_path}/{weight_name}")
+            weights = weights.detach().numpy()
+        else:
+            weights = np.load(f"{weight_path}/{weight_name}.npy")
+        
+        print(f"Directory set up, start computing moments.")
+        df_mmt = pd.DataFrame(np.zeros((1,len(col_names)))) 
+        df_mmt = df_mmt.astype('object')
+        df_mmt.columns = col_names    
+
+
+        df_mmt.iloc[0,:2] = [layer_idx, wmat_idx]
+
+        # before removal
+        df_mmt.iloc[0,2:7] = [len(weights), weights.mean(), weights.std(), sst.skew(weights), sst.kurtosis(weights)]
+        # after removal
+        weights = weights[np.abs(weights) >0.00001]
+        df_mmt.iloc[0,7:] = [len(weights), weights.mean(), weights.std(), sst.skew(weights), sst.kurtosis(weights)]
+
+        #quit()  # delete
+
+        # save data                
+        df_mmt.to_csv(df_path, index=False)
+        pd.set_option('display.max_columns', None)
+        print(df_mmt)
+
+        t_last = time.time()
+        print(f'Saved under: {df_path}')
+        print(f"{weight_name} done in {t_last - t0} s!")    
+
+    else:
+        print(f"{weight_name} has moments computed!")
+
+
 # two-sided powerlaw fit (based on weightwatcher: https://github.com/CalculatedContent/WeightWatcher/blob/master/weightwatcher/WW_powerlaw.py)
 def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
                         plot=True):
@@ -516,7 +678,7 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
         #weights = np.abs(weights)
         """
         if remove_weights:
-            weights = weights[weights >0.00001]    
+            weights = weights[np.abs(weights) >0.00001]    
 
         # 1. split into upper and lower tail
             #weights_upper = weights[weights > weights.mean()]
@@ -530,6 +692,10 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
 
         upper = np.abs(weights[weights>=0])
         lower = np.abs(weights[weights<=0])    
+
+        # added for speed up and PL fit does not deal well with small values
+        upper = upper[upper > 0.00001]
+        lower = lower[lower > 0.00001]
 
         skewness = sst.skew(weights)
         kurtosis = sst.kurtosis(weights)
@@ -1065,11 +1231,24 @@ def plfit_submit_terminal():
 
 # -------------------- Batched tail fitting for pretrained weights --------------------
 
-# batch version of pretrained_ww_plfit
-def batch_pretrained_plfit(weight_path, n_weights):
+# batch version of pretrained_moments
+def batch_pretrained_mmt(weight_path, n_weights):
     """
     Batches arg n_weight for pretrained_allfit()
     """
+
+    if isinstance(n_weights,str):
+        n_weights = literal_eval(n_weights)
+    assert isinstance(n_weights, list), "n_weights is not a list!"
+
+    save_dir1 = join(root_data, "pretrained_workflow", "moments")
+    for n_weight in tqdm(n_weights):
+        pretrained_moments(weight_path, save_dir1, n_weight)
+
+    print(f"Batch completed for {weight_path} for n_weights: {n_weights}")
+
+# batch version of pretrained_ww_plfit
+def batch_pretrained_plfit(weight_path, n_weights):
 
     if isinstance(n_weights,str):
         n_weights = literal_eval(n_weights)
@@ -1085,9 +1264,6 @@ def batch_pretrained_plfit(weight_path, n_weights):
 
 # batch version of pretrained_1samp_test()
 def batch_pretrained_1samp(weight_path, n_weights):
-    """
-    Batches arg n_weight for pretrained_allfit()
-    """
 
     if isinstance(n_weights,str):
         n_weights = literal_eval(n_weights)
@@ -1100,17 +1276,19 @@ def batch_pretrained_1samp(weight_path, n_weights):
     print(f"Batch completed for {weight_path} for n_weights: {n_weights}")    
 
 
-# functions: batch_pretrained_allfit(), batch_pretrained_plfit(), batch_pretrained_1samp()
-def batch_plfit_submit(*args):
+# functions: batch_pretrained_allfit(), batch_pretrained_mmt(), batch_pretrained_plfit(), batch_pretrained_1samp()
+def batch_submit(*args):
     global pbss, n_weightss, pbs_array_data, total_weights
 
     pytorch = True
+    #chunks = 30
     #chunks = 5
     chunks = 1
 
     main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)
     #allfit_folder = "ww_plfit_all" if pytorch else "ww_plfit_all_tf"
     allfit_folder = 'ww_plfit_v2'
+    #allfit_folder = 'moments'
     fit_path1 = join(os.path.dirname(root_path), allfit_folder) 
 
     from qsub import qsub, job_divider, project_ls, command_setup
@@ -1127,6 +1305,7 @@ def batch_plfit_submit(*args):
             i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
             #plot_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'plot')}.pdf") )
             fit_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'plfit')}.csv") )
+            #fit_exist = isfile( join(fit_path1, model_name, f"{replace_name(weight_name,'mmt')}.csv") )
             #if not (plot_exist and fit_exist):
             if not fit_exist:            
                 n_weights.append(n_weight)
@@ -1158,13 +1337,14 @@ def batch_plfit_submit(*args):
              #path=join(main_path, "jobs_all", "plfit_all_remainder"),
              path=join(main_path, "jobs_all", "plfit_all_v2"),
              #path=join(main_path, "jobs_all", "onesamp_test"),
+             #path=join(main_path, "jobs_all", "moments"),
              P=project_ls[pidx], 
              walltime='23:59:59',
              ncpus=ncpus,
              ngpus=ngpus,
              #mem="1GB")
-             mem="6GB")    
-    
+             mem="4GB")
+             #mem="6GB")        
     
 # -------------------- Single pretrained weight matrix fitting --------------------
 
