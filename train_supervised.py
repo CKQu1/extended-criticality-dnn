@@ -370,9 +370,9 @@ import torch.nn.functional as F
 # FC10: lr=0.001, activation='tanh'
 def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise_seed, num_train, num_test,
                  alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
-                 epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False,                                    # network structure
-                 loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                      # training setting
-                 weight_save=1, stablefit_save=0, eigvals_save=0,                                       # save data options
+                 epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False, is_weight_share=True,       # network structure
+                 loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                                             # training setting
+                 weight_save=1, stablefit_save=0, eigvals_save=0,                                                                       # save data options
                  with_ed=False, with_pc=False, with_ipr=False):
                  #with_ed=True, with_pc=True, with_ipr=False):                                                            # save extra data options
 
@@ -381,6 +381,7 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     """
     Trains MLPs and saves weights along the steps of training, can add to save gradients, etc.
     """   
+    global model
 
     from time import time; t0 = time()
     from NetPortal.models import ModelFactory
@@ -403,6 +404,7 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     depth = int(depth)
     num_workers = int(num_workers)
     with_bias = literal_eval(with_bias) if isinstance(with_bias, str) else with_bias
+    is_weight_share = literal_eval(is_weight_share) if isinstance(is_weight_share, str) else is_weight_share
 
     if name.lower() != "gaussian":
         train_ds, valid_ds = set_data(name,True)
@@ -504,8 +506,11 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     kwargs = {"dims": hidden_N, "alpha": alpha, "g": g,
               "init_path": None, "init_epoch": None,
               "activation": activation, "with_bias": with_bias,
+              "is_weight_share": is_weight_share,
               "architecture": net_type}
     model = ModelFactory(**kwargs)
+    #quit()  # delete
+
     # info
     print(f"Total layers = {depth+1}", end=' ')
     print(f"Network hidden layer structure: type {hidden_structure}" + "\n")
@@ -517,7 +522,9 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     # save information to model_path locally
     print((model_id,train_date,name))
     log_model(model_path, model_path, file_name="net_log", local_log=False, net_type=net_type, model_dims=model.dims, model_id=model_id, train_date=train_date, name=name, 
-              alpha100=alpha100, g100=g100, activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, bs=bs, lr=lr, 
+              alpha100=alpha100, g100=g100, activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, 
+              with_bias=with_bias, is_weight_share=is_weight_share,
+              bs=bs, lr=lr, 
               num_workers=num_workers, epochs=epochs, steps=steps,
               Y_classes=Y_classes, X_clusters=X_clusters)
 
@@ -675,7 +682,9 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     # log dataframe
     log_path = root_data
     log_model(log_path, model_path, file_name="net_log", net_type=net_type, model_dims=model.dims, model_id=model_id, train_date=train_date, name=name, alpha100=alpha100, g100=g100, 
-              activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, bs=bs, lr=lr, num_workers=num_workers, 
+              activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, 
+              with_bias=with_bias, is_weight_share=is_weight_share,
+              bs=bs, lr=lr, num_workers=num_workers, 
               epochs=epochs, steps=steps, final_acc=final_acc, total_time=total_time,
               Y_classes=Y_classes, X_clusters=X_clusters)
 
@@ -821,7 +830,7 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
 # wrapper for training MLPs on MNIST dataset
 def mnist_train_ht_dnn(alpha100_ls, g100,
                        optimizer, bs, init_path, init_epoch, root_path, depth, lr,
-                       epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False,                                    
+                       epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False, is_weight_share=True,                                   
                        loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                      
                        weight_save=1, stablefit_save=0, eigvals_save=0,                                       
                        with_ed=False, with_pc=False, with_ipr=False):                                                           
@@ -830,7 +839,7 @@ def mnist_train_ht_dnn(alpha100_ls, g100,
     for alpha100 in alpha100_ls:
         train_ht_dnn("mnist", 0, 0, 0, 0, 0, 0,
                      alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
-                     epochs, save_epoch, net_type, activation, hidden_structure, with_bias,                                   
+                     epochs, save_epoch, net_type, activation, hidden_structure, with_bias, is_weight_share,                                  
                      loss_func_name, momentum, weight_decay, num_workers,                      
                      weight_save, stablefit_save, eigvals_save,                                       
                      with_ed, with_pc, with_ipr)
@@ -841,7 +850,7 @@ def mnist_train_ht_dnn(alpha100_ls, g100,
 # wrapper for training MLPs on Gaussain generated data
 def gaussian_train_ht_dnn(seed_ls, name, Y_classes, X_clusters, num_train, num_test,
                           alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
-                          epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False,                                    
+                          epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False, is_weight_share=False,                                    
                           loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                      
                           weight_save=1, stablefit_save=0, eigvals_save=0,                                       
                           with_ed=False, with_pc=False, with_ipr=False):                                                           
@@ -851,7 +860,7 @@ def gaussian_train_ht_dnn(seed_ls, name, Y_classes, X_clusters, num_train, num_t
     for seed in seed_ls:
         train_ht_dnn(name, Y_classes, X_clusters, seed, seed, num_train, num_test,
                      alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
-                     epochs, save_epoch, net_type, activation, hidden_structure, with_bias,                                   
+                     epochs, save_epoch, net_type, activation, hidden_structure, with_bias, is_weight_share,                                  
                      loss_func_name, momentum, weight_decay, num_workers,                      
                      weight_save, stablefit_save, eigvals_save,                                       
                      with_ed, with_pc, with_ipr)
@@ -863,81 +872,49 @@ def gaussian_train_ht_dnn(seed_ls, name, Y_classes, X_clusters, num_train, num_t
 
 # train networks in array jobs
 
-# batch training mnist with MLPs
+# function: mnist_train_ht_dnn()
 def batch_mnist_submit(*args):
-    from qsub import qsub, job_divider, project_ls, command_setup
+
+    """
+    Batch training mnist with MLPs
+    """
+    global pbs_array_data, alpha100_lss
+
+    from qsub import qsub, job_divider, project_ls, command_setup, list_str_divider
     from path_names import singularity_path, bind_path
 
     dataset_name = "mnist"
     net_type = "fc"
-    alpha100_ls = list(range(100,201,10))
-    alpha100_ls = str(alpha100_ls).replace(" ", "")
-    g100_ls = list(range(25,301,25))
-    #alpha100_ls = '[100,200]'
-    #g100_ls = [100,200]
-    optimizer = "rmsprop"
-    bs_ls = [1024]  
+    alpha100_ls = list(range(100,201,10))  # full grid
+    #alpha100_ls = [100, 200]    
+
+    chunks = 1
+    alpha100_lss = list_str_divider(alpha100_ls, chunks)
+
+    g100_ls = list(range(25,301,25))  # full grid
+    #g100_ls = [25, 100, 300]
+    #optimizer = "rmsprop"
+    optimizer = "sgd"
+    #bs_ls = [64, 1024]  
+    bs_ls = [1024]
     lr_ls = [0.001]
-    depth = 10
+    #lr_ls = [0.0001, 0.001, 0.01, 0.1, 1]
+    #depth = 10
+    depth = 3
     epochs = 650
-    save_epoch = 50
-    #depth=2
+    save_epoch = 650    
     #epochs=2    
     #save_epoch=1
     init_path, init_epoch = None, None
-    root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}")
-    root_path = join(root_data, root_folder)    
 
-    # raw submittions    
-    pbs_array_data = [(alpha100_ls, g100, 
-                       optimizer, bs, init_path, init_epoch, root_path, depth, lr,
-                       epochs, save_epoch
-                      )
-                      for g100 in g100_ls
-                      for bs in bs_ls
-                      for lr in lr_ls
-                      ]   
+    # fc10 standard
+    #root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}")
+    #root_path = join(root_data, root_folder)    
 
-    print(len(pbs_array_data))                 
-
-    ncpus, ngpus = 1, 1
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
-
-    perm, pbss = job_divider(pbs_array_data, len(project_ls))
-    for idx, pidx in enumerate(perm):
-        pbs_array_true = pbss[idx]
-        print(project_ls[pidx])
-        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
-             pbs_array_true, 
-             path=join(root_data, root_folder),
-             P=project_ls[pidx],
-             source="virt-test-qu/bin/activate",
-             ngpus=ngpus,
-             ncpus=ncpus,
-             #walltime='0:59:59',
-             walltime='23:59:59',
-             mem='10GB')      
-
-
-# for figure 1
-def fig1_submit(*args):
-    from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
-
-    dataset_name = "mnist"
-    net_type = "fc"
-    alpha100_lss = ['[100]', '[200]']
-    g100_ls = [100]
-    optimizer = "sgd"
-    bs_ls = [1024]  
-    #lr_ls = [0.001, 0.003]  # too slow
-    lr_ls = [0.01]
-    depth = 3
-    epochs = 200
-    save_epoch = 101
-    init_path, init_epoch = None, None
-    root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_fig1")
-    root_path = join(root_data, root_folder)    
+    # fc10 lr analysis
+    #root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}_lr_analysis")
+    root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}_weight_share")
+    root_path = join(root_data, root_folder)       
 
     # raw submittions    
     pbs_array_data = [(alpha100_ls, g100, 
@@ -950,9 +927,70 @@ def fig1_submit(*args):
                       for lr in lr_ls
                       ]   
 
+    print(len(pbs_array_data))                 
+
+    #quit()  # delete
+
+    #ncpus, ngpus = 1, 1
+    ncpus, ngpus = 1, 0
+    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
+
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
+             pbs_array_true, 
+             path=join(root_data, root_folder),
+             P=project_ls[pidx],
+             #source="virt-test-qu/bin/activate",
+             ngpus=ngpus,
+             ncpus=ncpus,
+             #walltime='0:59:59',
+             walltime='23:59:59',
+             mem='4GB')      
+
+
+# for figure 1
+# function: mnist_train_ht_dnn()
+def fig1_submit(*args):
+    from qsub import qsub, job_divider, project_ls, command_setup
+    from path_names import singularity_path, bind_path
+
+    dataset_name = "mnist"
+    net_type = "fc"
+    #alpha100_lss = ['[100]', '[200]']
+    alpha100_lss = ['[120]', '[200]']
+    g100_ls = [100]
+    optimizer = "sgd"
+    bs_ls = [1024]  
+    #lr_ls = [0.001, 0.003]  # too slow
+    lr_ls = [0.01]
+    depth = 3
+    epochs = 200
+    #save_epoch = 101
+    save_epoch = 10
+    init_path, init_epoch = None, None
+    root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_fig1")
+    root_path = join(root_data, root_folder)    
+
+    ensembles = 10
+
+    # raw submittions    
+    pbs_array_data = [(alpha100_ls, g100, 
+                       optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                       epochs, save_epoch
+                      )
+                      for alpha100_ls in alpha100_lss
+                      for g100 in g100_ls
+                      for bs in bs_ls
+                      for lr in lr_ls
+                      for ensemble in range(ensembles)
+                      ]   
+
     print(len(pbs_array_data))         
 
-    ncpus, ngpus = 1, 1
+    ncpus, ngpus = 1, 0
     command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)      
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
@@ -967,11 +1005,11 @@ def fig1_submit(*args):
              ncpus=ncpus,
              ngpus=ngpus,
              #ncpus=1,
-             walltime='0:09:59',
+             walltime='23:59:59',
              #walltime='23:59:59',
              #mem='10GB'
-             #mem='2GB'  # fc3 cpu
-             mem='4GB'  # fc3 gpu
+             mem='4GB'  # fc3 cpu
+             #mem='4GB'  # fc3 gpu
              )                  
 
 
