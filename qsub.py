@@ -196,3 +196,17 @@ def command_setup(singularity_path, **kwargs):
 
     return command
 
+
+def list_str_divider(ls, chunks):
+    """
+    Divide list into size of no more than chunks.
+    """
+    start = 0
+    n = len(ls)
+    lss = []
+    while start + chunks < n:
+        lss.append(str( ls[start:start+chunks] ).replace(" ",""))
+        start += chunks
+    if start <= n - 1:
+        lss.append(str( ls[start:] ).replace(" ",""))    
+    return lss
