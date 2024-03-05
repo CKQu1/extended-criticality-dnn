@@ -23,7 +23,7 @@ from torch.nn.modules.utils import _pair
 
 class FullyConnected(nn.Module):
 
-    def __init__(self, dims, alpha, g, init_path, init_epoch, with_bias, init_type='ht', activation='tanh', **pretrained):
+    def __init__(self, dims, alpha, g, init_path, init_epoch, with_bias, is_weight_share, init_type='ht', activation='tanh', **pretrained):
         super(FullyConnected, self).__init__()
         self.activation = activation
         self.input_dim = dims[0]
@@ -80,28 +80,55 @@ class FullyConnected(nn.Module):
             if alpha != None and g != None:
                 print("Heavy-tailed initialization applied!")
                 with torch.no_grad():
-                    for l in modules:
-                        if not isinstance(l, nn.Linear): continue
-                        size = l.weight.shape
+                    if is_weight_share:
                         if init_type == 'ht':
-                            N_eff = (size[0]*size[1])**0.5
-                            l.weight = nn.Parameter(torch.Tensor(levy_stable.rvs(alpha, 0, size=size,
-                                                        scale=g*(0.5/N_eff)**(1./alpha))))
+                            is_first = True
+                            for l in modules:
+                                if not isinstance(l, nn.Linear): continue
+                                 
+                                if is_first:
+                                    size = l.weight.shape
+                                    N_eff = (size[0]*size[1])**0.5
+                                    shared_weights = torch.Tensor(levy_stable.rvs(alpha, 0, size=size,
+                                                       scale=g*(0.5/N_eff)**(1./alpha)))
+                                    l.weight = nn.Parameter(shared_weights.clone().detach())
+                                    is_first = False
+                                else:
+                                    size_cur = l.weight.shape
+                                    N_eff = (size_cur[0]*size_cur[1])**0.5                                    
+                                    if size == size_cur:
+                                        l.weight = nn.Parameter(shared_weights.clone().detach())
+                                    else:
+                                        shared_weights = torch.Tensor(levy_stable.rvs(alpha, 0, size=size_cur,
+                                                           scale=g*(0.5/N_eff)**(1./alpha)))
+                                        l.weight = nn.Parameter(shared_weights.clone().detach())                                        
 
-                            # init biases (should be at fixed point?)
-                            if with_bias == True:
+                                    size = size_cur                                    
+
+                    else:
+                        for l in modules:
+                            if not isinstance(l, nn.Linear): continue
+                            size = l.weight.shape
+                            if init_type == 'ht':                            
+
+                                N_eff = (size[0]*size[1])**0.5
+                                l.weight = nn.Parameter(torch.Tensor(levy_stable.rvs(alpha, 0, size=size,
+                                                            scale=g*(0.5/N_eff)**(1./alpha))))
+
+                                # init biases (should be at fixed point?)
+                                if with_bias == True:
+                                    pass
+
+                            """
+                            elif init_type == 'mfrac_orthogonal':
+                                multifractal_orthogonal_(l.weight, 1, alpha, g)
+
+                            elif init_type == 'mfrac':
+                                multifractal_(l.weight, 1, alpha, g)
+
+                            elif init_type == 'mfrac_sym':
                                 pass
-
-                        """
-                        elif init_type == 'mfrac_orthogonal':
-                            multifractal_orthogonal_(l.weight, 1, alpha, g)
-
-                        elif init_type == 'mfrac':
-                            multifractal_(l.weight, 1, alpha, g)
-
-                        elif init_type == 'mfrac_sym':
-                            pass
-                        """
+                            """
 
         self.sequential = nn.Sequential(*modules)
              
@@ -147,6 +174,7 @@ class FullyConnected(nn.Module):
             else:
                 hidden[idx] = self.sequential[ell * idx - 1: ell * idx + 1](hidden[idx - 1])
 
+        # final vector is the network output
         return hidden + [self.sequential[-2:](hidden[-1])]
 
     # postactivation outputs
@@ -187,11 +215,13 @@ class FullyConnected(nn.Module):
                 if i != len(preact_h) - 1:
                     DW_l = torch.matmul(torch.diag( dphi_h ), weights[i])
                 else:
-                    DW_l = torch.matmul(torch.diag( torch.ones_like(dphi_h) ), weights[i])
+                    # After final linear/affine transformer, there is no non-linear activation.
+                    DW_l = torch.matmul(torch.diag( torch.ones_like(dphi_h) ), weights[i])                
 
                 #DW_l = torch.matmul(torch.diag( m(preact_h[i][0]) ), weights[i])
                 DW_ls.append(DW_l)
 
+                #print(weights[i].shape)  # delete
         else:
             # essentially the first activation function is just the identity map
             DW_ls = [weights[0]]    # it's actually W^{l + 1} D^l
@@ -202,6 +232,7 @@ class FullyConnected(nn.Module):
                 #print(DW_l.shape)
                 DW_ls.append(DW_l)
             
+                #print(weights[i].shape)  # delete
         return DW_ls
 
 # method 1
