@@ -23,7 +23,7 @@ from torch.nn.modules.utils import _pair
 
 class FullyConnected(nn.Module):
 
-    def __init__(self, dims, alpha, g, init_path, init_epoch, with_bias, is_weight_share, init_type='ht', activation='tanh', **pretrained):
+    def __init__(self, dims, alpha, g, init_path, init_epoch, with_bias, is_weight_share=False, init_type='ht', activation='tanh', **pretrained):
         super(FullyConnected, self).__init__()
         self.activation = activation
         self.input_dim = dims[0]
