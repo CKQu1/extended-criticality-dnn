@@ -814,12 +814,12 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
                 #alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, best_fit_1, Rs_all, ps_all = plfit            
                 alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, FIT = plfit
                 if warning == '':
-                    if local()[tail_name + '_triggered'] == True:
+                    if locals()[tail_name + '_triggered'] == True:
                         warning = f'pctage={pctage}' + f'ratio={ratio}'
                     else:
                         warning = f'ratio={ratio}'
                 else:
-                    if local()[tail_name + '_triggered'] == True:
+                    if locals()[tail_name + '_triggered'] == True:
                         warning = str(warning) + f'pctage={pctage}' + f'_ratio={ratio}'
                     else:
                         warning = str(warning) + f'_ratio={ratio}'
