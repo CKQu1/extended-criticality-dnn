@@ -720,7 +720,21 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
 
         # added for speed up and PL fit does not deal well with small values
         upper = upper[upper > 0.00001]
-        lower = lower[lower > 0.00001]
+        lower = lower[lower > 0.00001]        
+
+        # for entries exceeding certain threshold, start from the 50 percentile
+        pctage = 75
+        size_threshold = 5e6
+        if len(upper) >= size_threshold:
+            upper = upper[upper > np.percentile(upper, pctage)]
+            upper_triggered = True
+        else:
+            upper_triggered = False
+        if len(lower) >= size_threshold:
+            lower = lower[lower > np.percentile(lower, pctage)]  
+            lower_triggered = True     
+        else:
+            lower_triggered = False
 
         skewness = sst.skew(weights)
         kurtosis = sst.kurtosis(weights)
@@ -800,9 +814,15 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
                 #alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, best_fit_1, Rs_all, ps_all = plfit            
                 alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, FIT = plfit
                 if warning == '':
-                    warning = f'ratio={ratio}'
+                    if local()[tail_name + '_triggered'] == True:
+                        warning = f'pctage={pctage}' + f'ratio={ratio}'
+                    else:
+                        warning = f'ratio={ratio}'
                 else:
-                    warning = str(warning) + f'_ratio={ratio}'
+                    if local()[tail_name + '_triggered'] == True:
+                        warning = str(warning) + f'pctage={pctage}' + f'_ratio={ratio}'
+                    else:
+                        warning = str(warning) + f'_ratio={ratio}'
 
                 if status == 'success':                                    
                     Rs = [0.0]
@@ -1171,7 +1191,8 @@ def plfit_submit(*args):
     pytorch = True
     main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)       
     if pytorch:
-        save_dir = join(main_path, "ww_plfit_all")
+        #save_dir = join(main_path, "ww_plfit_all")
+        save_dir = join(main_path, "ww_plfit_v2")
     else:
         save_dir = join(main_path, "ww_plfit_all_tf")
 
@@ -1204,7 +1225,7 @@ def plfit_submit(*args):
     command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)                
         
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
-    quit()  # delete
+    #quit()  # delete
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
@@ -1213,7 +1234,7 @@ def plfit_submit(*args):
         #qsub(f'singularity exec dist_fit.sif python {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
              #path=join(main_path,'jobs_all/ww_plfit_all'),  
-             path=join(main_path,'jobs_all/ww_plfit_remainder'),
+             path=join(main_path,'jobs_all', args[0]),
              P=project_ls[pidx], 
              #source="virt-test-qu/bin/activate",
              walltime='23:59:59',
