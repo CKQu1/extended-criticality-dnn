@@ -10,7 +10,8 @@ import sys
 import time
 
 from ast import literal_eval
-from os.path import join, isfile
+from os import makedirs
+from os.path import join, isfile, isdir
 from scipy.stats import levy_stable, norm, lognorm
 from scipy.stats import anderson_ksamp, ks_2samp, shapiro, distributions 
 from tqdm import tqdm
@@ -18,6 +19,7 @@ from tqdm import tqdm
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
 
+from qsub import list_str_divider
 from weightwatcher.constants import *
 
 import matplotlib
@@ -43,20 +45,6 @@ def replace_name(weight_name,other):
     ls[-3] = other
     #ls += other
     return '_'.join(ls)
-
-def list_str_divider(ls, chunks):
-    """
-    Divide list into size of no more than chunks.
-    """
-    start = 0
-    n = len(ls)
-    lss = []
-    while start + chunks < n:
-        lss.append(str( ls[start:start+chunks] ).replace(" ",""))
-        start += chunks
-    if start <= n - 1:
-        lss.append(str( ls[start:] ).replace(" ",""))    
-    return lss
 
 def nets_summary(pytorch=True):
     """
@@ -516,8 +504,12 @@ def pretrained_moments(weight_path, save_dir, n_weight, replace=True):
 # Loading weight matrix ----------------------
 
     col_names = ['layer_idx', 'wmat_idx',
-                 'size_1', 'mean_1', 'std_1', 'skewness_1', 'kurtosis_1',  # before removal
-                 'size_2', 'mean_2', 'std_2', 'skewness_2', 'kurtosis_2'   # after removal
+                 'size_1', 'mean_1', 'std_1', 'skewness_1', 'kurtosis_1',   # before removal
+                 'wmin_lower_1', 'wmax_lower_1', 'wmin_upper_1', 'wmax_upper_1',
+                 'jb_stat_1', 'jb_pval_1',
+                 'size_2', 'mean_2', 'std_2', 'skewness_2', 'kurtosis_2',   # after removal
+                 'wmin_lower_2', 'wmax_lower_2', 'wmin_upper_2', 'wmax_upper_2',
+                 'jb_stat_2', 'jb_pval_2'
                  ]
 
     # path for loading the weights
@@ -561,10 +553,43 @@ def pretrained_moments(weight_path, save_dir, n_weight, replace=True):
         df_mmt.iloc[0,:2] = [layer_idx, wmat_idx]
 
         # before removal
-        df_mmt.iloc[0,2:7] = [len(weights), weights.mean(), weights.std(), sst.skew(weights), sst.kurtosis(weights)]
+        wmin_lower = weights[weights < 0].min()
+        wmax_lower = weights[weights < 0].max()
+        wmin_upper = weights[weights > 0].min()
+        wmax_upper = weights[weights > 0].max()
+        res = sst.jarque_bera(weights)
+        res_stat, res_pval = res.statistic, res.pvalue
+        df_mmt.iloc[0,2:13] = [len(weights), weights.mean(), weights.std(), sst.skew(weights), sst.kurtosis(weights),
+                               wmin_lower, wmax_lower, wmin_upper, wmax_upper,
+                               res_stat, res_pval]
         # after removal
         weights = weights[np.abs(weights) >0.00001]
-        df_mmt.iloc[0,7:] = [len(weights), weights.mean(), weights.std(), sst.skew(weights), sst.kurtosis(weights)]
+        if len(weights) > 0:
+            try:
+                wmin_lower = weights[weights < 0].min()
+            except:
+                wmin_lower = np.nan
+            try:
+                wmax_lower = weights[weights < 0].max()
+            except:
+                wmax_lower = np.nan    
+            try:
+                wmin_upper = weights[weights > 0].min()
+            except:
+                wmin_upper = np.nan                 
+            try:
+                wmax_upper = weights[weights > 0].max()     
+            except:
+                wmax_upper = np.nan                   
+            res = sst.jarque_bera(weights)  
+            res_stat, res_pval = res.statistic, res.pvalue
+        else:
+            wmin_lower, wmax_lower, wmin_upper, wmax_upper = [np.nan] * 4
+            res_stat, res_pval = [np.nan] * 2
+
+        df_mmt.iloc[0,13:] = [len(weights), weights.mean(), weights.std(), sst.skew(weights), sst.kurtosis(weights),
+                              wmin_lower, wmax_lower, wmin_upper, wmax_upper,
+                              res_stat, res_pval]
 
         #quit()  # delete
 
@@ -729,8 +754,14 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
                 ratio = 5
             elif len(locals()[tail_name]) >= 5e6 and len(locals()[tail_name]) < 1e7:
                 ratio = 10
+            elif len(locals()[tail_name]) >= 1e7 and len(locals()[tail_name]) < 5e8:                
+                ratio = 500
             else:
-                ratio = 15
+                ratio = 1000
+            # elif len(locals()[tail_name]) >= 1e7 and len(locals()[tail_name]) < 1e8:
+            #     ratio = 50
+            # else:
+            #     ratio = 100
 
             total_is = int((len(locals()[tail_name]) - 1) / ratio)
             
@@ -851,7 +882,7 @@ def load_fitted_data(weight_path, save_dir, n_weight, replace=True,
                         #**kwargs):  # ,remove_weights=False
     """
     Fit tails of each weight matrix to powerlaw (adopted from WeightWatcher):
-        - weigh_path (str): path of stored weights (/project/PDLAI/project2_data/pretrained_workflow/weights_all)
+        - weight_path (str): path of stored weights (/project/PDLAI/project2_data/pretrained_workflow/weights_all)
         - save_dir (str): path of saved fitted parameters (/project/PDLAI/project2_data/pretrained_workflow/ww_plfit_all)
         - n_model (int): the index of the model from get_pretrained_names()
         - replace (bool): refit even if already fitted previously
@@ -1135,7 +1166,7 @@ def pretrained_plfit(weight_path, save_dir, n_weight, remove_weights=False):
 
 # functions: pretrained_plfit(), pretrained_ww_plfit
 def plfit_submit(*args):
-    global df, pbs_array_data, n_weights
+    global df, pbs_array_data, n_weights, pbss
 
     pytorch = True
     main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)       
@@ -1171,8 +1202,9 @@ def plfit_submit(*args):
 
     ncpus, ngpus = 1, 0
     command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)                
-    
+        
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    quit()  # delete
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
@@ -1229,26 +1261,83 @@ def plfit_submit_terminal():
         pretrained_ww_plfit(*args, True, False)
 
 
+# functions: pretrained_moments()
+def mmt_submit(*args):
+    global df, pbs_array_data, n_weights, pbss
+
+    pytorch = True
+    main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)       
+    if pytorch:
+        save_dir = join(main_path, "moments_v2")
+
+    from qsub import qsub, job_divider, project_ls, command_setup
+    from path_names import singularity_path, bind_path    
+    pbs_array_data = []
+    n_weights = []  # just for noting
+    
+    for n_weight in list(range(total_weights)):
+    #for n_weight in list(range(4500, 6000)): 
+        
+        model_name = df.loc[n_weight,"model_name"]
+        weight_name = df.loc[n_weight,"weight_file"]
+        i, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
+        fit_exist1 = isfile( join(save_dir, model_name, f"{replace_name(weight_name,'mmt')}.csv") )
+        #fit_exist1 = False
+        if not fit_exist1:
+            pbs_array_data.append( (root_path, save_dir, n_weight) )
+            n_weights.append(n_weight)
+ 
+    #pbs_array_data = pbs_array_data[:500]
+    print(len(pbs_array_data))
+
+    ncpus, ngpus = 1, 0
+    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)                
+        
+    perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    quit()  # delete
+    for idx, pidx in enumerate(perm):
+        pbs_array_true = pbss[idx]
+        print(project_ls[pidx])
+
+        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',
+             pbs_array_true, 
+             path=join(main_path,'jobs_all', args[0]),
+             P=project_ls[pidx], 
+             #source="virt-test-qu/bin/activate",
+             walltime='23:59:59',
+             ncpus=ncpus,
+             ngpus=ngpus,
+             mem="8GB")   
+
+
 # -------------------- Batched tail fitting for pretrained weights --------------------
 
 # batch version of pretrained_moments
-def batch_pretrained_mmt(weight_path, n_weights):
+def batch_pretrained_mmt(weight_path, n_weights, *args):
     """
     Batches arg n_weight for pretrained_allfit()
     """
+    global n_weights_copy, data_type  
 
+    print(f'weight_path = {weight_path}')
+    print(f'n_weights = {n_weights}')
     if isinstance(n_weights,str):
         n_weights = literal_eval(n_weights)
+    print(n_weights)
+    n_weights_copy = n_weights
+    data_type = type(n_weights)
     assert isinstance(n_weights, list), "n_weights is not a list!"
 
-    save_dir1 = join(root_data, "pretrained_workflow", "moments")
+    #save_dir1 = join(root_data, "pretrained_workflow", "moments")
+    save_dir1 = join(root_data, "pretrained_workflow", "moments_v2")
+    if not isdir(save_dir1): makedirs(save_dir1)
     for n_weight in tqdm(n_weights):
         pretrained_moments(weight_path, save_dir1, n_weight)
 
     print(f"Batch completed for {weight_path} for n_weights: {n_weights}")
 
 # batch version of pretrained_ww_plfit
-def batch_pretrained_plfit(weight_path, n_weights):
+def batch_pretrained_plfit(weight_path, n_weights, *args):
 
     if isinstance(n_weights,str):
         n_weights = literal_eval(n_weights)
@@ -1263,7 +1352,7 @@ def batch_pretrained_plfit(weight_path, n_weights):
 
 
 # batch version of pretrained_1samp_test()
-def batch_pretrained_1samp(weight_path, n_weights):
+def batch_pretrained_1samp(weight_path, n_weights, *args):
 
     if isinstance(n_weights,str):
         n_weights = literal_eval(n_weights)
@@ -1278,23 +1367,26 @@ def batch_pretrained_1samp(weight_path, n_weights):
 
 # functions: batch_pretrained_allfit(), batch_pretrained_mmt(), batch_pretrained_plfit(), batch_pretrained_1samp()
 def batch_submit(*args):
-    global pbss, n_weightss, pbs_array_data, total_weights
+    global pbss, n_weightss, pbs_array_data, total_weights, root_path, perm
 
     pytorch = True
+    #chunks = 60
     #chunks = 30
+    chunks = 10
     #chunks = 5
-    chunks = 1
+    #chunks = 1
 
     main_path, root_path, df, weights_all, total_weights = pre_submit(pytorch)
     #allfit_folder = "ww_plfit_all" if pytorch else "ww_plfit_all_tf"
-    allfit_folder = 'ww_plfit_v2'
+    #allfit_folder = 'ww_plfit_v2'
     #allfit_folder = 'moments'
+    allfit_folder = "moments_v2"
     fit_path1 = join(os.path.dirname(root_path), allfit_folder) 
 
     from qsub import qsub, job_divider, project_ls, command_setup
     from path_names import singularity_path, bind_path    
         
-    is_first_time = False
+    is_first_time = True
     if is_first_time:
         n_weights = list(range(total_weights))
     else:
@@ -1325,26 +1417,31 @@ def batch_submit(*args):
     command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)    
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
-    #print(len(pbss))
-    #quit()
+
+    # debug
+    #pbss = pbss[:1]  # delete
+    #print(len(pbss))   
+    # perm = [0]
+    # pbss = [[("/project/PDLAI/project2_data/pretrained_workflow/weights_all", "[0,1,2]"), 
+    #          ("/project/PDLAI/project2_data/pretrained_workflow/weights_all", "[3,4,5]")]]
+
+    quit()  # delete
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
 
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
-             #path=join(main_path, "jobs_all", "plfit_all"),  
-             #path=join(main_path, "jobs_all", "plfit_all_remainder"),
-             path=join(main_path, "jobs_all", "plfit_all_v2"),
-             #path=join(main_path, "jobs_all", "onesamp_test"),
-             #path=join(main_path, "jobs_all", "moments"),
+             path=join(main_path, "jobs_all", args[0]),
              P=project_ls[pidx], 
              walltime='23:59:59',
              ncpus=ncpus,
              ngpus=ngpus,
              #mem="1GB")
              mem="4GB")
-             #mem="6GB")        
+             #mem="5GB")
+             #mem="6GB")
+             #mem="10GB")        
     
 # -------------------- Single pretrained weight matrix fitting --------------------
 
