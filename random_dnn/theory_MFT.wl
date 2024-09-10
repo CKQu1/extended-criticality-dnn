@@ -1,24 +1,6 @@
-ParallelOuter = ResourceFunction["ParallelOuter"];
+<<"utils.wl"
 
-StableDist[\[Alpha]_] :=
-    StableDistribution[\[Alpha], 0, 0, 2 ^ (-1 / \[Alpha])];
 
-(* This gets q, i.e. \[Sigma]w^\[Alpha] * <|\[Phi](h)|^\[Alpha]> + \[Sigma]b^\[Alpha] *)
-
-FPStable[\[Alpha]_?NumericQ, \[Sigma]w_?NumericQ, \[Sigma]b_?NumericQ,
-     \[Phi]_:Tanh, hList_:None] :=
-    With[{
-        hList2 =
-            If[hList === None,
-                RandomVariate[StableDist[\[Alpha]], 100000]
-                ,
-                hList
-            ]
-    },
-        q /. FindRoot[\[Sigma]w^\[Alpha] Mean[Abs[\[Phi][hList2 Abs[q
-            ] ^ (1 / \[Alpha])]] ^ \[Alpha]] + \[Sigma]b^\[Alpha] - q, {q, 1*^-2,
-             1*^3}]
-    ];
 
 NeuralNorm[\[Alpha]_?NumericQ, q_?NumericQ, \[Phi]_:Tanh, ord_:2, hList_
     :None] :=
@@ -32,15 +14,6 @@ NeuralNorm[\[Alpha]_?NumericQ, q_?NumericQ, \[Phi]_:Tanh, ord_:2, hList_
     },
         Mean[Abs[\[Phi][hList2 q ^ (1 / \[Alpha])]] ^ ord]
     ];
-
-LaunchPhysicsKernels[] :=
-    (
-        LaunchKernels[6];
-        LaunchKernels["ssh://cartman?20"];
-        LaunchKernels["ssh://kyle?20"];
-        LaunchKernels["ssh://stan?10"];
-        Return[Length @ Kernels[]]
-    )
 
 GetFPStable[] :=
     With[{\[Phi] = Tanh, \[Sigma]b = 0, \[Alpha]List = Range[1, 2, 0.05
@@ -70,21 +43,21 @@ GetFPStable[] :=
                         {\[Alpha], \[Alpha]List}
                     ]
             |>
-        ] // Export["fpStable.wxf", #]&;
+        ] // Export["fig/fpStable.wxf", #]&;
 
 GetNeuralNorms[] :=
     (
-        fpStable = Import["fpStable.wxf"];
+        fpStable = Import["fig/fpStable.wxf"];
         WaitAll @ MapThread[Apply[ParallelSubmit @ Mean @ Table[NeuralNorm[
             #2, #3, fpStable["\[Phi]"], 2], 10] ^ (1 / 2)&] @* Append, {Outer[List,
              fpStable["\[Sigma]wList"], fpStable["\[Alpha]List"]], Transpose @ fpStable[
-            "data"]}, 2] // Export["neuralNorms.wxf", #]&
+            "data"]}, 2] // Export["fig/neuralNorms.wxf", #]&
     )
 
 PlotNeuralNorms[] :=
     (
-        fpStable = Import["fpStable.wxf"];
-        neuralNorms = Import["neuralNorms.wxf"];
+        fpStable = Import["fig/fpStable.wxf"];
+        neuralNorms = Import["fig/neuralNorms.wxf"];
         ListDensityPlot[neuralNorms, PlotLegends -> Automatic, PlotRange
              -> All, ColorFunction -> "BlueGreenYellow", FrameLabel -> {"\[Alpha]",
              "\!\(\*SubscriptBox[\(\[Sigma]\), \(w\)]\)"}, DataRange -> {MinMax @
@@ -94,7 +67,7 @@ PlotNeuralNorms[] :=
             {"\[Alpha]", "\!\(\*SubscriptBox[\(\[Sigma]\), \(w\)]\)"}, DataRange 
             -> {MinMax @ fpStable["\[Alpha]List"], MinMax @ fpStable["\[Sigma]wList"
             ]}, ImageSize -> Small, Contours -> {0.01}, ContourShading -> None, ContourStyle
-             -> Red] // Export["neuralNorms.png", #]&;
+             -> Red] // Export["fig/neuralNorms.png", #]&;
         ListDensityPlot[Log @ neuralNorms, PlotLegends -> Automatic, 
             PlotRange -> All, ColorFunction -> "BlueGreenYellow", FrameLabel -> {
             "\[Alpha]", "\!\(\*SubscriptBox[\(\[Sigma]\), \(w\)]\)"}, DataRange ->
@@ -104,7 +77,8 @@ PlotNeuralNorms[] :=
             FrameLabel -> {"\[Alpha]", "\!\(\*SubscriptBox[\(\[Sigma]\), \(w\)]\)"
             }, DataRange -> {MinMax @ fpStable["\[Alpha]List"], MinMax @ fpStable[
             "\[Sigma]wList"]}, ImageSize -> Small, Contours -> {0.01}, ContourShading
-             -> None, ContourStyle -> Red] // Export["neuralNorms_log.png", #]&
+             -> None, ContourStyle -> Red] // Export["fig/neuralNorms_log.png", #
+            ]&
     )
 
 (* mixed selectivity plots using cifar-10 *)
@@ -142,7 +116,7 @@ GetIterNormsDiffNorms[nSamples_:1000] :=
                 ]
                 ,
                 {\[Alpha], 2, 1, -.25}
-            ] // Export["iterNormDiffNorms.wxf", #]&
+            ] // Export["fig/iterNormDiffNorms.wxf", #]&
     )
 
 GetIterNormsDiffGains[nSamples_:1000] :=
@@ -160,7 +134,7 @@ GetIterNormsDiffGains[nSamples_:1000] :=
                 ]
                 ,
                 {\[Alpha], 2, 1, -.25}
-            ] // Export["iterNormDiffGains.wxf", #]&
+            ] // Export["fig/iterNormDiffGains.wxf", #]&
     )
 
 PlotIterNorms[fname_] :=
@@ -180,13 +154,12 @@ and it will run and echo the functions in order
 
 c = (Print @* EchoTiming @* ToExpression) /@ $ScriptCommandLine[[2 ;; ]]
 
-
 (* 
 
 fig 1:
-    wolframscript -f wardak20240818.wl LaunchPhysicsKernels[] GetFPStable[] GetNeuralNorms[] PlotNeuralNorms[]
+    wolframscript -f theory_MFT.wl LaunchPhysicsKernels[] GetFPStable[] GetNeuralNorms[] PlotNeuralNorms[]
 
 fig 2:
-    wolframscript -f wardak20240818.wl GetIterNormsDiffNorms[1000] PlotIterNorms[\"iterNormDiffNorms.wxf\"] GetIterNormsDiffGains[1000] PlotIterNorms[\"iterNormDiffGains.wxf\"]
+    wolframscript -f theory_MFT.wl GetIterNormsDiffNorms[1000] PlotIterNorms[\"fig/iterNormDiffNorms.wxf\"] GetIterNormsDiffGains[1000] PlotIterNorms[\"fig/iterNormDiffGains.wxf\"]
 
  *)
