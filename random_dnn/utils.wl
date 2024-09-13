@@ -1,8 +1,5 @@
 ParallelOuter = ResourceFunction["ParallelOuter"];
 
-StableDist[\[Alpha]_] :=
-    StableDistribution[\[Alpha], 0, 0, 2 ^ (-1 / \[Alpha])];
-
 (* This gets q, i.e. \[Sigma]w^\[Alpha] * <|\[Phi](h)|^\[Alpha]> + \[Sigma]b^\[Alpha] *)
 
 FPStable[\[Alpha]_?NumericQ, \[Sigma]w_?NumericQ, \[Sigma]b_?NumericQ,
@@ -24,19 +21,26 @@ LaunchPhysicsKernels[] :=
     (
         LaunchKernels[6];
         LaunchKernels["ssh://cartman?20"];
-        LaunchKernels["ssh://kyle?20"];
+        LaunchKernels["ssh://bebe?20"];
         LaunchKernels["ssh://stan?10"];
         Return[Length @ Kernels[]]
     )
 
-SDist[\[Alpha]_] :=
-    With[{
-        c =
-            Function[\[Alpha]1,
-                Gamma[1 + \[Alpha]1] Sin[\[Pi] \[Alpha]1 / 2] / \[Pi]
-                    
-            ]
-    },
-        StableDistribution[\[Alpha] / 2, 1, 0, (c[\[Alpha]] / (4 c[\[Alpha]
-             / 2])) ^ (2 / \[Alpha])]
+StableDist[\[Alpha]_] :=
+    StableDistribution[\[Alpha], 0, 0, 2 ^ (-1 / \[Alpha])]
+
+SDist[\[Alpha]_?NumericQ] :=
+    If[\[Alpha] < 2,
+        With[{
+            c =
+                Function[\[Alpha]1,
+                    Gamma[1 + \[Alpha]1] Sin[\[Pi] \[Alpha]1 / 2] / \[Pi]
+                        
+                ]
+        },
+            StableDistribution[\[Alpha] / 2, 1, 0, (c[\[Alpha]] / (4 
+                c[\[Alpha] / 2])) ^ (2 / \[Alpha])]
+        ]
+        ,
+        EmpiricalDistribution[{1}]
     ]
