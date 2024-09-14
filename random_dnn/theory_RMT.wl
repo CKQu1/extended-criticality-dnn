@@ -1,57 +1,5 @@
 <<"utils.wl"
 
-FPStable[\[Alpha]_?NumericQ, \[Sigma]w_?NumericQ, \[Sigma]b_?NumericQ,
-     \[Phi]_, stableSamples_] :=
-    If[\[Sigma]w == 0,
-        \[Sigma]b^\[Alpha]
-        ,
-        With[{
-            hList =
-                If[IntegerQ @ stableSamples,
-                    RandomVariate[StableDist[\[Alpha]], stableSamples
-                        ]
-                    ,
-                    stableSamples
-                ]
-        },
-            Abs @ q2 \[Sigma]w^\[Alpha] /. FindRoot[Mean[Abs[\[Phi][hList
-                 Abs[q2] ^ (1 / \[Alpha]) \[Sigma]w]] ^ \[Alpha]] + (\[Sigma]b / \[Sigma]w
-                ) ^ \[Alpha] - Abs @ q2, {q2, 1., .5}]
-        ]
-    ]
-
-FPStable[\[Alpha]_?NumericQ, \[Sigma]w_?NumericQ, \[Sigma]b_?NumericQ,
-     \[Phi]_] :=
-    If[\[Sigma]w == 0,
-        \[Sigma]b^\[Alpha]
-        ,
-        Abs @ q2 \[Sigma]w^\[Alpha] /. FindRoot[NExpectation[Abs[\[Phi][
-            h Abs[q2] ^ (1 / \[Alpha]) \[Sigma]w]] ^ \[Alpha], {h \[Distributed] 
-            StableDist[\[Alpha]]}] + (\[Sigma]b / \[Sigma]w) ^ \[Alpha] - Abs @ q2,
-             {q2, 1., .5}]
-    ]
-
-NeuralNorm[\[Alpha]_?NumericQ, g_?NumericQ, \[Sigma]b_?NumericQ, \[Phi]_,
-     ord_, stableSamples_] :=
-    With[{
-        hList =
-            If[IntegerQ @ stableSamples,
-                RandomVariate[StableDist[\[Alpha]], stableSamples]
-                ,
-                stableSamples
-            ]
-    },
-        Mean[(\[Phi][FPStable[\[Alpha], g, 0, \[Phi], hList] ^ (1 / \[Alpha]
-            ) hList]) ^ ord]
-    ]
-
-NeuralNorm[\[Alpha]_?NumericQ, g_?NumericQ, \[Sigma]b_?NumericQ, \[Phi]_,
-     ord_] :=
-    With[{q = FPStable[\[Alpha], g, \[Sigma]b, \[Phi]]},
-        NExpectation[(\[Phi][q ^ (1 / \[Alpha]) h]) ^ ord, {h \[Distributed]
-             StableDist[\[Alpha]]}]
-    ]
-
 RNN[\[Alpha]_, g_, \[Phi]_, nNeurons_, nIters_, dt_:1*^-3] :=
     With[{M = g nNeurons ^ (-1 / \[Alpha]) RandomVariate[StableDist[\[Alpha]
         ], {nNeurons, nNeurons}]},
@@ -224,11 +172,12 @@ EigInverseCDF[\[Alpha]_?NumericQ, cdf_?NumericQ, \[Chi]Samples_ ? (VectorQ[
 (* Getting the CDFs on a grid in \[Alpha],g *)
 
 GetJacobianEigCDFs[] :=
-    With[{rList = Rest @ Range[0, 10, .01], \[Alpha]List = Range[1, 2,
-         .05], gList = Rest @ Range[0, 3, .05]},
-            <|"rList" -> rList, "\[Alpha]List" -> \[Alpha]List, "gList"
-                 -> gList, "CDF" -> ParallelOuter[EchoTiming[Quiet @ JacobianEigCDF[#1,
-                 #2, rList, Tanh, 10000], {#1, #2}]&, \[Alpha]List, gList]|>
+    With[{fpStable = Import["fig/fpStable.wxf"], rList = Range[0, 10,
+         0.01]},
+            <|"gList" -> fpStable["\[Sigma]wList"], "\[Alpha]List" ->
+                 fpStable["\[Alpha]List"], "rList" -> rList, "CDF" -> ParallelOuterWithData[
+                 @ Quiet @ JacobianEigCDF[#1, #2, rList, Tanh, 10000, #3]&, fpStable[
+                "data"], fpStable["\[Alpha]List"], fpStable["\[Sigma]wList"]]|>
         ] // Export["fig/jacobianEigCDFs.wxf", #]&
 
 (* Getting the effective spectral radius *)

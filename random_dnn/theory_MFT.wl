@@ -1,8 +1,17 @@
 <<"utils.wl"
 
+(* TODO: make this work with the revised FPStable and NeuralNorms*)
 
+GetFPStable[] :=
+    With[{\[Phi] = Tanh, \[Sigma]b = 0, \[Alpha]List = Range[1, 2, 0.05
+        ], \[Sigma]wList = Range[0, 3, 0.05]},
+            <|"\[Phi]" -> \[Phi], "\[Sigma]b" -> \[Sigma]b, "\[Alpha]List"
+                 -> \[Alpha]List, "\[Sigma]wList" -> \[Sigma]wList, "data" -> ParallelOuter[
+                Quiet @ FPStable[#1, #2, \[Sigma]b, \[Phi]]&, \[Alpha]List, \[Sigma]wList
+                ]|>
+        ] // Export["fig/fpStable.wxf", #]&;
 
-NeuralNorm[\[Alpha]_?NumericQ, q_?NumericQ, \[Phi]_:Tanh, ord_:2, hList_
+(* NeuralNorm[\[Alpha]_?NumericQ, q_?NumericQ, \[Phi]_:Tanh, ord_:2, hList_
     :None] :=
     With[{
         hList2 =
@@ -13,37 +22,28 @@ NeuralNorm[\[Alpha]_?NumericQ, q_?NumericQ, \[Phi]_:Tanh, ord_:2, hList_
             ]
     },
         Mean[Abs[\[Phi][hList2 q ^ (1 / \[Alpha])]] ^ ord]
-    ];
+    ]; *)
 
-GetFPStable[] :=
-    With[{\[Phi] = Tanh, \[Sigma]b = 0, \[Alpha]List = Range[1, 2, 0.05
-        ], \[Sigma]wList = Range[0, 3, 0.1]},
-            <|
-                "\[Phi]" -> \[Phi]
+NeuralNorm[\[Alpha]_?NumericQ, g_?NumericQ, \[Sigma]b_?NumericQ, \[Phi]_,
+     ord_, stableSamples_] :=
+    With[{
+        hList =
+            If[IntegerQ @ stableSamples,
+                RandomVariate[StableDist[\[Alpha]], stableSamples]
                 ,
-                "\[Sigma]b" -> \[Sigma]b
-                ,
-                "\[Alpha]List" -> \[Alpha]List
-                ,
-                "\[Sigma]wList" -> \[Sigma]wList
-                ,
-                "data" ->
-                    ParallelTable[
-                        Mean @
-                            Table[
-                                With[{hList = RandomVariate[StableDist[
-                                    \[Alpha]], 100000]},
-                                    Table[FPStable[\[Alpha], \[Sigma]w,
-                                         \[Sigma]b, \[Phi], hList], {\[Sigma]w, \[Sigma]wList}]
-                                ]
-                                ,
-                                10
-                            ]
-                        ,
-                        {\[Alpha], \[Alpha]List}
-                    ]
-            |>
-        ] // Export["fig/fpStable.wxf", #]&;
+                stableSamples
+            ]
+    },
+        Mean[(\[Phi][FPStable[\[Alpha], g, 0, \[Phi], hList] ^ (1 / \[Alpha]
+            ) hList]) ^ ord]
+    ]
+
+NeuralNorm[\[Alpha]_?NumericQ, g_?NumericQ, \[Sigma]b_?NumericQ, \[Phi]_,
+     ord_] :=
+    With[{q = FPStable[\[Alpha], g, \[Sigma]b, \[Phi]]},
+        NExpectation[(\[Phi][q ^ (1 / \[Alpha]) h]) ^ ord, {h \[Distributed]
+             StableDist[\[Alpha]]}]
+    ]
 
 GetNeuralNorms[] :=
     (
