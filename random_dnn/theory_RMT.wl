@@ -131,7 +131,7 @@ EigCDF[\[Alpha]_?NumericQ, r_?NumericQ, \[Chi]Dist_?DistributionParameterQ,
             ], \[Chi] \[Distributed] \[Chi]Dist}, Method -> "MonteCarlo"]
     ]
 
-JacobianEigInverseCDF[\[Alpha]_?NumericQ, g_?NumericQ, cdf_?NumericQ,
+(* JacobianEigInverseCDF[\[Alpha]_?NumericQ, g_?NumericQ, cdf_?NumericQ,
      \[Phi]_, stableSamples_, SDistSamples_:None] :=
     With[{
         hList =
@@ -167,24 +167,208 @@ EigInverseCDF[\[Alpha]_?NumericQ, cdf_?NumericQ, \[Chi]Samples_ ? (VectorQ[
                      / 2)] ^ (1 / \[Alpha])
             ]
         ]
+    ] *)
+
+ClearAll @ JacobianEigInverseCDF;
+
+JacobianEigInverseCDF[\[Alpha]_?NumericQ, g_?NumericQ, cdf_?NumericQ,
+     \[Phi]_, stableSamples_, SDistSamples_:None] :=
+    With[{
+        hList =
+            If[IntegerQ @ stableSamples,
+                RandomVariate[StableDist[\[Alpha]], stableSamples]
+                ,
+                stableSamples
+            ]
+    },
+        With[{\[Chi]Samples = g \[Phi]'[FPStable[\[Alpha], g, 0, \[Phi],
+             stableSamples] ^ (1 / \[Alpha]) hList]},
+            EigInverseCDF[\[Alpha], cdf, \[Chi]Samples, SDistSamples]
+                
+        ]
+    ]
+
+JacobianEigInverseCDF[\[Alpha]_?NumericQ, g_?NumericQ, cdfList_ ? (VectorQ[
+    #, NumericQ]&), \[Phi]_, stableSamples_, SDistSamples_:None] :=
+    With[{
+        hList =
+            If[IntegerQ @ stableSamples,
+                RandomVariate[StableDist[\[Alpha]], stableSamples]
+                ,
+                stableSamples
+            ]
+    },
+        With[{\[Chi]Samples = g \[Phi]'[FPStable[\[Alpha], g, 0, \[Phi],
+             stableSamples] ^ (1 / \[Alpha]) hList]},
+            EigInverseCDF[\[Alpha], cdfList, \[Chi]Samples, SDistSamples
+                ]
+        ]
+    ]
+
+ClearAll @ EigInverseCDF;
+
+EigInverseCDF[\[Alpha]_?NumericQ, cdf_?NumericQ, \[Chi]Samples_ ? (VectorQ[
+    #, NumericQ]&), SDistSamples_:None] :=
+    With[{
+        SList =
+            If[SDistSamples === None,
+                RandomVariate[SDist[\[Alpha]], Length @ \[Chi]Samples
+                    ]
+                ,
+                SDistSamples
+            ]
+    },
+        With[{\[Chi]2S = \[Chi]Samples^2 SList, Sp = RotateRight @ SList
+            },
+            With[{rym1 = Exp @ LogRym1 /. FindRoot[Mean[Exp[2 LogRym1
+                ] / (Exp[2 LogRym1] + \[Chi]2S Sp)] - cdf, {LogRym1, 0}]},
+                rym1 Mean[(\[Chi]2S / (rym1^2 + \[Chi]2S Sp)) ^ (\[Alpha]
+                     / 2)] ^ (1 / \[Alpha])
+            ]
+        ]
+    ]
+
+EigInverseCDF[\[Alpha]_?NumericQ, cdfList_ ? (VectorQ[#, NumericQ]&),
+     \[Chi]Samples_ ? (VectorQ[#, NumericQ]&), SDistSamples_:None] :=
+    With[{
+        SList =
+            If[SDistSamples === None,
+                RandomVariate[SDist[\[Alpha]], Length @ \[Chi]Samples
+                    ]
+                ,
+                SDistSamples
+            ]
+    },
+        With[{\[Chi]2S = \[Chi]Samples^2 SList, Sp = RotateRight @ SList
+            },
+            Table[
+                With[{rym1 = Exp @ LogRym1 /. FindRoot[Mean[Exp[2 LogRym1
+                    ] / (Exp[2 LogRym1] + \[Chi]2S Sp)] - cdf, {LogRym1, 0}]},
+                    rym1 Mean[(\[Chi]2S / (rym1^2 + \[Chi]2S Sp)) ^ (
+                        \[Alpha] / 2)] ^ (1 / \[Alpha])
+                ]
+                ,
+                {cdf, cdfList}
+            ]
+        ]
     ]
 
 (* Getting the CDFs on a grid in \[Alpha],g *)
 
-GetJacobianEigCDFs[] :=
+(* GetJacobianEigCDFs[] :=
     With[{fpStable = Import["fig/fpStable.wxf"], rList = Range[0, 10,
          0.01]},
             <|"gList" -> fpStable["\[Sigma]wList"], "\[Alpha]List" ->
                  fpStable["\[Alpha]List"], "rList" -> rList, "CDF" -> ParallelOuterWithData[
                  @ Quiet @ JacobianEigCDF[#1, #2, rList, Tanh, 10000, #3]&, fpStable[
                 "data"], fpStable["\[Alpha]List"], fpStable["\[Sigma]wList"]]|>
-        ] // Export["fig/jacobianEigCDFs.wxf", #]&
+        ] // Export["fig/jacobianEigCDFs.wxf", #]& *)
 
 (* Getting the effective spectral radius *)
 
-GetJacobianEigInverseCDF[] :=
+(* GetJacobianEigInverseCDF[] :=
     ParallelOuter[Quiet @ JacobianEigInverseCDF[#1, #2, .99, Tanh, 10000
         ]&, Range[1, 2, .01], Range[0, 5, .01]] // ListDensityPlot[Transpose 
-        @ #, PlotLegends -> Automatic]&
+        @ #, PlotLegends -> Automatic]& *)
+
+PlotLogMeasure[] :=
+    ParallelOuter[Mean @ Table[Quiet @ Log @ JacobianEigInverseCDF[#1,
+         #2, u, Tanh, 1000], {u, Subdivide[0, 1, 100]}]&, Range[1, 2, .1], Rest
+         @ Range[0, 3, .1]] //
+    Transpose //
+    ListDensityPlot //
+    Export["fig/log.png", #]&
+
+ClearAll @ LogJacobianEigInverseCDF;
+
+LogJacobianEigInverseCDF[\[Alpha]_?NumericQ, g_?NumericQ, cdf_?NumericQ,
+     \[Phi]_, stableSamples_, SDistSamples_:None] :=
+    With[{
+        hList =
+            If[IntegerQ @ stableSamples,
+                RandomVariate[StableDist[\[Alpha]], stableSamples]
+                ,
+                stableSamples
+            ]
+    },
+        With[{\[Chi]Samples = g \[Phi]'[FPStable[\[Alpha], g, 0, \[Phi],
+             stableSamples] ^ (1 / \[Alpha]) hList]},
+            Log @ EigInverseCDF[\[Alpha], cdf, \[Chi]Samples, SDistSamples
+                ]
+        ]
+    ]
+
+LogJacobianEigInverseCDF[\[Alpha]_?NumericQ, g_?NumericQ, cdfList_ ? 
+    (VectorQ[#, NumericQ]&), \[Phi]_, stableSamples_, SDistSamples_:None] :=
+    With[{
+        hList =
+            If[IntegerQ @ stableSamples,
+                RandomVariate[StableDist[\[Alpha]], stableSamples]
+                ,
+                stableSamples
+            ]
+    },
+        With[{\[Chi]Samples = g \[Phi]'[FPStable[\[Alpha], g, 0, \[Phi],
+             stableSamples] ^ (1 / \[Alpha]) hList]},
+            Log @ EigInverseCDF[\[Alpha], cdfList, \[Chi]Samples, SDistSamples
+                ]
+        ]
+    ]
+
+ClearAll @ LogEigInverseCDF;
+
+LogEigInverseCDF[\[Alpha]_?NumericQ, cdf_?NumericQ, \[Chi]Samples_ ? 
+    (VectorQ[#, NumericQ]&), SDistSamples_:None] :=
+    With[{
+        SList =
+            If[SDistSamples === None,
+                RandomVariate[SDist[\[Alpha]], Length @ \[Chi]Samples
+                    ]
+                ,
+                SDistSamples
+            ]
+    },
+        With[{\[Chi]2S = \[Chi]Samples^2 SList, Sp = RotateRight @ SList
+            },
+            With[{LogRym1 = LogRym1 /. FindRoot[Mean[Exp[2 LogRym1] /
+                 (Exp[2 LogRym1] + \[Chi]2S Sp)] - cdf, {LogRym1, 0}]},
+                LogRym1 + Log @ Mean[(\[Chi]2S / (Exp[2 LogRym1] + \[Chi]2S
+                     Sp)) ^ (\[Alpha] / 2)] ^ (1 / \[Alpha])
+            ]
+        ]
+    ]
+
+LogEigInverseCDF[\[Alpha]_?NumericQ, cdfList_ ? (VectorQ[#, NumericQ]&
+    ), \[Chi]Samples_ ? (VectorQ[#, NumericQ]&), SDistSamples_:None] :=
+    With[{
+        SList =
+            If[SDistSamples === None,
+                RandomVariate[SDist[\[Alpha]], Length @ \[Chi]Samples
+                    ]
+                ,
+                SDistSamples
+            ]
+    },
+        With[{\[Chi]2S = \[Chi]Samples^2 SList, Sp = RotateRight @ SList
+            },
+            Table[
+                With[{LogRym1 = LogRym1 /. FindRoot[Mean[Exp[2 LogRym1
+                    ] / (Exp[2 LogRym1] + \[Chi]2S Sp)] - cdf, {LogRym1, 0}]},
+                    LogRym1 + Log @ Mean[(\[Chi]2S / (Exp[2 LogRym1] 
+                        + \[Chi]2S Sp)) ^ (\[Alpha] / 2)] / \[Alpha]
+                ]
+                ,
+                {cdf, cdfList}
+            ]
+        ]
+    ]
+
+GetJacobianEigInverseCDF[] :=
+    With[{\[Alpha]List = Range[1, 2, .1], gList = Rest @ Range[0, 3, 
+        .1], cdfList = Subdivide[0, 1, 100]},
+            <|"\[Alpha]List" -> \[Alpha]List, "gList" -> gList, "LogInvCDF"
+                 -> ParallelOuter[Quiet @ LogJacobianEigInverseCDF[#1, #2, cdfList, Tanh,
+                 10000]&, \[Alpha]List, gList]|>
+        ] // Export["fig/LogInvCDF.wxf", #]&
 
 c = (Print @* EchoTiming @* ToExpression) /@ $ScriptCommandLine[[2 ;; ]]
