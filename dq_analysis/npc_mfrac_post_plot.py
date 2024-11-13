@@ -1,9 +1,10 @@
-import matplotlib.colors as mcl
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np
 import os
 import pandas as pd
-import seaborn as sns
+#import seaborn as sns
 import scipy.io as sio
 import sys
 import torch
@@ -20,7 +21,7 @@ from utils_dnn import setting_from_path
 # plot settings
 plt.rcParams["font.family"] = "sans-serif"     # set plot font globally
 #plt.switch_backend('agg')
-global c_ls, c_ls_targets, figw, figh, axw, axh
+global c_ls, c_ls_targets, figw, figh, axw, axh, colors_all
 global title_size, tick_size, label_size, axis_size, legend_size
 #title_size = 23.5 * 2
 #tick_size = 23.5 * 2
@@ -34,9 +35,9 @@ legend_size = 14.1 * 0.8
 lwidth = 1.8
 msize = 10
 text_size = 14
-#c_ls_targets = list(mcl.TABLEAU_COLORS.keys())
-#cmap = plt.get_cmap('tab10') 
-cmap = plt.get_cmap('PiYG')
+#c_ls_targets = list(mcolors.TABLEAU_COLORS.keys())
+cmap = plt.get_cmap('tab10') 
+#cmap = plt.get_cmap('PiYG')
 c_ls = ["darkblue", "darkred"]
 linestyle_ls = ["--", "-"]
 #marker_ls = ["o", "."]
@@ -49,8 +50,42 @@ post_dict = {0:'pre', 1:'post', 2:'all'}
 reig_dict = {0:'l', 1:'r'}    
 all_metric_ls = ["class_sep", "ED", "D2_npc", "D2_npd", "D2_hidden", "cum_var", "eigvals_ordered"]
 
+# source: https://stackoverflow.com/questions/18704353/correcting-matplotlib-colorbar-ticks
+def colorbar_index(ncolors, cmap):
+    cmap = cmap_discretize(cmap, ncolors)
+    mappable = cm.ScalarMappable(cmap=cmap)
+    mappable.set_array([])
+    mappable.set_clim(-0.5, ncolors+0.5)
+    colorbar = plt.colorbar(mappable)
+    colorbar.set_ticks(np.linspace(0, ncolors, ncolors))
+    colorbar.set_ticklabels(range(ncolors))
+
+def cmap_discretize(cmap, N):
+    """Return a discrete colormap from the continuous colormap cmap.
+
+        cmap: colormap instance, eg. cm.jet. 
+        N: number of colors.
+
+    Example
+        x = resize(arange(100), (5,100))
+        djet = cmap_discretize(cm.jet, 5)
+        imshow(x, cmap=djet)
+    """
+
+    if type(cmap) == str:
+        cmap = plt.get_cmap(cmap)
+    colors_i = np.concatenate((np.linspace(0, 1., N), (0.,0.,0.,0.)))
+    colors_rgba = cmap(colors_i)
+    indices = np.linspace(0, 1., N+1)
+    cdict = {}
+    for ki,key in enumerate(('red','green','blue')):
+        cdict[key] = [ (indices[i], colors_rgba[i-1,ki], colors_rgba[i,ki])
+                       for i in range(N+1) ]
+    # Return colormap object.
+    return mcolors.LinearSegmentedColormap(cmap.name + "_%d"%N, cdict, 1024)
+
 # data_path = /project/PDLAI/project2_data/trained_mlps/fcn_grid/fc10_grid
-def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
+def metrics_vs_depth(data_path, post=0, display=False, n_top=2, epochs=[0,650], is_3d=False):
     """
     Plots the class separation for MLPs in the first two columns, plots the ED/localization properties of 
     the neural representation PCs:
@@ -64,6 +99,7 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
 
     global epoch_plot, metric_means, metric_data, D2_mean, D2_std, axs
     global depth, X_pca, indices, target_indices, sample_indices
+    global colors_all
 
     """
 
@@ -103,22 +139,30 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
     ncols = len(metric_ls) + 1 if "class_sep" in metric_ls else len(metric_ls)
     #fig, axs = plt.subplots(len(metric_ls), len(g100_ls), sharex = True,sharey=False,figsize=(9.5/2*3,7.142/4*3))
     #fig, axs = plt.subplots(len(metric_ls), len(g100_ls), sharex = True,sharey=False,figsize=(12.5,3.1*len(metric_ls)),constrained_layout=True)
-    fig, axs = plt.subplots(nrows, ncols, sharex=False,sharey=False,figsize=(12.5/3*ncols,3.1*nrows),constrained_layout=True)   
+    fig, axs = plt.subplots(nrows, ncols, sharex=False,sharey=False,figsize=(12.5/3*ncols,3.1*nrows + 3),constrained_layout=True)   
 
     # class separation        
     if post == 0:
         xax_limit = 300
-        yax_limit = 200    
-        depth_selected = 16         
+        yax_limit = 200  
+        zax_limit = 30  
+        # second final pre-activation
+        #depth_selected = 16         
+        depth_selected = 2*L - 4
     elif post == 1:
-        xax_limit = 15
+        xax_limit = 12
         yax_limit = 12
-        #depth_selected = 17
-        depth_selected = 11
+        zax_limit = 15
+        # final activation
+        #depth_selected = 17  
+        depth_selected = 2*L - 3      
     else:
         xax_limit = 50
         yax_limit = 35
-        depth_selected = 18
+        zax_limit = 30
+        # output
+        #depth_selected = 18
+        depth_selected = 2*L - 2
     # schematic figure of PCA
     selected_target_idxs = list(range(10))
     #selected_target_idxs = [1,9]
@@ -140,49 +184,95 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
                 X_pca = np.load(join(data_path, net_folder, "X_pca_test", f"npc-depth={depth_selected}-epoch={pca_epoch}.npy"), allow_pickle=True)
                 
                 # group in classes
+                colors_all = np.empty(X_pca.shape[0])
                 for iidx, cl_idx in enumerate(selected_target_idxs):
                     sample_indices = target_indices[cl_idx]
-                    #plot_points = 5000
-                    #sample_indices = list(target_indices[cl_idx][0:plot_points]) + [False] * (60000 - plot_points)
-                    # old version
-                    #axs[gidx,aidx].scatter(X_pca[sample_indices,0], X_pca[sample_indices,1], c=c_ls_targets[iidx],
-                    #                       s=1.5, alpha=0.2)   
-                    # new version
+                    #colors_all[np.where(sample_indices==True)[0]] = iidx
+                    colors_all[sample_indices] = iidx
 
-                    if gidx == 0 and aidx == 0:
-                        im = axs[gidx,aidx].scatter(X_pca[sample_indices,0], X_pca[sample_indices,1], 
-                                                    vmin=0, vmax=len(selected_target_idxs)-1,
-                                                    c=np.full(sample_indices.sum(),iidx), 
+                if is_3d:
+                    axs[gidx,aidx].remove()
+                    axs[gidx,aidx] = fig.add_subplot(nrows, ncols, ncols*gidx+aidx+1, projection='3d')
+                if gidx == 0 and aidx == 0:
+                    # 3D scatter
+                    if is_3d:
+                        im = axs[gidx,aidx].scatter(X_pca[:,0], X_pca[:,1], 
+                                                    X_pca[:,2],
+                                                    #vmin=0, vmax=len(selected_target_idxs)-1,
+                                                    #c=np.full(sample_indices.sum(),iidx), 
+                                                    c=colors_all,
                                                     #c=c_ls_targets[iidx],
                                                     s=1.5, alpha=0.2, cmap=cmap)  
+
+                    # 2D scatter
                     else:
-                        axs[gidx,aidx].scatter(X_pca[sample_indices,0], X_pca[sample_indices,1], 
-                                               vmin=0, vmax=len(selected_target_idxs)-1,
-                                               c=np.full(sample_indices.sum(),iidx), 
-                                               #c=c_ls_targets[iidx],
-                                               s=1.5, alpha=0.2, cmap=cmap)                       
-                    #print(X_pca[indices,0].shape)  # delete
+                        im = axs[gidx,aidx].scatter(X_pca[:,0], X_pca[:,1], 
+                                                    vmin=0, vmax=len(selected_target_idxs)-1,
+                                                    #c=np.full(sample_indices.sum(),iidx), 
+                                                    #c=c_ls_targets[iidx],
+                                                    c=colors_all,
+                                                    s=1.5, alpha=0.2, cmap=cmap)  
+
+                else:
+                    # 3D scatter
+                    if is_3d:
+                        axs[gidx,aidx].scatter(X_pca[:,0], X_pca[:,1], 
+                                                X_pca[:,2],
+                                                #vmin=0, vmax=len(selected_target_idxs)-1,
+                                                #c=np.full(sample_indices.sum(),iidx), 
+                                                c=colors_all,
+                                                #c=c_ls_targets[iidx],
+                                                s=1.5, alpha=0.2, cmap=cmap)      
+                        
+                    # 2D scatter 
+                    else:
+                        axs[gidx,aidx].scatter(X_pca[:,0], X_pca[:,1], 
+                                            vmin=0, vmax=len(selected_target_idxs)-1,
+                                            #c=np.full(sample_indices.sum(),iidx),                                             
+                                            #c=c_ls_targets[iidx],
+                                            c=colors_all,
+                                            s=1.5, alpha=0.2, cmap=cmap)                            
+                                        
+                #print(X_pca[indices,0].shape)  # delete
 
                 axs[gidx,aidx].set_xlim([-xax_limit,xax_limit]); axs[gidx,aidx].set_ylim([-yax_limit,yax_limit])
-                axs[gidx,aidx].spines['top'].set_visible(False); axs[gidx,aidx].spines['bottom'].set_visible(False)
-                axs[gidx,aidx].spines['right'].set_visible(False) ;axs[gidx,aidx].spines['left'].set_visible(False)   
+                if is_3d:
+                    axs[gidx,aidx].set_zlim([-zax_limit,zax_limit])
+                else:
+                    axs[gidx,aidx].spines['top'].set_visible(False); axs[gidx,aidx].spines['bottom'].set_visible(False)
+                    axs[gidx,aidx].spines['right'].set_visible(False) ;axs[gidx,aidx].spines['left'].set_visible(False)   
                 axs[gidx,aidx].set_xticks([]); axs[gidx,aidx].set_xticklabels([])
                 axs[gidx,aidx].set_yticks([]); axs[gidx,aidx].set_yticklabels([])
-                # label ticks
-                axs[gidx,aidx].tick_params(axis='both', labelsize=axis_size - 3.5)
-                if aidx == 0:
-                    axs[gidx,aidx].spines['left'].set_visible(True)
-                    axs[gidx,aidx].set_yticks([-yax_limit,0,yax_limit]); axs[gidx,aidx].set_yticklabels([-yax_limit,0,yax_limit])
-                if gidx == nrows - 1:                    
-                    axs[gidx,aidx].spines['bottom'].set_visible(True)
-                    axs[gidx,aidx].set_xticks([-xax_limit,0,xax_limit]); axs[gidx,aidx].set_xticklabels([-xax_limit,0,xax_limit])                                                                       
+                if is_3d:
+                    axs[gidx,aidx].set_zticks([]); axs[gidx,aidx].set_zticklabels([])
+
+                if is_3d:
+                    axs[gidx,aidx].set_xticks([-xax_limit,0,xax_limit])
+                    axs[gidx,aidx].set_yticks([-yax_limit,0,yax_limit])
+                    axs[gidx,aidx].set_zticks([-zax_limit,0,zax_limit])
+
+                    if aidx == 0:
+                        axs[gidx,aidx].spines['left'].set_visible(True)
+                        axs[gidx,aidx].set_yticklabels([-yax_limit,0,yax_limit])
+                    if gidx == nrows - 1:                    
+                        axs[gidx,aidx].spines['bottom'].set_visible(True)
+                        axs[gidx,aidx].set_xticklabels([-xax_limit,0,xax_limit]) 
+                        if aidx == 0 and is_3d:
+                            axs[gidx,aidx].set_zticklabels([-zax_limit,0,zax_limit]) 
+                else:
+                    if aidx == 0:
+                        axs[gidx,aidx].spines['left'].set_visible(True)
+                        axs[gidx,aidx].set_yticks([-yax_limit,0,yax_limit]); axs[gidx,aidx].set_yticklabels([-yax_limit,0,yax_limit])
+                    if gidx == nrows - 1:                    
+                        axs[gidx,aidx].spines['bottom'].set_visible(True)
+                        axs[gidx,aidx].set_xticks([-xax_limit,0,xax_limit]); axs[gidx,aidx].set_xticklabels([-xax_limit,0,xax_limit]) 
                            
     for midx, metric_name in enumerate(metric_ls[1:]):
         for gidx, g100 in enumerate(g100_ls):  
             # remove spines
-            axs[gidx, midx+2].spines['top'].set_visible(False); axs[gidx,midx+2].spines['right'].set_visible(False) 
+            #axs[gidx, midx+2].spines['top'].set_visible(False); axs[gidx,midx+2].spines['right'].set_visible(False) 
             # label ticks
-            axs[gidx, midx+2].tick_params(axis='both', labelsize=axis_size - 3.5)   
+            #axs[gidx, midx+2].tick_params(axis='both', labelsize=axis_size - 3.5)   
             for epoch_plot in epochs:
                 for aidx, alpha100 in enumerate(alpha100_ls):       
                     # Extract numeric arguments.
@@ -219,17 +309,23 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
                                 metric_data = np.load(join(data_path, net_folder, f"dq_npd-fullbatch_{post_dict[post]}", f"D2_{l}_{epoch_plot}.npy"))
                             elif metric_name == 'D2_hidden':
                                 metric_data = np.load(join(data_path, net_folder, f"dq_hidden-fullbatch_{post_dict[post]}", f"D2_{l}_{epoch_plot}.npy"))
-                            #n_top = round(ED_all[aidx, gidx, l])    # top PCs of the mean ED of that layer  
-                            if n_top != None:                          
-                                D2_mean.append(metric_data[:n_top].mean())
-                                D2_std.append(metric_data[:n_top].std())
+                            #quit()  # delete
+
+                            if metric_name in ["D2_npc", "D2_npd"]:                                  
+                                if n_top != None:                          
+                                    D2_mean.append(metric_data[:n_top].mean())
+                                    D2_std.append(metric_data[:n_top].std())
+                                else:
+                                    n_top = round(ED_all[aidx, gidx, l])    # top PCs of the mean ED of that layer
+                                    D2_mean.append(metric_data[0:5].mean())
+                                    D2_std.append(metric_data[0:5].std())    
                             else:
-                                D2_mean.append(metric_data[0:5].mean())
-                                D2_std.append(metric_data[0:5].std())
+                                D2_mean.append(metric_data.mean())
+                                D2_std.append(metric_data.std())                                  
 
                         D2_mean, D2_std = np.array(D2_mean), np.array(D2_std)
                         axs[gidx,midx+2].plot(np.arange(1, depth+1), D2_mean,linewidth=lwidth,linestyle=lstyle,
-                                         alpha=1, c = c_ls[aidx]) 
+                                              alpha=1, c = c_ls[aidx]) 
 
                         # standard deviation
                         axs[gidx,midx+2].fill_between(np.arange(1, depth+1), D2_mean - D2_std, D2_mean + D2_std, color = c_ls[aidx], alpha=0.2)
@@ -237,12 +333,12 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
                     elif metric_name == "cum_var":
                         var_ls = []
                         for l in range(depth):
-                            eigvals = np.load(join(data_path, net_folder, f"eigvals-fullbatch_{post_dict[post]}", f"npc-eigvals_{l}_{epoch_plot}.npy"))
-                            #n_top = round(ED_all[aidx, gidx, l])    # variance explained by top PCs
+                            eigvals = np.load(join(data_path, net_folder, f"eigvals-fullbatch_{post_dict[post]}", f"npc-eigvals_{l}_{epoch_plot}.npy"))                            
                             if n_top != None: 
                                 var_ls.append(eigvals[:n_top].sum()/eigvals.sum())
                             else:
-                                var_ls.append(eigvals[:5].sum()/eigvals.sum())
+                                n_top = round(ED_all[aidx, gidx, l])    # top PCs of the mean ED of that layer
+                                var_ls.append(eigvals[:n_top].sum()/eigvals.sum())
                         axs[gidx,midx+2].plot(np.arange(1, depth+1), var_ls,linewidth=lwidth,linestyle=lstyle,
                                          alpha=1, c = c_ls[aidx]) 
 
@@ -262,13 +358,7 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
 
                     
 
-        print(f"Metric {metric_name}")     
-
-    # adjust gaps between subplots
-    #plt.subplots_adjust(hspace=0.3)
-    #plt.subplots_adjust(wspace=0.3)
-    plt.subplots_adjust(hspace=0.25)
-    plt.subplots_adjust(wspace=0.25)
+        print(f"Metric {metric_name}")                 
 
     # legend
     legend_idx = 0
@@ -279,8 +369,13 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
         axs[legend_idx,selected_col].plot([], [], linewidth=lwidth, c = c_ls[aidx], label=rf"$\alpha$ = {alpha100_ls[aidx]/100}")
     #for cl_idx in range(len(selected_target_idxs)):
     #    axs[legend_idx,selected_col].plot([], [], marker='.', c=c_ls_targets[cl_idx], label=rf"Class {cl_idx + 1}")
-    axs[legend_idx,selected_col].legend(fontsize=legend_size, ncol=2, loc="lower left", bbox_to_anchor=[0, 1.25],
+    axs[legend_idx,selected_col].legend(fontsize=legend_size+3, ncol=2, loc="lower left", bbox_to_anchor=[0, 1.25],
                                         frameon=True)
+
+    for row in range(nrows):
+        for col in range(ncols):
+            # label ticks
+            axs[row,col].tick_params(axis='both', labelsize=axis_size + 1)
 
     # metrics plotted against layers
     for row in range(nrows):
@@ -293,14 +388,21 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
                     xtick_ls.append(str(num))
                 else:
                     xtick_ls.append('')
-            axs[row,col].set_xticklabels(xtick_ls)
+            if row == nrows-1:
+                axs[row,col].set_xticklabels(xtick_ls)
+            else:
+                axs[row,col].set_xticklabels([])
     # d2 and cumulative variance
     for col in [3,4]:
         for row in range(nrows):
             axs[row,col].set_ylim(-0.05,1.05) 
             axs[row,col].set_yticks(np.arange(0,1.01,0.2)) 
 
-    #fig.tight_layout(h_pad=2, w_pad=2)
+    #plt.subplots_adjust(hspace=0)
+    #plt.subplots_adjust(hspace=0.3); plt.subplots_adjust(wspace=0.3) 
+    #fig.tight_layout(h_pad=1.5, w_pad=1.5)
+    fig.tight_layout(h_pad=2.5, w_pad=-5)
+    #fig.tight_layout(h_pad=6)
     plot_path = join(root_data, f"figure_ms/{fcn}_npc")
     if not os.path.isdir(plot_path): os.makedirs(plot_path)    
     epochs_str = [str(epoch) for epoch in epochs]
@@ -319,8 +421,9 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
             file_full += f"_{X_dim}_{Y_classes}_{cluster_seed}_{assignment_and_noise_seed}"
             file_full += f"_epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf"
         print(f"Figure saved as {file_full}")
-        plt.savefig(file_full, bbox_inches='tight')
-        plt.close()
+        #plt.savefig(file_full, bbox_inches='tight')
+        plt.savefig(file_full)
+        plt.close()     
 
         # horizontal colorbar (can check geometry_analysis/greatcircle_proj2.py)
         fig_cbar = plt.figure()
@@ -328,6 +431,10 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=5, epochs=[0,650]):
         cbar_ax = fig_cbar.add_axes([0.85, 0.20, 0.75, 0.03])  # horizontal cbar
         cbar_ticks = list(range(10))
         cbar = fig_cbar.colorbar(im, cax=cbar_ax, ticks=cbar_ticks, orientation='horizontal')
+        
+        #colorbar_index(ncolors=len(selected_target_idxs), cmap=cmap)   
+
+        cbar.ax.xaxis.set_ticks_position("top")
         cbar.ax.set_xticklabels(cbar_ticks)
         cbar.ax.tick_params(axis='x', labelsize=tick_size)
         
