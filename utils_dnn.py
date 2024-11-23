@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 from os.path import join
-from path_names import root_data
+from constants import DROOT
 
 # ---------- Computation related to D_q ----------
 
@@ -55,16 +55,16 @@ def load_transition_lines():
     # old version
     """
     boundaries = []
-    boundaries.append(pd.read_csv(f"{root_data}/phase_bound/phasediagram_pow_1_line_1.csv", header=None))
+    boundaries.append(pd.read_csv(f"{DROOT}/phase_bound/phasediagram_pow_1_line_1.csv", header=None))
     for i in list(range(1,10,2)):
-        boundaries.append(pd.read_csv(f"{root_data}/phase_bound/phasediagram_pow_{i}_line_2.csv", header=None))
+        boundaries.append(pd.read_csv(f"{DROOT}/phase_bound/phasediagram_pow_{i}_line_2.csv", header=None))
     bound1 = boundaries[0]
     """
 
     # new version
-    bound1 = pd.read_csv(join(root_data, "phase_bound/phasediagram_pow_1_line_1.csv"), header=None)
+    bound1 = pd.read_csv(join(DROOT, "phase_bound/phasediagram_pow_1_line_1.csv"), header=None)
     boundaries = []
-    bd_path = join(root_data, "phasediagram")
+    bd_path = join(DROOT, "phasediagram")
     for i in range(1,92,10):
     #for i in range(1,102,10):
         boundaries.append(pd.read_csv(f"{bd_path}/pow_{i}.csv"))
