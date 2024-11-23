@@ -45,7 +45,14 @@ def SEM_save(N, L, N_thetas,
     np.savetxt(path+f'SEMs_alpha_{alpha100}_g_{g100}_rep_{rep}.txt',
                SEM(N, L, N_thetas, alpha100, g100))
 
+# functions: SEM_save()
 def submit(*args):
+    """
+    Default setting:
+        - L = 41
+        - N_thetas = 1000
+        - N = 784
+    """
     from qsub import qsub, job_divider, project_ls
     pbs_array_data = [(alpha100, g100, rep)
                       for alpha100 in range(100, 201, 5)
@@ -111,18 +118,21 @@ axis_size = 16.5
 legend_size = 14
 linewidth = 0.8
 # colorbar
-interp = "none"
+#interp = "none"
+interp = "quadric"
 #cm_type = 'RdGy'
 #cm_type = 'coolwarm'
 #cm_type = 'RdBu'
 cm_type = 'RdYlBu'
 
-# /project/phys_DL/dnn_project/python_random_dnn.py_SEM_save_1000_50_1000
+# /project/phys_DL/dnn_project/python_random_dnn.py_SEM_save_1000_50_1000/
 # path = join(root_data, "/project/phys_DL/dnn_project", "python_random_dnn.py_SEM_save_1000_50_1000")
+# main plot: 
+# python random_dnn/random_dnn.py SEM_plot /project/phys_DL/dnn_project/python_random_dnn.py_SEM_save_1000_50_1000/ 15,25,35 True
 def SEM_plot(path='', layer=None, one_row=False):
     from ast import literal_eval
 
-    global im, ax, cm_type, cbar
+    #global im, ax, cm_type, cbar
 
     #phase_path = f"/project/phys_DL/dnn_project"
     # plot settings
@@ -205,8 +215,12 @@ def SEM_plot(path='', layer=None, one_row=False):
                 mesh[alphas100.index(xs[j]), gs100.index(ys[j])] = cs[j,l]
             im = ax.imshow(mesh.T, interpolation=interp, aspect='auto', origin='lower', extent=(min(alphas100), max(alphas100), min(gs100), max(gs100)),
                            cmap=plt.cm.get_cmap(cm_type),
-                           vmin=0, vmax=1
+                           #vmin=0, vmax=1
+                           #vmin=0, vmax=mesh.max()
+                           vmin=0, vmax=6
                            )
+            print(f"Layer {l}, min: {mesh.min()}, max: {mesh.max()}")
+
             if not one_row:
                 ax.set_title(f'Layer {l}', fontsize=label_size)
 
