@@ -23,7 +23,8 @@ from torch.nn.modules.utils import _pair
 
 class FullyConnected(nn.Module):
 
-    def __init__(self, dims, alpha, g, init_path, init_epoch, with_bias, is_weight_share=False, init_type='ht', activation='tanh', **pretrained):
+    def __init__(self, dims, alpha, g, init_path, init_epoch, with_bias, 
+                 is_weight_share=False, init_type='ht', activation='tanh', **pretrained):
         super(FullyConnected, self).__init__()
         self.activation = activation
         self.input_dim = dims[0]
@@ -78,7 +79,7 @@ class FullyConnected(nn.Module):
     
         else:
             if alpha != None and g != None:
-                print("Heavy-tailed initialization applied!")
+                print("Heavy-tailed initialization applied!")                
                 with torch.no_grad():
                     if is_weight_share:
                         if init_type == 'ht':
@@ -106,14 +107,21 @@ class FullyConnected(nn.Module):
                                     size = size_cur                                    
 
                     else:
+                        # set seed for weight matrices
+                        l_seeds = torch.randint(0,1000000,(self.depth,))
+                        lidx = 0
                         for l in modules:
                             if not isinstance(l, nn.Linear): continue
                             size = l.weight.shape
                             if init_type == 'ht':                            
 
+                                # set seed for layer l
+                                np.random.seed(seed=l_seeds[lidx].item())
+
                                 N_eff = (size[0]*size[1])**0.5
                                 l.weight = nn.Parameter(torch.Tensor(levy_stable.rvs(alpha, 0, size=size,
                                                             scale=g*(0.5/N_eff)**(1./alpha))))
+                                lidx += 1
 
                                 # init biases (should be at fixed point?)
                                 if with_bias == True:
@@ -349,7 +357,7 @@ class AlexNet(nn.Module):
 
 class AlexNet(nn.Module):
 
-    def __init__(self, alpha, g, dataset, activation, fc_init, dropout: float = 0.5, num_classes=1000, with_bias=False):
+    def __init__(self, alpha, g, dataset, activation, fc_init, dropout: float=0.5, num_classes=1000, with_bias=False):
         # ch is the scale factor for number of channels
         super(AlexNet, self).__init__()
         
@@ -1223,8 +1231,10 @@ def makeMultifractalSym(weights, gain, alpha, g):
 
 class Vanilla(nn.Module):
 
-    def __init__(self, base, c, alpha, g, fc_init, mfrac='ht', with_bias=False, num_classes=10):
+    def __init__(self, depth, dataset, alpha, g, fc_init, conv2d_init='ht', with_bias=False, num_classes=10):
         super(Vanilla, self).__init__()
+        self.depth = depth
+        self.dataset = dataset
         self.alpha = alpha
         self.g = g
         self.fc_init = fc_init
@@ -1232,13 +1242,18 @@ class Vanilla(nn.Module):
         #self.init_supported = ['conv_delta_orthogonal', 'kaiming_normal']
         #self.init_supported = ['conv_delta_orthogonal', 'ht_initialization']
         self.init_supported = ['mfrac_orthogonal', 'mfrac', 'mfrac_sym', 'ht']
+        self.fc_init_supported = ['fc_ht', 'fc_orthogonal', 'fc_default']
 
-        self.base = base
-        self.mfrac = mfrac
-        self.with_bias = with_bias
+        self.conv2d_init = conv2d_init
+        self.with_bias = with_bias        
+
+        assert conv2d_init in self.init_supported, "Initialization type for conv2d not supported!"
+        assert fc_init in self.fc_init_supported, "Initialization type for fc not supported!"
+
+        modules, c = make_layers(depth, dataset, with_bias=with_bias)
+        #modules.append(nn.Linear(c, num_classes, bias=with_bias))
+        self.c = c  # number of channels for the FC below
         self.fc = nn.Linear(c, num_classes, bias=with_bias)
-
-        assert mfrac in self.init_supported, "Initialization type not supported!"
 
         # initialize fc layer
 
@@ -1247,43 +1262,39 @@ class Vanilla(nn.Module):
             #self.fc.bias = nn.Parameter(torch.Tensor( normal(0,np.sqrt(2e-5),bias_shape) ))
 
 
-        # for linear
+        # ---------- Linear layers ----------
         if fc_init == "fc_ht":
             if alpha != None and g != None:
                 with torch.no_grad():
-                    for l in self.classifier:
-                        if isinstance(l, nn.Linear):
-                            size = l.weight.shape
-                            # old fc
-                            N_eff = (size[0]*size[1])**0.5
-                            # new fc
-                            #N_eff = c**0.5      # size[1] is c
-                            # fc type 3
-                            #N_eff = c
-                            l.weight = nn.Parameter(torch.Tensor(levy_stable.rvs(alpha, 0, size=size,
-                                                        scale=g*(0.5/N_eff)**(1./alpha))))
+                    size = fc.weight.shape
+                    # old fc
+                    N_eff = (size[0]*size[1])**0.5
+                    # new fc
+                    #N_eff = c**0.5      # size[1] is c
+                    # fc type 3
+                    #N_eff = c
+                    self.fc.weight = nn.Parameter(torch.Tensor(levy_stable.rvs(alpha, 0, size=size,
+                                                scale=g*(0.5/N_eff)**(1./alpha))))
                     
         elif fc_init == "fc_orthogonal":
             with torch.no_grad():
-                for l in self.classifier:
-                    if isinstance(l, nn.Linear):
-                        nn.init.orthogonal_(l.weight, gain=1)
+                nn.init.orthogonal_(self.fc.weight, gain=1)
 
-        # ht initialize first 3 conv2d layers, and delta orthogonal initialization for the remaining conv2d layers
+        # ---------- Conv2d layers ----------                        
         idx = 0
-        for m in self.modules():
+        for m in modules:
             with torch.no_grad():
                 if isinstance(m, nn.Conv2d):
-                    if mfrac == 'mfrac_orthogonal':
+                    if conv2d_init == 'mfrac_orthogonal':
                         makeMultifractalOrthogonal(m.weight, 1, alpha, g)
         
-                    elif mfrac == 'mfrac':
+                    elif conv2d_init == 'mfrac':
                         makeMultifractal(m.weight, 1, alpha, g)
 
-                    elif mfrac == 'mfrac_sym':
+                    elif conv2d_init == 'mfrac_sym':
                         makeMultifractalSym(m.weight, 1, alpha, g)                    
 
-                    elif mfrac == 'ht':
+                    elif conv2d_init == 'ht':
                         """
                         if idx > 2:
                             conv_delta_orthogonal_(m.weight)
@@ -1308,13 +1319,15 @@ class Vanilla(nn.Module):
                         #bias_shape = m.bias.shape
                         #m.bias = nn.Parameter(torch.Tensor( normal(0,np.sqrt(2e-5),bias_shape) ))
   
-                    idx += 1                 
+                    idx += 1      
+
+        self.sequential = nn.Sequential(*modules) 
 
     def forward(self, x):
-        x = self.base(x)
+        #x = self.base(x)
+        x = self.sequential(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
-
         return x
 
 
@@ -1322,6 +1335,7 @@ def make_layers(depth, dataset, with_bias=False):
     assert isinstance(depth, int)
     c = 256 if depth <= 256 else 128
     layers = []
+    assert dataset in ['cifar10', 'mnist'], f'{dataset} does not exist for training'
     if dataset == "cifar10":
         in_channels = 3  
     elif dataset == "mnist":
@@ -1337,7 +1351,8 @@ def make_layers(depth, dataset, with_bias=False):
         layers += [nn.AvgPool2d(8)] # For mnist is 7
     elif dataset == "mnist":
         layers += [nn.AvgPool2d(7)]
-    return nn.Sequential(*layers), c
+    #return nn.Sequential(*layers), c
+    return layers, c
 
 
 def van5(alpha, g, dataset, **kwargs):

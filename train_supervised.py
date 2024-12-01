@@ -2,16 +2,16 @@
 import numpy as np
 import os
 import pandas as pd  
-import path_names
+import constants
 import torch
-from os.path import join
+from os.path import join, normpath, isdir, isfile
 from time import time
 from torch.autograd import Variable
 from tqdm import tqdm
 from scipy.stats import levy_stable
 
 from ast import literal_eval
-from path_names import root_data, log_model, read_log
+from constants import DROOT, log_model, read_log, njoin
 from utils_dnn import save_weights, get_weights, compute_dq, compute_IPR, layer_ipr, effective_dimension, store_model
 
 dev = torch.device(f"cuda:{torch.cuda.device_count()-1}"
@@ -282,7 +282,8 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
 
     start = time()
     model.train()
-    save_epoch, save_step = kwargs.get('weight_save') == 1, kwargs.get('weight_save') == 2
+    save_epoch = (kwargs.get('weight_save') == 1)
+    save_step = (kwargs.get('weight_save') == 2)
     stablefit_epoch, stablefit_step = kwargs.get('stablefit_save') == 1, kwargs.get('stablefit_save') == 2
     eigvals_epoch, eigvals_step = kwargs.get('eigvals_save') == 1, kwargs.get('eigvals_save') == 2
 
@@ -309,7 +310,7 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
         if eigvals_step:
             store_model_eigvals(model, f"{kwargs.get('epoch_path')}/eigvals_0")
         if stablefit_step:
-            params_step[0,:,:] = stablefit_model(model)
+            params_step[0,:,:] = stablefit_model(model)    
 
     if save_epoch and (not save_step):    # save only the last step of each epoch
         store_model(model, f"{kwargs.get('epoch_path')}/weights", save_type)  
@@ -318,9 +319,11 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
     if stablefit_epoch and (not stablefit_step):
         params_epoch = stablefit_model(model)
 
+    print("EVAL STARTS!")  # delete
+
     # pure evaluation of train and test acc/loss
     losses, nums, corrects = zip(
-        *[loss_batch(model, loss_func, xb, yb) for xb, yb in train_dl]
+        *[loss_batch(model, loss_func, xb, yb) for xb, yb in tqdm(train_dl)]
     )
     train_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
     train_acc = np.sum(corrects) / np.sum(nums)
@@ -331,6 +334,8 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
         )
     val_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
     val_acc = np.sum(corrects) / np.sum(nums)
+
+    print("EVAL ENDS!")  # delete
 
     # save levy alpha stable distribution (for MLP)
     if not (stablefit_epoch or stablefit_step):
@@ -369,8 +374,9 @@ import torch.nn.functional as F
 
 # FC10: lr=0.001, activation='tanh'
 def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise_seed, num_train, num_test,
+                 train_seed,
                  alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
-                 epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False, is_weight_share=True,       # network structure
+                 epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False, is_weight_share=False,       # network structure
                  loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                                             # training setting
                  weight_save=1, stablefit_save=0, eigvals_save=0,                                                                       # save data options
                  with_ed=False, with_pc=False, with_ipr=False):
@@ -381,14 +387,17 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     """
     Trains MLPs and saves weights along the steps of training, can add to save gradients, etc.
     """   
-    global model
+    global model, hidden_N
 
+    import json
     from time import time; t0 = time()
     from NetPortal.models import ModelFactory
 
     Y_classes, X_clusters = int(Y_classes), int(X_clusters)
     init_path = None if init_path.lower() == "none" else init_path
     init_epoch = None if init_epoch.lower() == "none" else init_epoch
+
+    train_seed = int(train_seed)
     if isinstance(alpha100,str)==True or isinstance(g100,str)==True:
         if alpha100 != "None" or g100 != "None": 
             alpha100, g100 = int(alpha100), int(g100)
@@ -398,6 +407,7 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
             alpha, g = None, None
     else:
         alpha100, g100 = int(alpha100), int(g100)
+        alpha, g = int(alpha100)/100., int(g100)/100.
     bs, lr = int(bs), float(lr)
     epochs = int(epochs)
     save_epoch = int(save_epoch)
@@ -441,16 +451,28 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     # generate random id and date
     import uuid
     from datetime import datetime
-    model_id = str(uuid.uuid1())
+
+    torch.manual_seed(train_seed)  # sets seed for FC with HT initialization as well
+
+    #model_id = str(uuid.uuid1())
+    model_id = str(train_seed)
     train_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")  
 
     # create path
-    model_path = f"{root_path}/{net_type}{depth}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}"
+    model_path = njoin(root_path, f'{net_type}{depth}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}')
     if not os.path.isdir(model_path): os.makedirs(f'{model_path}')
     # log marker
-    np.savetxt(f"{model_path}/lr={lr}_momentum={momentum}_bs={bs}", np.array([0]))
-    np.savetxt(f"{model_path}/epochs={epochs}_save_epoch={save_epoch}_weight_save={weight_save}_stablefit_save={stablefit_save},eigvals_save={eigvals_save}", np.array([0]))
-    np.savetxt(f"{model_path}/with_ed={with_ed}_with_ipr={with_ipr}_with_pc={with_pc}", np.array([0]))
+    if name.lower() == "gaussian":
+        with open(njoin(model_path,"gaussian_data_kwargs.json"), "w") as ofile: 
+            json.dump(gaussian_data_kwargs, ofile)
+
+    save_config = {'lr': lr, 'momentum': momentum, 'bs':bs, 'epochs': epochs, 'save_epoch': save_epoch, 
+                   'weight_save': weight_save, 'stablefit_save': stablefit_save, 'eigvals_save': eigvals_save,
+                   'with_ed': with_ed, 'with_ipr': with_ipr, 'with_pc': with_pc
+    }
+    
+    with open(njoin(model_path,"save_config.json"), "w") as ofile: 
+        json.dump(save_config, ofile)    
 
     if name.lower() == "gaussian":
         # only need to save the associated parameters, i.e. seeds which generated the dataset
@@ -508,6 +530,10 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
               "activation": activation, "with_bias": with_bias,
               "is_weight_share": is_weight_share,
               "architecture": net_type}
+
+    with open(njoin(model_path,"model_config.json"), "w") as ofile: 
+        json.dump(kwargs, ofile)                 
+    
     model = ModelFactory(**kwargs)
     #quit()  # delete
 
@@ -546,12 +572,14 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
         del train_ed, valid_ed   
 
     opt_kwargs = {"lr": lr, "momentum": momentum, "weight_decay": weight_decay} if optimizer == "sgd" else {"lr": lr, "weight_decay": weight_decay}
+    with open(njoin(model_path,"opt_kwargs.json"), "w") as ofile: 
+        json.dump(opt_kwargs, ofile)        
     opt = get_optimizer(optimizer, model, **opt_kwargs)
 
     # initial state of network
     print(f'Epoch 0:', end=' ')
     loss_func = F.__dict__[loss_func_name]
-    epoch_path = f"{model_path}/epoch_0"
+    epoch_path = njoin(model_path, 'epoch_0')
     if not os.path.isdir(epoch_path): os.makedirs(epoch_path)
     
     if stablefit_save > 0:
@@ -680,7 +708,7 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
 
     total_time = time() - t0
     # log dataframe
-    log_path = root_data
+    log_path = DROOT
     log_model(log_path, model_path, file_name="net_log", net_type=net_type, model_dims=model.dims, model_id=model_id, train_date=train_date, name=name, alpha100=alpha100, g100=g100, 
               activation=activation, loss_func_name=loss_func_name, optimizer=optimizer, hidden_structure=hidden_structure, depth=depth, 
               with_bias=with_bias, is_weight_share=is_weight_share,
@@ -695,10 +723,10 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     print(model_path)
 
 
-# python torch_dnn.py train_submit_cnn train_ht_cnn
-def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, activation="tanh",                                             # network structure
-                 loss_func_name="cross_entropy", bs=128, weight_decay=0, momentum=0, num_workers=1, epochs=500,                             # training setting (weight_decay=0.0001)
-                 save_epoch=500, weight_save=0, stablefit_save=0):                                                                           # save data options
+# python torch_dnn.py train_submit_cnn
+def train_ht_cnn(root_path, name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, activation="tanh",                                             # network structure
+                 loss_func_name="cross_entropy", bs=256, weight_decay=0, momentum=0, num_workers=1, epochs=5,                             # training setting (weight_decay=0.0001)
+                 save_epoch=5, weight_save=0, stablefit_save=0):                                                                           # save data options
 
     #global model, train_dl, valid_dl
 
@@ -722,6 +750,8 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
         print("cifar upsized")
     else:
         train_ds, valid_ds = set_data(name,False)    
+        #train_ds, valid_ds = set_data(name,False,cifar_upsize=True)
+        #print("cifar upsized")        
     N, C = len(train_ds[0][0]), len(train_ds.classes)
 
     # generate random id and date
@@ -731,7 +761,8 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
     train_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
 
     # create path
-    model_path = join(root_data, "trained_cnns", net_type + "_new", f"{net_type}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}")
+    #model_path = join(DROOT, "trained_cnns", net_type + "_new", f"{net_type}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}")
+    model_path = join(root_path, net_type, f"{net_type}_{alpha100}_{g100}_{model_id}_{name}_{optimizer}_lr={lr}_bs={bs}_epochs={epochs}")
     if not os.path.isdir(model_path): os.makedirs(f'{model_path}')
 
     # log marker
@@ -752,8 +783,12 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
     if net_type != 'resnext':
         if net_type == "alexnet":
             kwargs = {"alpha" :alpha, "g": g, "num_classes": C, "architecture": net_type, "activation": activation, "dataset": name, "fc_init": fc_init}
-        elif "van" in net_type:
-            kwargs = {"alpha" :alpha, "g": g , "fc_init": fc_init, "num_classes": C, "architecture": net_type, "dataset": name}
+        elif "van" in net_type.lower():
+            depth = int(net_type[3:])
+            assert isinstance(depth, int)
+            kwargs = {"architecture": 'van', "depth": depth, "dataset": name,
+                      "alpha" :alpha, "g": g , "fc_init": fc_init, 
+                      "num_classes": C}
         else:
             kwargs = {"alpha" :alpha, "g": g, "num_classes": C, "architecture": net_type, "activation": activation, "dataset": name}            
         model = ModelFactory(**kwargs)
@@ -767,8 +802,10 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
 
     print("Saving information into local model_path before training.")
     # save information to model_path locally
-    log_model(model_path, model_path, file_name="net_log", local_log=False, net_type=net_type, model_id=model_id, train_date=train_date, name=name, activation=activation, 
-              alpha100=alpha100, g100=g100, loss_func_name=loss_func_name, optimizer=optimizer, bs=bs, lr=lr, lr_ls=lr_ls, weight_decay=weight_decay,
+    log_model(model_path, model_path, file_name="net_log", local_log=False, net_type=net_type, model_id=model_id, train_date=train_date, 
+              name=name, activation=activation, 
+              alpha100=alpha100, g100=g100, 
+              loss_func_name=loss_func_name, optimizer=optimizer, bs=bs, lr=lr, lr_ls=lr_ls, weight_decay=weight_decay,
               num_workers=num_workers, epochs=epochs, steps=steps)
     
     opt_kwargs = {"lr": lr, "momentum": momentum} if optimizer == "sgd" else {"lr": lr, "momentum": momentum, "weight_decay": weight_decay}
@@ -780,13 +817,22 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
     loss_func = F.__dict__[loss_func_name]
 
     epoch_path = f"{model_path}/epoch_0"
-    epoch0_data = train_epoch(model, loss_func, None, train_dl, valid_dl, epoch_path=epoch_path, save=False)
-    print(epoch0_data)
+    # if stablefit_save > 0:
+    #     epoch0_data, stablefit_params = train_epoch(model, loss_func, None, train_dl, valid_dl, epoch_path=epoch_path, save_type='torch',
+    #                                                 weight_save=weight_save, stablefit_save=stablefit_save, eigvals_save=0)
+    # else:
+    #     epoch0_data = train_epoch(model, loss_func, None, train_dl, valid_dl, epoch_path=epoch_path, save_type='torch',
+    #                               weight_save=weight_save, stablefit_save=stablefit_save, eigvals_save=0)
+
+
+    # print(epoch0_data)
+
     #if not os.path.isdir(f'{model_path}/epoch_0'): os.makedirs(f'{model_path}/epoch_0')
     acc_loss = pd.DataFrame(columns=['train loss', 'train acc', 'test loss', 'test acc'])
-    acc_loss.loc[0,:] = epoch0_data[:-1]
+    # acc_loss.loc[0,:] = epoch0_data[:-1]
     
     # training
+    print("Starting training! \n")
     for epoch in tqdm(range(epochs)):
         #print(f'Epoch {(1+epoch)*(1+num_workers)}:', end=' ')
         print(f'Epoch {(1+epoch)*(num_workers)}:', end=' ')
@@ -801,13 +847,11 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
                                     epoch_path=epoch_path,
                                     weight_save=weight_save, stablefit_save=stablefit_save)
 
-            print(final_acc)
         else:
             final_acc = train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=num_workers, 
                                     epoch_path = epoch_path,
                                     weight_save=0, stablefit_save=stablefit_save)
-            print(final_acc)
-
+        print(final_acc)        
         acc_loss.loc[epoch + 1,:] = final_acc[:-1]
 
     if not isinstance(lr_ls, list):     # for learning rate scheme
@@ -818,27 +862,29 @@ def train_ht_cnn(name, alpha100, g100, optimizer, net_type, fc_init, lr=0.001, a
 
     total_time = time() - t0
     # log dataframe
-    log_path = root_data
+    log_path = DROOT
     log_model(log_path, model_path, file_name="net_log", net_type=net_type, model_id=model_id, train_date=train_date, name=name, activation=activation, alpha100=alpha100, g100=g100,
               loss_func_name=loss_func_name, optimizer=optimizer, bs=bs, lr=lr, lr_ls=lr_ls, weight_decay=weight_decay, num_workers=num_workers, 
               epochs=epochs, steps=steps, final_acc=final_acc, total_time=total_time)
 
-    print(model_path)
+    print(f'All data saved in {model_path}')
 
 # ---------------------------------------
 
 # wrapper for training MLPs on MNIST dataset
-def mnist_train_ht_dnn(alpha100_ls, g100,
+def mnist_train_ht_dnn(triplets,
                        optimizer, bs, init_path, init_epoch, root_path, depth, lr,
                        epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False, is_weight_share=True,                                   
                        loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                      
                        weight_save=1, stablefit_save=0, eigvals_save=0,                                       
                        with_ed=False, with_pc=False, with_ipr=False):                                                           
 
-    alpha100_ls = literal_eval(alpha100_ls) if not isinstance(alpha100_ls,list) else alpha100_ls
-    for alpha100 in alpha100_ls:
+    triplets = triplets.split(',')
+    for triplet in triplets:
+        train_seed, alpha100, g100 = triplet.split('_')
+        train_seed, alpha100, g100 = int(train_seed), int(alpha100), int(g100)
         train_ht_dnn("mnist", 0, 0, 0, 0, 0, 0,
-                     alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                     train_seed, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
                      epochs, save_epoch, net_type, activation, hidden_structure, with_bias, is_weight_share,                                  
                      loss_func_name, momentum, weight_decay, num_workers,                      
                      weight_save, stablefit_save, eigvals_save,                                       
@@ -849,7 +895,7 @@ def mnist_train_ht_dnn(alpha100_ls, g100,
 
 # wrapper for training MLPs on Gaussain generated data
 def gaussian_train_ht_dnn(seed_ls, name, Y_classes, X_clusters, num_train, num_test,
-                          alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                          train_seed, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
                           epochs=25, save_epoch=50, net_type="fc", activation='tanh', hidden_structure=2, with_bias=False, is_weight_share=False,                                    
                           loss_func_name="cross_entropy", momentum=0, weight_decay=0, num_workers=1,                      
                           weight_save=1, stablefit_save=0, eigvals_save=0,                                       
@@ -859,7 +905,7 @@ def gaussian_train_ht_dnn(seed_ls, name, Y_classes, X_clusters, num_train, num_t
     seed_ls = literal_eval(seed_ls) if not isinstance(seed_ls,list) else seed_ls
     for seed in seed_ls:
         train_ht_dnn(name, Y_classes, X_clusters, seed, seed, num_train, num_test,
-                     alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                     seed, alpha100, g100, optimizer, bs, init_path, init_epoch, root_path, depth, lr,
                      epochs, save_epoch, net_type, activation, hidden_structure, with_bias, is_weight_share,                                  
                      loss_func_name, momentum, weight_decay, num_workers,                      
                      weight_save, stablefit_save, eigvals_save,                                       
@@ -878,87 +924,102 @@ def batch_mnist_submit(*args):
     """
     Batch training mnist with MLPs
     """
-    global pbs_array_data, alpha100_lss
+    global pbs_array_data, tripletss
 
     from qsub import qsub, job_divider, project_ls, command_setup, list_str_divider
-    from path_names import singularity_path, bind_path
+    from constants import SPATH, BPATH
 
     dataset_name = "mnist"
     net_type = "fc"
-    alpha100_ls = list(range(100,201,10))  # full grid
-    #alpha100_ls = [100, 200]    
+    
+    train_seeds = [4]
+    #alpha100s = list(range(100,201,10))  # full grid 1
+    #g100s = list(range(25,301,25))  # full grid 1
+    alpha100s = list(range(100,201,5))  # full grid 2
+    g100s = list(range(20,301,20))  # full grid 2    
 
-    chunks = 1
-    alpha100_lss = list_str_divider(alpha100_ls, chunks)
+    n_subjobs = 2
+    for train_seed in train_seeds:
 
-    g100_ls = list(range(25,301,25))  # full grid
-    #g100_ls = [25, 100, 300]
-    #optimizer = "rmsprop"
-    optimizer = "sgd"
-    #bs_ls = [64, 1024]  
-    bs_ls = [1024]
-    lr_ls = [0.001]
-    #lr_ls = [0.0001, 0.001, 0.01, 0.1, 1]
-    #depth = 10
-    depth = 3
-    epochs = 650
-    save_epoch = 650    
-    #epochs=2    
-    #save_epoch=1
-    init_path, init_epoch = None, None
+        triplets = [] 
+        for train_seed in train_seeds:
+            for alpha100 in alpha100s:
+                for g100 in g100s:
+                    triplets.append(f'{train_seed}_{alpha100}_{g100}')
+        
+        chunks = int(np.ceil(len(triplets)/n_subjobs))
+        #chunks = 11
+        tripletss = list_str_divider(triplets, chunks)
 
-    # fc10 standard
-    #root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}")
-    #root_path = join(root_data, root_folder)    
+        #optimizer = "rmsprop"
+        optimizer = "sgd"
+        bs_ls = [1024]
+        #lr_ls = [0.001]
+        lr_ls = [0.005]
+        #lr_ls = [0.0001, 0.001, 0.01, 0.1, 1]
+        depth = 10
+        #depth = 3
+        # epochs = 650
+        # save_epoch = 650   
+        epochs = 100
+        save_epoch = 100      
+        #epochs=2    
+        #save_epoch=1
+        init_path, init_epoch = None, None
 
-    # fc10 lr analysis
-    #root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}_lr_analysis")
-    root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}_weight_share")
-    root_path = join(root_data, root_folder)       
+        # fc10 standard
+        #root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}")
+        #root_path = join(DROOT, root_folder)    
 
-    # raw submittions    
-    pbs_array_data = [(alpha100_ls, g100, 
-                       optimizer, bs, init_path, init_epoch, root_path, depth, lr,
-                       epochs, save_epoch
-                      )
-                      for alpha100_ls in alpha100_lss
-                      for g100 in g100_ls
-                      for bs in bs_ls
-                      for lr in lr_ls
-                      ]   
+        # fc10 lr analysis
+        #root_folder = njoin("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}_lr_analysis")
+        #root_folder = njoin("trained_mlps", f"fc{depth}_{optimizer}_{dataset_name}_weight_share")
+        root_folder =  f"fc{depth}_{optimizer}_{dataset_name}_seed={train_seed}"
+        root_path = join(DROOT, root_folder)       
 
-    print(len(pbs_array_data))                 
+        # raw submittions    
+        pbs_array_data = [(','.join(literal_eval(triplets)),
+                        optimizer, bs, init_path, init_epoch, root_path, depth, lr,
+                        epochs, save_epoch
+                        )
+                        for triplets in tripletss
+                        for bs in bs_ls
+                        for lr in lr_ls
+                        ]   
 
-    #quit()  # delete
+        print(len(pbs_array_data))                 
 
-    #ncpus, ngpus = 1, 1
-    ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
+        ncpus, ngpus = 1, 1
+        #ncpus, ngpus = 1, 0
+        command = command_setup(SPATH, BPATH=BPATH, ncpus=ncpus, ngpus=ngpus)   
+        #quit()  # delete
 
-    perm, pbss = job_divider(pbs_array_data, len(project_ls))
-    for idx, pidx in enumerate(perm):
-        pbs_array_true = pbss[idx]
-        print(project_ls[pidx])
-        qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
-             pbs_array_true, 
-             path=join(root_data, root_folder),
-             P=project_ls[pidx],
-             #source="virt-test-qu/bin/activate",
-             ngpus=ngpus,
-             ncpus=ncpus,
-             #walltime='0:59:59',
-             walltime='23:59:59',
-             mem='4GB')      
+        perm, pbss = job_divider(pbs_array_data, len(project_ls))
+        for idx, pidx in enumerate(perm):
+            pbs_array_true = pbss[idx]
+            print(project_ls[pidx])
+            qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
+                pbs_array_true, 
+                path=root_path,
+                P=project_ls[pidx],
+                #source="virt-test-qu/bin/activate",
+                ngpus=ngpus,
+                ncpus=ncpus,
+                #walltime='0:59:59',
+                walltime='23:59:59',
+                #mem='12GB')      
+                mem='10GB')
 
 
 # for figure 1
 # function: mnist_train_ht_dnn()
 def fig1_submit(*args):
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from constants import SPATH, BPATH
 
     dataset_name = "mnist"
     net_type = "fc"
+    train_seed = 0
     #alpha100_lss = ['[100]', '[200]']
     alpha100_lss = ['[120]', '[200]']
     g100_ls = [100]
@@ -972,12 +1033,12 @@ def fig1_submit(*args):
     save_epoch = 10
     init_path, init_epoch = None, None
     root_folder = join("trained_mlps", f"fc{depth}_{optimizer}_fig1")
-    root_path = join(root_data, root_folder)    
+    root_path = join(DROOT, root_folder)    
 
     ensembles = 10
 
     # raw submittions    
-    pbs_array_data = [(alpha100_ls, g100, 
+    pbs_array_data = [(train_seed, alpha100_ls, g100, 
                        optimizer, bs, init_path, init_epoch, root_path, depth, lr,
                        epochs, save_epoch
                       )
@@ -991,7 +1052,7 @@ def fig1_submit(*args):
     print(len(pbs_array_data))         
 
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)      
+    command = command_setup(SPATH, BPATH=BPATH, ncpus=ncpus, ngpus=ngpus)      
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
@@ -999,7 +1060,7 @@ def fig1_submit(*args):
         print(project_ls[pidx])
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data, root_folder),
+             path=join(DROOT, root_folder),
              P=project_ls[pidx],
              #source="virt-test-qu/bin/activate",
              ncpus=ncpus,
@@ -1016,7 +1077,7 @@ def fig1_submit(*args):
 # for training mnist with MLPs
 def mnist_submit(*args):
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from constants import SPATH, BPATH
 
     dummy_ls = [0] * 6
     Y_classes, X_clusters, cluster_seed, assignment_and_noise_seed, num_train, num_test = dummy_ls
@@ -1073,7 +1134,7 @@ def mnist_submit(*args):
     """
     pbs_array_true = []
     pbs_array_nosubmit = []
-    net_ls = [net[0] for net in os.walk(path_names.fc_path)]
+    net_ls = [net[0] for net in os.walk(constants.fc_path)]
     for nidx in range(1,len(net_ls)):
         ag_str = net_ls[nidx].split("/")[-1].split("_")
         pbs_array_nosubmit.append( (int(ag_str[1]), int(ag_str[2])) )
@@ -1089,7 +1150,7 @@ def mnist_submit(*args):
     
     """
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
+    command = command_setup(SPATH, BPATH=BPATH, ncpus=ncpus, ngpus=ngpus)   
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
@@ -1097,7 +1158,7 @@ def mnist_submit(*args):
         print(project_ls[pidx])
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data, root_folder),
+             path=join(DROOT, root_folder),
              P=project_ls[pidx],
              #ngpus=1,
              ngpus=ngpus,
@@ -1110,7 +1171,7 @@ def mnist_submit(*args):
 # for training gaussian datasets
 def gaussian_submit(*args):
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from path_names import SPATH, BPATH
 
     #dataset_ls = ["mnist"]
     dataset_ls = ["gaussian"]
@@ -1139,7 +1200,7 @@ def gaussian_submit(*args):
     epochs = 650
     save_epoch = 50
     init_path, init_epoch = None, None
-    #root_path = join(root_data, "trained_mlps/bs_analysis")
+    #root_path = join(DROOT, "trained_mlps/bs_analysis")
     #root_path = join("/project/phys_DL/project2_data", "trained_nets")
     #root_path = join("/project/PDLAI/project2_data", "trained_mlps/debug")
     #root_folder = "trained_mlps_gaussian"
@@ -1202,7 +1263,7 @@ def gaussian_submit(*args):
     """
     
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
+    command = command_setup(SPATH, BPATH=BPATH, ncpus=ncpus, ngpus=ngpus)   
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
@@ -1210,7 +1271,7 @@ def gaussian_submit(*args):
         print(project_ls[pidx])
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data, root_folder),
+             path=join(DROOT, root_folder),
              P=project_ls[pidx],
              ngpus=ngpus,
              ncpus=ncpus,
@@ -1239,7 +1300,7 @@ def gaussian_submit(*args):
 # train networks in array jobs
 def train_ensemble_submit(*args):
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from path_names import SPATH, BPATH
 
     # dataset     
     name = "gaussian"
@@ -1294,7 +1355,7 @@ def train_ensemble_submit(*args):
     #resubmissions
 
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)       
+    command = command_setup(SPATH, BPATH=BPATH, ncpus=ncpus, ngpus=ngpus)       
     
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
@@ -1302,7 +1363,7 @@ def train_ensemble_submit(*args):
         print(project_ls[pidx])
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data, root_folder),
+             path=join(DROOT, root_folder),
              P=project_ls[pidx],
              ngpus=ngpus,
              ncpus=ncpus,
@@ -1312,14 +1373,16 @@ def train_ensemble_submit(*args):
 
 
 
-# version corresponding train_dnn
+# funcs: train_ht_cnn()
 def train_submit_cnn(*args):
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from path_names import SPATH, BPATH
 
     #net_type_ls = ["alexnet", "resnet14"]
-    alpha100_ls = list(range(100,201,10))
-    g100_ls = list(range(25, 301, 25))
+    #alpha100_ls = list(range(100,201,10))
+    #g100_ls = list(range(25, 301, 25))
+    alpha100_ls = [100,200]
+    g100_ls = [25,100,300]
     #g100_ls = list(range(10, 201, 10))
 
     #alpha100_ls = [100, 200]
@@ -1329,22 +1392,21 @@ def train_submit_cnn(*args):
     #g100_ls = [25,100,300]
 
     #net_type_ls = ["convnet_old"]
-    #net_type_ls = ["van20nobias"]
-    #net_type_ls = ["van50","van100","van200"]
     #net_type_ls = ["van100"]
-    #net_type_ls = ["van100nobias"]
-    net_type_ls = ["resnet14_ht"]
+    #net_type_ls = ["resnet14_ht"]
+    net_type_ls = ['alexnet', 'alexnetold']
     #net_type_ls = ["alexnetold"]
-    #net_type_ls = ["alexnet"]
+    #net_type_ls = ["alexnet"]  # used version
     #net_type_ls = ["resnet34_HT", "resnet50_HT"]
     #fc_init = "fc_ht"
     #fc_init = "fc_orthogonal"
     fc_init = "fc_default"
     #dataset_ls = ["mnist"]
-    dataset_ls = ["cifar100"]
+    dataset_ls = ["cifar10"]
     optimizer_ls = ["sgd"]
 
-    pbs_array_data = [(name, alpha100, g100, optimizer, net_type, fc_init)
+    root_path = join(DROOT, 'trained_cnns', 'debug')
+    pbs_array_data = [(root_path, name, alpha100, g100, optimizer, net_type, fc_init)
                       for name in dataset_ls
                       for alpha100 in alpha100_ls
                       for g100 in g100_ls
@@ -1363,15 +1425,18 @@ def train_submit_cnn(*args):
     """
 
     ncpus, ngpus = 1, 1
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)   
+    command = command_setup(SPATH, BPATH=BPATH, ncpus=ncpus, ngpus=ngpus)   
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
+    #quit()  # delete
     for idx, pidx in enumerate(perm):
         pbs_array_true = pbss[idx]
         print(project_ls[pidx])
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data,"trained_cnns"),
+             #path=join(DROOT,"trained_cnns"),
+             #path=root_path,
+             path=join(root_path, 'alexnet_jobs'),
              P=project_ls[pidx],
              ngpus=ngpus,
              ncpus=ncpus,
