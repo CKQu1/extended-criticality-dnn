@@ -275,7 +275,7 @@ JacobianLogInvCDF[\[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, Log\[Sigma]b_,
         ]
     ]
 
-GetLogFPStable[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, prefix_:"fig/data/logfp100"
+GetLogFPStable[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, prefix_:"fig/data/logfp"
     ] :=
     With[{paths = FileNames[StringTemplate["``_``_``_``*"][prefix, \[Alpha]100,
          \[Sigma]w100, \[Sigma]b100]]},
