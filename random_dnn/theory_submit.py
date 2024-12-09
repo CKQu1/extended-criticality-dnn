@@ -3,6 +3,7 @@
 import sys
 import subprocess
 import time
+import random
 from pathlib import Path
 
 scriptpath = "~/wolfram/13.3/Executables/wolframscript"
@@ -12,13 +13,14 @@ def submit():
     (Path(".") / "fig" / "data").mkdir(parents=True, exist_ok=True)
     cmd_list = [
         f"""
-            {scriptpath} -f theory.wl "PutJacobianLogAvg[{alpha100}, {g100}, 0, 1000, 100]"
+            {scriptpath} -f theory.wl "PutJacobianLogAvg[{alpha100}, {g100}, 0, 1000, 1000]"
         """
-        for alpha100 in range(100, 201, 5)
-        for g100 in range(5, 301, 5)
+        for alpha100 in range(100, 201, 1)
+        for g100 in range(1, 301, 1)
         # if alpha100 == 150 and g100 in [150, 200, 300]
     ]
-    qsub(cmd_list, Path(".") / "fig", mem="4GB", max_array_size=100, afterok=True)
+    random.shuffle(cmd_list)
+    qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=100, afterok=True)
 
 
 def qsub(
@@ -33,6 +35,7 @@ def qsub(
     ngpus=None,
     walltime="23:59:00",
     max_array_size=1000,
+    max_run_subjobs=1000,
     afterok=False,
     print_script=False,
 ):
@@ -63,7 +66,7 @@ def qsub(
 #PBS -o {jobpath}/ -e {jobpath}/
 #PBS -l select={select}:ncpus={ncpus}:mem={mem}{':ngpus='+str(ngpus) if ngpus else ''}
 #PBS -l walltime={walltime}
-#PBS -J {1000*chunk_idx}-{1000*chunk_idx + len(cmd_list_chunk) - 1}
+#PBS -J {max_array_size*chunk_idx}-{max_array_size*chunk_idx + len(cmd_list_chunk) - 1}%{max_run_subjobs}
 {('#PBS -W depend=afterok:'+lastjobid) if afterok and (lastjobid is not None) else ''}
 cd $PBS_O_WORKDIR
 bash {jobpath}/cmd_$PBS_ARRAY_INDEX\_{label}.sh
