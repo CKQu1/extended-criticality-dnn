@@ -20,7 +20,15 @@ def submit():
         # if alpha100 == 150 and g100 in [150, 200, 300]
     ]
     random.shuffle(cmd_list)
-    qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=100, afterok=True)
+    qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=100, depend_after=True)
+
+
+def submit_consolidator():
+    cmd_list = [
+        f"{scriptpath} -f theory.wl SaveJacobianLogAvg[]",
+        f"{scriptpath} -f theory.wl SaveLogFPStable[]",
+    ]
+    qsub(cmd_list, Path(".") / "fig", 'consolidator')
 
 
 def qsub(
@@ -36,7 +44,7 @@ def qsub(
     walltime="23:59:00",
     max_array_size=1000,
     max_run_subjobs=1000,
-    afterok=False,
+    depend_after=True,
     print_script=False,
 ):
     path = Path(path)
@@ -67,11 +75,13 @@ def qsub(
 #PBS -l select={select}:ncpus={ncpus}:mem={mem}{':ngpus='+str(ngpus) if ngpus else ''}
 #PBS -l walltime={walltime}
 #PBS -J {max_array_size*chunk_idx}-{max_array_size*chunk_idx + len(cmd_list_chunk) - 1}%{max_run_subjobs}
-{('#PBS -W depend=afterok:'+lastjobid) if afterok and (lastjobid is not None) else ''}
+{('#PBS -W depend=afterany:'+lastjobid) if depend_after and (lastjobid is not None) else ''}
 cd $PBS_O_WORKDIR
 bash {jobpath}/cmd_$PBS_ARRAY_INDEX\_{label}.sh
 END"""
-        lastjobid = subprocess.check_output(f"qsub {PBS_SCRIPT}", shell=True, text=True).strip()
+        lastjobid = subprocess.check_output(
+            f"qsub {PBS_SCRIPT}", shell=True, text=True
+        ).strip()
         print(lastjobid)
         if print_script:
             print(PBS_SCRIPT)

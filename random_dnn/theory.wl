@@ -343,6 +343,19 @@ GetJacobianLogAvg[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
 
 (* can also write a consolidating function for the estimates *)
 
+SaveLogFPStable[path_:"fig/data"] :=
+    First @* First /@ GroupBy[FileNames @ FileNameJoin[{path, "logfp_*_*_*_*.txt"
+        }], (ToExpression @ StringSplit[FileBaseName[#], "_"][[2 ;; 4]]&) -> 
+        (Import[#, "List"]&)] // Export[FileNameJoin[Most @ FileNameSplit[path
+        ] // Append @ "logfp.mx"], #]&
+
+SaveJacobianLogAvg[path_:"fig/data"] :=
+    {Mean[#], Total @ #["Weights"]}& @* Apply[WeightedData] @* Transpose /@
+         GroupBy[FileNames @ FileNameJoin[{path, "jaclogavg_*_*_*_*_*.txt"}],
+         (ToExpression @ StringSplit[FileBaseName[#], "_"][[2 ;; 5]]&) -> (Import[
+        #, "List"]&)] // Export[FileNameJoin[Most @ FileNameSplit[path] // Append
+         @ "jaclogavg.mx"], #]&
+
 (* one should probably prefer more uniform samples with fewer stable samples to get an accurate average (but more stable samples are better for getting the shape of the CDF) *)
 
 (* cluster computing function using the HPCs *)
@@ -356,8 +369,8 @@ LaunchPhysicsKernels[] :=
         Return[Length @ Kernels[]]
     )
 
-
 (* wolframscript -f filename.wl Function1[...] ... FunctionN[...] *)
+
 (* in unix can enclose the functions in double quotes to escape the spaces  *)
 
 If[Length @ $ScriptCommandLine > 0,
