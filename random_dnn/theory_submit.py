@@ -15,8 +15,8 @@ def submit():
         f"""
             {scriptpath} -f theory.wl "PutJacobianLogAvg[{alpha100}, {g100}, 0, 1000, 1000]"
         """
-        for alpha100 in range(100, 201, 1)
-        for g100 in range(1, 301, 1)
+        for alpha100 in range(100, 201, 5)
+        for g100 in range(1, 301, 5)
         # if alpha100 == 150 and g100 in [150, 200, 300]
     ]
     random.shuffle(cmd_list)
@@ -27,8 +27,46 @@ def submit_consolidator():
     cmd_list = [
         f"{scriptpath} -f theory.wl SaveJacobianLogAvg[]",
         f"{scriptpath} -f theory.wl SaveLogFPStable[]",
+        f"{scriptpath} -f theory.wl SaveNeuralNorms[]",
     ]
-    qsub(cmd_list, Path(".") / "fig", 'consolidator')
+    qsub(cmd_list, Path(".") / "fig", "consolidator")
+
+
+def submit_remaining(min_avg_samples: int = 1000):
+    min_avg_samples = int(min_avg_samples)
+    cmd_list = []
+    data_path = Path(".") / "fig" / "data"
+    for alpha100 in range(100, 201, 5):
+        for g100 in range(0, 301, 5)[1:]:
+            num_avg_samples = 0
+            for fname in data_path.glob(f"jaclogavg_{alpha100}_{g100}_0_1000_*.txt"):
+                with fname.open() as f:
+                    num_avg_samples += int(f.readlines()[-1])
+            remaining_samples = min_avg_samples - num_avg_samples
+            if remaining_samples > 0:
+                cmd_list.append(
+                    f"""
+                        {scriptpath} -f theory.wl "PutJacobianLogAvg[{alpha100}, {g100}, 0, 1000, {remaining_samples}]"
+                    """
+                )
+                # print(f"{alpha100}, {g100}, {remaining_samples}")
+    random.shuffle(cmd_list)
+    qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=200, depend_after=True)
+
+
+def submit_neural_norms():
+    cmd_list = []
+    data_path = Path(".") / "fig" / "data"
+    cmd_list = [
+        f"""
+            {scriptpath} -f theory.wl "PutNeuralNorm[{alpha100}, {g100}, 0]"
+        """
+        for alpha100 in range(100, 201, 5)
+        for g100 in range(0, 301, 5)[1:]
+        if not len(list(data_path.glob(f"logneuralnorm_{alpha100}_{g100}_0_*.txt")))
+    ]
+    random.shuffle(cmd_list)
+    qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=100, depend_after=True)
 
 
 def qsub(

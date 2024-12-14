@@ -341,6 +341,28 @@ GetJacobianLogAvg[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
             /@ paths]]
     ]
 
+PutNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, 
+  prefix_ : "fig/data/logneuralnorm"] := 
+ With[{paths = 
+    FileNames[
+     StringTemplate["``_``_``_``*"][
+      prefix, \[Alpha]100, \[Sigma]w100,
+           \[Sigma]b100]]}, 
+  If[Length@paths > 0, Get@First@paths, 
+   With[{logfpStable = 
+      GetLogFPStable[\[Alpha]100, \[Sigma]w100, \[Sigma]b100
+               ]},
+    Put[
+     Log@
+      NExpectation[
+       Tanh[Exp[
+           logfpStable/(\[Alpha]100/100.)] h]^2, {h \[Distributed] 
+         StableDist[\[Alpha]100/100.]}],
+     StringTemplate["``_``_``_``_``.txt"][prefix,
+           \[Alpha]100, \[Sigma]w100, \[Sigma]b100, CreateUUID[]]
+     ]]
+   ]]
+
 (* can also write a consolidating function for the estimates *)
 
 SaveLogFPStable[path_:"fig/data"] :=
@@ -355,6 +377,16 @@ SaveJacobianLogAvg[path_:"fig/data"] :=
          (ToExpression @ StringSplit[FileBaseName[#], "_"][[2 ;; 5]]&) -> (Import[
         #, "List"]&)] // Export[FileNameJoin[Most @ FileNameSplit[path] // Append
          @ "jaclogavg.mx"], #]&
+        
+SaveNeuralNorms[path_ : "fig/data"] := 
+ First @* First /@ GroupBy[FileNames
+          @ 
+     FileNameJoin[{path, 
+       "logneuralnorm_*_*_*_*.txt"}], (ToExpression @ StringSplit[
+              FileBaseName[#], "_"][[2 ;; 4]] &) -> (Import[#, 
+        "List"] &)] // Export[
+        FileNameJoin[
+     Most @ FileNameSplit[path] // Append @ "logneuralnorm.mx"], #] &
 
 (* one should probably prefer more uniform samples with fewer stable samples to get an accurate average (but more stable samples are better for getting the shape of the CDF) *)
 
