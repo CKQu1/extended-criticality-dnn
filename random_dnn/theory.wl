@@ -275,21 +275,39 @@ JacobianLogInvCDF[\[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, Log\[Sigma]b_,
         ]
     ]
 
-GetLogFPStable[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, prefix_:"fig/data/logfp"
-    ] :=
-    With[{paths = FileNames[StringTemplate["``_``_``_``*"][prefix, \[Alpha]100,
-         \[Sigma]w100, \[Sigma]b100]]},
-        If[Length @ paths > 0,
-            Get @ First @ paths
-            ,
-            With[{logfpStable = LogFPStable[\[Alpha]100 / 100., N @ Log[
-                \[Sigma]w100 / 100], N @ Log[\[Sigma]b100 / 100], Tanh]},
-                Put[logfpStable, StringTemplate["``_``_``_``_``.txt"][
-                    prefix, \[Alpha]100, \[Sigma]w100, \[Sigma]b100, CreateUUID[]]];
-                logfpStable
-            ]
-        ]
-    ]
+GetLogFPStable[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, 
+  prefix_ : "fig/data"] := With[
+      {paths = 
+    FileNames[
+     StringTemplate["``/``/``/``/logfp_*"][
+      prefix, \[Alpha]100, \[Sigma]w100,
+           \[Sigma]b100]]}, 
+  If[Length @ paths > 0, Get @ First @ paths, 
+   With[{fname = 
+      FileNameJoin@{prefix, StringTemplate["``/``/``/logfp_``.txt"][
+              \[Alpha]100, \[Sigma]w100, \[Sigma]b100, CreateUUID[]]},
+      logfpStable
+           = 
+      LogFPStable[\[Alpha]100 / 100., N @ Log[\[Sigma]w100 / 100], 
+       N @ Log[\[Sigma]b100 / 100
+             ], Tanh]}, 
+    Quiet[CreateDirectory@DirectoryName@fname, 
+     CreateDirectory::eexist]; Put[logfpStable, fname]; logfpStable]]]
+
+PutJacobianLogInvCDF[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, 
+  stableSamples_, numAvgSamples_,
+       prefix_ : "fig/data"] := With[{logfpStable = GetLogFPStable[
+         \[Alpha]100, \[Sigma]w100, \[Sigma]b100]}, 
+  Export[FileNameJoin@{prefix, 
+     StringTemplate["``/``/``/loginvCDF_``_``.txt"
+           ][\[Alpha]100, \[Sigma]w100, \[Sigma]b100, stableSamples, 
+      CreateUUID[]]}, Table[Quiet @ JacobianLogInvCDF[\[Alpha]100
+            / 100., N @ Log[\[Sigma]w100 / 100], 
+      N @ Log[\[Sigma]b100 / 100], Tanh, If[s < 0.5,
+            Log @ s, Log[1 - s]], LogSech2, stableSamples, s < 0.5, 
+      logfpStable],
+         {s, RandomReal[1, numAvgSamples]}]]]
+
 
 PutJacobianLogAvg[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
      numAvgSamples_, prefix_:"fig/data/jaclogavg"] :=

@@ -13,10 +13,10 @@ def submit():
     (Path(".") / "fig" / "data").mkdir(parents=True, exist_ok=True)
     cmd_list = [
         f"""
-            {scriptpath} -f theory.wl "PutJacobianLogAvg[{alpha100}, {g100}, 0, 1000, 1000]"
+            {scriptpath} -f theory.wl "PutJacobianLogInvCDF[{alpha100}, {g100}, 0, 1000, 100]"
         """
         for alpha100 in range(100, 201, 5)
-        for g100 in range(1, 301, 5)
+        for g100 in range(0, 301, 5)[1:]
         # if alpha100 == 150 and g100 in [150, 200, 300]
     ]
     random.shuffle(cmd_list)
@@ -86,11 +86,12 @@ def qsub(
     print_script=False,
 ):
     path = Path(path)
-    (path / "job").mkdir(parents=True, exist_ok=True)
+    label = time.strftime(r"%Y%m%d_%H%M%S")
+    jobpath = (path / "job" / label).resolve()
+    jobpath.mkdir(parents=True, exist_ok=True)
     # Create the input files.
-    label = time.strftime(r"%Y%m%d%H%M%S")
     for idx, cmd in enumerate(cmd_list):
-        with open(path / "job" / f"cmd_{idx}_{label}.sh", "w") as f:
+        with open(jobpath / f"cmd_{idx}.sh", "w") as f:
             f.write(cmd)
     cmd_list_chunks = [
         cmd_list[i : i + max_array_size]
@@ -99,11 +100,11 @@ def qsub(
     # Make sure no array job has length 1.
     if len(cmd_list_chunks[-1]) == 1:
         cmd_list_chunks[-1].insert(0, cmd_list_chunks[-2].pop())
-    jobpath = (path / "job").resolve()
     lastjobid = None
     for chunk_idx, cmd_list_chunk in enumerate(cmd_list_chunks):
         PBS_SCRIPT = f"""<<'END'
 #!/bin/bash
+#PBS -k oed
 #PBS -N {N}
 #PBS -P {P}
 #PBS -q {q}
@@ -115,7 +116,7 @@ def qsub(
 #PBS -J {max_array_size*chunk_idx}-{max_array_size*chunk_idx + len(cmd_list_chunk) - 1}%{max_run_subjobs}
 {('#PBS -W depend=afterany:'+lastjobid) if depend_after and (lastjobid is not None) else ''}
 cd $PBS_O_WORKDIR
-bash {jobpath}/cmd_$PBS_ARRAY_INDEX\_{label}.sh
+bash {jobpath}/cmd_$PBS_ARRAY_INDEX.sh
 END"""
         lastjobid = subprocess.check_output(
             f"qsub {PBS_SCRIPT}", shell=True, text=True
