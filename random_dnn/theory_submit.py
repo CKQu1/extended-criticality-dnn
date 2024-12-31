@@ -9,27 +9,31 @@ from pathlib import Path
 scriptpath = "~/wolfram/13.3/Executables/wolframscript"
 
 
-def submit():
+def submit(size=1000):
     (Path(".") / "fig" / "data").mkdir(parents=True, exist_ok=True)
     cmd_list = [
         f"""
-            {scriptpath} -f theory.wl "PutJacobianLogInvCDF[{alpha100}, {g100}, 0, 1000, 100]"
+            {scriptpath} -f theory.wl "PutJacobianLogInvCDF[{alpha100}, {g100}, 0, 1000, {size}]"
+            {scriptpath} -f theory.wl "PutJacobianEigs[{alpha100}, {g100}, 0, {size}]"
+
         """
         for alpha100 in range(100, 201, 5)
         for g100 in range(0, 301, 5)[1:]
         # if alpha100 == 150 and g100 in [150, 200, 300]
     ]
     random.shuffle(cmd_list)
-    qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=100, depend_after=True)
+    jobids = qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=200)
+    submit_reducer(jobids[-1])
 
 
-def submit_consolidator():
+def submit_reducer(lastjobid=None):
     cmd_list = [
-        f"{scriptpath} -f theory.wl SaveJacobianLogAvg[]",
+        f"{scriptpath} -f theory.wl SaveJacobianLogInvCDF[]",
+        f"{scriptpath} -f theory.wl SaveJacobianEigs[]",
         f"{scriptpath} -f theory.wl SaveLogFPStable[]",
         f"{scriptpath} -f theory.wl SaveNeuralNorms[]",
     ]
-    qsub(cmd_list, Path(".") / "fig", "consolidator")
+    qsub(cmd_list, Path(".") / "fig", "consolidator", mem='4GB', lastjobid=lastjobid)
 
 
 def submit_remaining(min_avg_samples: int = 1000):
@@ -39,7 +43,7 @@ def submit_remaining(min_avg_samples: int = 1000):
     for alpha100 in range(100, 201, 5):
         for g100 in range(0, 301, 5)[1:]:
             num_avg_samples = 0
-            for fname in data_path.glob(f"jaclogavg_{alpha100}_{g100}_0_1000_*.txt"):
+            for fname in data_path.glob(f"jaclogavg_{alpha100}_{g100}_0_1000_*.txt"):   # TODO: update
                 with fname.open() as f:
                     num_avg_samples += int(f.readlines()[-1])
             remaining_samples = min_avg_samples - num_avg_samples
@@ -63,7 +67,7 @@ def submit_neural_norms():
         """
         for alpha100 in range(100, 201, 5)
         for g100 in range(0, 301, 5)[1:]
-        if not len(list(data_path.glob(f"logneuralnorm_{alpha100}_{g100}_0_*.txt")))
+        if not len(list(data_path.glob(f"{alpha100} / {g100} / 0 / logneuralnorm_*.txt")))
     ]
     random.shuffle(cmd_list)
     qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=100, depend_after=True)
@@ -83,6 +87,7 @@ def qsub(
     max_array_size=1000,
     max_run_subjobs=1000,
     depend_after=True,
+    lastjobid=None,
     print_script=False,
 ):
     path = Path(path)
@@ -100,7 +105,7 @@ def qsub(
     # Make sure no array job has length 1.
     if len(cmd_list_chunks[-1]) == 1:
         cmd_list_chunks[-1].insert(0, cmd_list_chunks[-2].pop())
-    lastjobid = None
+    jobids = []
     for chunk_idx, cmd_list_chunk in enumerate(cmd_list_chunks):
         PBS_SCRIPT = f"""<<'END'
 #!/bin/bash
@@ -122,13 +127,13 @@ END"""
             f"qsub {PBS_SCRIPT}", shell=True, text=True
         ).strip()
         print(lastjobid)
+        jobids.append(lastjobid)
         if print_script:
             print(PBS_SCRIPT)
+    return jobids
 
 
 if __name__ == "__main__":
-    import sys
-
     if len(sys.argv) < 2:
         print("Usage: python %s FUNCTION_NAME ARG1 ... ARGN" % sys.argv[0])
         quit()

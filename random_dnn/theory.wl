@@ -275,6 +275,8 @@ JacobianLogInvCDF[\[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, Log\[Sigma]b_,
         ]
     ]
 
+(* Map functions *)
+
 GetLogFPStable[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, 
   prefix_ : "fig/data"] := With[
       {paths = 
@@ -309,7 +311,35 @@ PutJacobianLogInvCDF[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_,
          {s, RandomReal[1, numAvgSamples]}]]]
 
 
-PutJacobianLogAvg[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
+PutJacobianEigs[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, n_, 
+  prefix_ : "fig/data"] := 
+ With[{logfpStable = 
+    GetLogFPStable[\[Alpha]100, \[Sigma]w100, \[Sigma]b100]}, 
+  Export[FileNameJoin@{prefix, 
+     StringTemplate[
+       "``/``/``/jacEigs_``_``.txt"][\[Alpha]100, \[Sigma]w100, \
+\[Sigma]b100, n, 
+      CreateUUID[]]}, (\[Sigma]w100/
+        100) DiagonalMatrix[
+         Tanh'[Exp[logfpStable/(\[Alpha]100/100.)] RandomVariate[
+            StableDist[\[Alpha]100/100.], n]]] . 
+        RandomVariate[StableDist[\[Alpha]100/100.], {n, n}]/
+       n^(1/(\[Alpha]100/100.)) // Eigenvalues // ReIm, "Table"]]
+
+PutNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, 
+  prefix_ : "fig/data"] := 
+ With[{logfpStable = 
+    GetLogFPStable[\[Alpha]100, \[Sigma]w100, \[Sigma]b100]}, 
+  Export[FileNameJoin@{prefix, 
+     StringTemplate[
+       "``/``/``/logneuralnorm_``.txt"][\[Alpha]100, \[Sigma]w100, \
+\[Sigma]b100, CreateUUID[]]}, 
+   Log@NExpectation[
+     Tanh[Exp[logfpStable/(\[Alpha]100/100.)] h]^2, {h \[Distributed] 
+       StableDist[\[Alpha]100/100.]}]]]
+
+
+(* PutJacobianLogAvg[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
      numAvgSamples_, prefix_:"fig/data/jaclogavg"] :=
     With[{logfpStable = GetLogFPStable[\[Alpha]100, \[Sigma]w100, \[Sigma]b100
         ]},
@@ -349,17 +379,17 @@ PutJacobianLogAvg[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
             StringTemplate["``_``_``_``_``_``.txt"][prefix, \[Alpha]100,
                  \[Sigma]w100, \[Sigma]b100, stableSamples, CreateUUID[]]
         ]
-    ]
+    ] *)
 
-GetJacobianLogAvg[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
+(* GetJacobianLogAvg[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
      prefix_:"out/jaclogavg"] :=
     With[{paths = FileNames[StringTemplate["``_``_``_``_``*"][prefix,
          \[Alpha]100, \[Sigma]w100, \[Sigma]b100, stableSamples]]},
         Mean @ WeightedData[Sequence @@ Transpose[Import[#, "List"]& 
             /@ paths]]
-    ]
+    ] *)
 
-PutNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, 
+(* PutNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, 
   prefix_ : "fig/data/logneuralnorm"] := 
  With[{paths = 
     FileNames[
@@ -379,24 +409,61 @@ PutNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_,
      StringTemplate["``_``_``_``_``.txt"][prefix,
            \[Alpha]100, \[Sigma]w100, \[Sigma]b100, CreateUUID[]]
      ]]
-   ]]
+   ]] *)
 
-(* can also write a consolidating function for the estimates *)
 
-SaveLogFPStable[path_:"fig/data"] :=
+(* Reduce functions *)
+
+(* SaveLogFPStable[path_:"fig/data"] :=
     First @* First /@ GroupBy[FileNames @ FileNameJoin[{path, "logfp_*_*_*_*.txt"
         }], (ToExpression @ StringSplit[FileBaseName[#], "_"][[2 ;; 4]]&) -> 
         (Import[#, "List"]&)] // Export[FileNameJoin[Most @ FileNameSplit[path
-        ] // Append @ "logfp.mx"], #]&
+        ] // Append @ "logfp.mx"], #]& *)
 
-SaveJacobianLogAvg[path_:"fig/data"] :=
+SaveJacobianLogInvCDF[prefix_ : "fig/data", stableSamples_ : 1000] := 
+ GroupBy[FileNames@
+    FileNameJoin@{prefix, 
+      StringTemplate["*/*/*/loginvCDF_``_*.txt"][
+       stableSamples]}, (ToExpression@
+       FileNameSplit[#][[-4 ;; -2]] &) -> (Import[#, "List"] &), 
+   Catenate] // 
+  Export[FileNameJoin@{prefix, 
+      StringTemplate["loginvCDF_``.mx"][stableSamples]}, #] &
+
+SaveJacobianEigs[prefix_ : "fig/data", n_ : 1000] := 
+ GroupBy[FileNames@
+    FileNameJoin@{prefix, 
+      StringTemplate["*/*/*/jacEigs_``_*.txt"][n]}, (ToExpression@
+       FileNameSplit[#][[-4 ;; -2]] &) -> (Apply@Complex /@ 
+       Import[#, "Table"] &), Catenate] // 
+  Export[FileNameJoin@{prefix, 
+      StringTemplate["jacEigs_``.mx"][n]}, #] &
+
+SaveNeuralNorms[prefix_ : "fig/data"] := 
+ GroupBy[FileNames@
+    FileNameJoin@{prefix, 
+      StringTemplate["*/*/*/logneuralnorm_*.txt"][]}, (ToExpression@
+       FileNameSplit[#][[-4 ;; -2]] &) -> (First@Import[#, "List"] &),
+    First] // 
+  Export[FileNameJoin@{prefix, 
+      StringTemplate["logneuralnorm.mx"][]}, #] &
+
+SaveLogFPStable[prefix_ : "fig/data"] := 
+ GroupBy[FileNames@
+    FileNameJoin@{prefix, 
+      StringTemplate["*/*/*/logfp_*.txt"][]}, (ToExpression@
+       FileNameSplit[#][[-4 ;; -2]] &) -> (First@Import[#, "List"] &),
+    First] // 
+  Export[FileNameJoin@{prefix, StringTemplate["logfp.mx"][]}, #] &
+
+(* SaveJacobianLogAvg[path_:"fig/data"] :=
     {Mean[#], Total @ #["Weights"]}& @* Apply[WeightedData] @* Transpose /@
          GroupBy[FileNames @ FileNameJoin[{path, "jaclogavg_*_*_*_*_*.txt"}],
          (ToExpression @ StringSplit[FileBaseName[#], "_"][[2 ;; 5]]&) -> (Import[
         #, "List"]&)] // Export[FileNameJoin[Most @ FileNameSplit[path] // Append
-         @ "jaclogavg.mx"], #]&
+         @ "jaclogavg.mx"], #]& *)
         
-SaveNeuralNorms[path_ : "fig/data"] := 
+(* SaveNeuralNorms[path_ : "fig/data"] := 
  First @* First /@ GroupBy[FileNames
           @ 
      FileNameJoin[{path, 
@@ -404,7 +471,7 @@ SaveNeuralNorms[path_ : "fig/data"] :=
               FileBaseName[#], "_"][[2 ;; 4]] &) -> (Import[#, 
         "List"] &)] // Export[
         FileNameJoin[
-     Most @ FileNameSplit[path] // Append @ "logneuralnorm.mx"], #] &
+     Most @ FileNameSplit[path] // Append @ "logneuralnorm.mx"], #] & *)
 
 (* one should probably prefer more uniform samples with fewer stable samples to get an accurate average (but more stable samples are better for getting the shape of the CDF) *)
 
