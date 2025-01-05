@@ -2,7 +2,7 @@
 
 import sys
 import subprocess
-import time
+from datetime import datetime
 import random
 from pathlib import Path
 
@@ -14,7 +14,11 @@ def submit(size=1000):
     cmd_list = [
         f"""
             {scriptpath} -f theory.wl "PutJacobianLogInvCDF[{alpha100}, {g100}, 0, 1000, {size}]"
-            {scriptpath} -f theory.wl "PutJacobianEigs[{alpha100}, {g100}, 0, {size}]"
+            # {scriptpath} -f theory.wl "PutJacobianEigs[{alpha100}, {g100}, 0, {size}]"
+            # {scriptpath} -f theory.wl "PutLogEmpiricalNeuralNorm[{alpha100}, {g100}, 0, {size}, 10]"
+            # {scriptpath} -f theory.wl "PutEmpiricalLogVariance[{alpha100}, {g100}, 0, {size}, 10]"
+            # {scriptpath} -f theory.wl "PutEmpiricalLogVarianceSingVals[{alpha100}, {g100}, 0, {size}, 10]"
+            # {scriptpath} -f theory.wl "PutEmpiricalSingVals[{alpha100}, {g100}, 0, {size}, 50]"
 
         """
         for alpha100 in range(100, 201, 5)
@@ -22,18 +26,28 @@ def submit(size=1000):
         # if alpha100 == 150 and g100 in [150, 200, 300]
     ]
     random.shuffle(cmd_list)
-    jobids = qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=200)
+    jobids = qsub(
+        cmd_list,
+        Path(".") / "fig",
+        mem="4GB",
+        # max_run_subjobs=200,
+        # depend_after=True,
+    )
     submit_reducer(jobids[-1])
 
 
-def submit_reducer(lastjobid=None):
+def submit_reducer(depend_after=False):
     cmd_list = [
-        f"{scriptpath} -f theory.wl SaveJacobianLogInvCDF[]",
-        f"{scriptpath} -f theory.wl SaveJacobianEigs[]",
-        f"{scriptpath} -f theory.wl SaveLogFPStable[]",
-        f"{scriptpath} -f theory.wl SaveNeuralNorms[]",
+        # f"{scriptpath} -f theory.wl SaveJacobianLogInvCDF[]",
+        # f"{scriptpath} -f theory.wl SaveJacobianEigs[]",
+        # f"{scriptpath} -f theory.wl SaveLogFPStable[]",
+        # f"{scriptpath} -f theory.wl SaveNeuralNorms[]",
+        # f"""{scriptpath} -f theory.wl SavePuts["empiricalLogVariance_1000_10"]""",
+        # f"""{scriptpath} -f theory.wl SavePuts["empiricalLogVarianceSingVals_1000_10"]""",
+        # rf"""{scriptpath} -f theory.wl SavePuts[\"empiricalSingVals_1000_50\"]""",
+        rf"""{scriptpath} -f theory.wl SavePuts[\"loginvCDF_1000\"]""",
     ]
-    qsub(cmd_list, Path(".") / "fig", "consolidator", mem='4GB', lastjobid=lastjobid)
+    qsub(cmd_list, Path(".") / "fig", "consolidator", mem="4GB", depend_after=depend_after)
 
 
 def submit_remaining(min_avg_samples: int = 1000):
@@ -43,7 +57,9 @@ def submit_remaining(min_avg_samples: int = 1000):
     for alpha100 in range(100, 201, 5):
         for g100 in range(0, 301, 5)[1:]:
             num_avg_samples = 0
-            for fname in data_path.glob(f"jaclogavg_{alpha100}_{g100}_0_1000_*.txt"):   # TODO: update
+            for fname in data_path.glob(
+                f"jaclogavg_{alpha100}_{g100}_0_1000_*.txt"
+            ):  # TODO: update
                 with fname.open() as f:
                     num_avg_samples += int(f.readlines()[-1])
             remaining_samples = min_avg_samples - num_avg_samples
@@ -67,7 +83,9 @@ def submit_neural_norms():
         """
         for alpha100 in range(100, 201, 5)
         for g100 in range(0, 301, 5)[1:]
-        if not len(list(data_path.glob(f"{alpha100} / {g100} / 0 / logneuralnorm_*.txt")))
+        if not len(
+            list(data_path.glob(f"{alpha100} / {g100} / 0 / logneuralnorm_*.txt"))
+        )
     ]
     random.shuffle(cmd_list)
     qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=100, depend_after=True)
@@ -82,16 +100,19 @@ def qsub(
     select=1,
     ncpus=1,
     mem="1GB",
-    ngpus=None,
+    ngpus: int = None,
     walltime="23:59:00",
     max_array_size=1000,
-    max_run_subjobs=1000,
-    depend_after=True,
-    lastjobid=None,
+    max_run_subjobs: int = None,
+    depend_after=False,  # False, True or the name of a job
     print_script=False,
 ):
+    lastjobid = None if depend_after in [False, True] else depend_after
+    if max_run_subjobs is None:
+        max_run_subjobs = max_array_size
+    if len(cmd_list) == 1: cmd_list.append('')
     path = Path(path)
-    label = time.strftime(r"%Y%m%d_%H%M%S")
+    label = datetime.now().strftime(r"%Y%m%d_%H%M%S_%f")
     jobpath = (path / "job" / label).resolve()
     jobpath.mkdir(parents=True, exist_ok=True)
     # Create the input files.
