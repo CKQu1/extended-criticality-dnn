@@ -9,20 +9,15 @@ from pathlib import Path
 scriptpath = "~/wolfram/13.3/Executables/wolframscript"
 
 
-def submit(size=1000):
+def submit(num_samples=1000):
     (Path(".") / "fig" / "data").mkdir(parents=True, exist_ok=True)
     cmd_list = [
         f"""
-            {scriptpath} -f theory.wl "PutJacobianLogInvCDF[{alpha100}, {g100}, 0, 1000, {size}]"
-            # {scriptpath} -f theory.wl "PutJacobianEigs[{alpha100}, {g100}, 0, {size}]"
-            # {scriptpath} -f theory.wl "PutLogEmpiricalNeuralNorm[{alpha100}, {g100}, 0, {size}, 10]"
-            # {scriptpath} -f theory.wl "PutEmpiricalLogVariance[{alpha100}, {g100}, 0, {size}, 10]"
-            # {scriptpath} -f theory.wl "PutEmpiricalLogVarianceSingVals[{alpha100}, {g100}, 0, {size}, 10]"
-            # {scriptpath} -f theory.wl "PutEmpiricalSingVals[{alpha100}, {g100}, 0, {size}, 50]"
-
+            {scriptpath} -f theory.wl "PutJacobianLogInvCDF[{alpha100}, {g100}, 0, {num_samples}, {seed}]"
         """
         for alpha100 in range(100, 201, 5)
         for g100 in range(0, 301, 5)[1:]
+        for seed in [42] #range(10)
         # if alpha100 == 150 and g100 in [150, 200, 300]
     ]
     random.shuffle(cmd_list)
@@ -38,57 +33,17 @@ def submit(size=1000):
 
 def submit_reducer(depend_after=False):
     cmd_list = [
-        # f"{scriptpath} -f theory.wl SaveJacobianLogInvCDF[]",
-        # f"{scriptpath} -f theory.wl SaveJacobianEigs[]",
-        # f"{scriptpath} -f theory.wl SaveLogFPStable[]",
-        # f"{scriptpath} -f theory.wl SaveNeuralNorms[]",
-        # f"""{scriptpath} -f theory.wl SavePuts["empiricalLogVariance_1000_10"]""",
-        # f"""{scriptpath} -f theory.wl SavePuts["empiricalLogVarianceSingVals_1000_10"]""",
-        # rf"""{scriptpath} -f theory.wl SavePuts[\"empiricalSingVals_1000_50\"]""",
-        rf"""{scriptpath} -f theory.wl SavePuts[\"loginvCDF_1000\"]""",
+        rf"""{scriptpath} -f theory.wl "SavePuts[\"loginvCDF_1000\", \"Table\", ToExpression]" """,
+        # rf"""{scriptpath} -f theory.wl SavePuts[\"empiricalLogSingVals_1000_50\"]""",
+        # rf"""{scriptpath} -f theory.wl SavePuts[\"empiricalLogAbsEigs_1000_50\"]""",
     ]
-    qsub(cmd_list, Path(".") / "fig", "consolidator", mem="4GB", depend_after=depend_after)
-
-
-def submit_remaining(min_avg_samples: int = 1000):
-    min_avg_samples = int(min_avg_samples)
-    cmd_list = []
-    data_path = Path(".") / "fig" / "data"
-    for alpha100 in range(100, 201, 5):
-        for g100 in range(0, 301, 5)[1:]:
-            num_avg_samples = 0
-            for fname in data_path.glob(
-                f"jaclogavg_{alpha100}_{g100}_0_1000_*.txt"
-            ):  # TODO: update
-                with fname.open() as f:
-                    num_avg_samples += int(f.readlines()[-1])
-            remaining_samples = min_avg_samples - num_avg_samples
-            if remaining_samples > 0:
-                cmd_list.append(
-                    f"""
-                        {scriptpath} -f theory.wl "PutJacobianLogAvg[{alpha100}, {g100}, 0, 1000, {remaining_samples}]"
-                    """
-                )
-                # print(f"{alpha100}, {g100}, {remaining_samples}")
-    random.shuffle(cmd_list)
-    qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=200, depend_after=True)
-
-
-def submit_neural_norms():
-    cmd_list = []
-    data_path = Path(".") / "fig" / "data"
-    cmd_list = [
-        f"""
-            {scriptpath} -f theory.wl "PutNeuralNorm[{alpha100}, {g100}, 0]"
-        """
-        for alpha100 in range(100, 201, 5)
-        for g100 in range(0, 301, 5)[1:]
-        if not len(
-            list(data_path.glob(f"{alpha100} / {g100} / 0 / logneuralnorm_*.txt"))
-        )
-    ]
-    random.shuffle(cmd_list)
-    qsub(cmd_list, Path(".") / "fig", mem="4GB", max_run_subjobs=100, depend_after=True)
+    qsub(
+        cmd_list,
+        Path(".") / "fig",
+        "consolidator",
+        mem="16GB",
+        depend_after=depend_after,
+    )
 
 
 def qsub(
@@ -110,7 +65,8 @@ def qsub(
     lastjobid = None if depend_after in [False, True] else depend_after
     if max_run_subjobs is None:
         max_run_subjobs = max_array_size
-    if len(cmd_list) == 1: cmd_list.append('')
+    if len(cmd_list) == 1:
+        cmd_list.append("")
     path = Path(path)
     label = datetime.now().strftime(r"%Y%m%d_%H%M%S_%f")
     jobpath = (path / "job" / label).resolve()

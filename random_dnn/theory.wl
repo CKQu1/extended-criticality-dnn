@@ -6,6 +6,8 @@ Notes:
 
 *)
 
+prefix = "fig/data";
+
 EvaluatePreviousCell = ResourceFunction["EvaluatePreviousCell"];
 
 ParallelOuter[f_, args__, opts : OptionsPattern[ParallelMap]] :=
@@ -32,6 +34,24 @@ LogAvgExp[x_] :=
 StableDist[\[Alpha]_] :=
     StableDistribution[\[Alpha], 0, 0, 2 ^ (-1 / \[Alpha])]
 
+(* these are actually quantiles (deterministic) *)
+
+GetStableSamples[\[Alpha]100_, numSamples_, label_:"stable"] :=
+    With[{paths = FileNames @ FileNameJoin @ {prefix, ToString @ \[Alpha]100,
+         StringTemplate["``_``_*"][label, numSamples]}},
+        If[Length @ paths > 0,
+            Import[First @ paths, "Table"][[ ;; , 1]]
+            ,
+            N @ InverseCDF[StableDist[\[Alpha]100 / 100], Most @ Rest
+                 @ Subdivide[numSamples + 1]] //
+                With[{fname = FileNameJoin @ {prefix, ToString @ \[Alpha]100,
+                     StringTemplate["``_``_``.txt"][label, numSamples, CreateUUID[]]}},
+                    Export[fname, #, "Table"];
+                    #
+                ]&
+        ]
+    ]
+
 (* With[{
         c =
             Function[\[Alpha]1,
@@ -52,65 +72,88 @@ SDist[\[Alpha]_?NumericQ] :=
             ]}]
     ]
 
-LogFPStable[\[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, Log\[Sigma]b_
-    ?NumericQ, \[Phi]_, stableSamples_] :=
-    If[Log\[Sigma]w == -\[Infinity],
-        \[Alpha] Log\[Sigma]b
-        ,
-        With[{
-            z =
-                If[IntegerQ @ stableSamples,
-                    RandomVariate[StableDist[\[Alpha]], stableSamples
-                        ]
-                    ,
-                    stableSamples
-                ]
-        },
-            LogSumExp[{Logq2, \[Alpha] Log\[Sigma]b}] /. FindRoot[Logq2
-                 - \[Alpha] Log\[Sigma]w - LogAvgExp[\[Alpha] Log @ Abs[\[Phi][z Exp[
-                LogSumExp[{Logq2, \[Alpha] Log\[Sigma]b}] / \[Alpha]]]]], {Logq2, 1}]
-                
+GetSSamples[\[Alpha]100_, numSamples_, label_:"s"] :=
+    With[{paths = FileNames @ FileNameJoin @ {prefix, ToString @ \[Alpha]100,
+         StringTemplate["``_``_*"][label, numSamples]}},
+        If[Length @ paths > 0,
+            Import[First @ paths, "Table"][[ ;; , 1]]
+            ,
+            N @ InverseCDF[SDist[\[Alpha]100 / 100], Most @ Rest @ Subdivide[
+                numSamples + 1]] //
+                With[{fname = FileNameJoin @ {prefix, ToString @ \[Alpha]100,
+                     StringTemplate["``_``_``.txt"][label, numSamples, CreateUUID[]]}},
+                    Export[fname, #, "Table"];
+                    #
+                ]&
         ]
     ]
 
-LogFPStable[\[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, -\[Infinity],
-     \[Phi]_, stableSamples_] :=
-    If[Log\[Sigma]w == -\[Infinity],
-        -\[Infinity]
-        ,
-        With[{
-            z =
-                If[IntegerQ @ stableSamples,
-                    RandomVariate[StableDist[\[Alpha]], stableSamples
-                        ]
-                    ,
-                    stableSamples
-                ]
-        },
-            Logq2 /. FindRoot[Logq2 - \[Alpha] Log\[Sigma]w - LogAvgExp[
-                \[Alpha] Log @ Abs[\[Phi][z Exp[Logq2 / \[Alpha]]]]], {Logq2, 1}]
+LogQStar[\[Alpha]100_?NumericQ, -\[Infinity] | Indeterminate, -\[Infinity]
+     | Indeterminate, \[Phi]_, numSamples_] :=
+    -\[Infinity]
+
+LogQStar[\[Alpha]100_?NumericQ, -\[Infinity] | Indeterminate, log\[Sigma]b_,
+     \[Phi]_, numSamples_] :=
+    With[{\[Alpha] = \[Alpha]100 / 100},
+        \[Alpha] log\[Sigma]b
+    ]
+
+LogQStar[\[Alpha]100_?NumericQ, log\[Sigma]w_?NumericQ, -\[Infinity] 
+    | Indeterminate, \[Phi]_, \[Infinity]] :=
+    With[{\[Alpha] = \[Alpha]100 / 100},
+        logq2 /. FindRoot[logq2 - \[Alpha] log\[Sigma]w - Log @ NExpectation[
+            Exp[\[Alpha] Log @ Abs[\[Phi][z Exp[logq2 / \[Alpha]]]]], {z \[Distributed]
+             StableDist[\[Alpha]]}], {logq2, 1}]
+    ]
+
+LogQStar[\[Alpha]100_?NumericQ, log\[Sigma]w_?NumericQ, -\[Infinity] 
+    | Indeterminate, \[Phi]_, numSamples_] :=
+    With[{z = GetStableSamples[\[Alpha]100, numSamples], \[Alpha] = \[Alpha]100
+         / 100},
+        logq2 /. FindRoot[logq2 - \[Alpha] log\[Sigma]w - LogAvgExp[\[Alpha]
+             * Log @ Abs[\[Phi][z Exp[logq2 / \[Alpha]]]]], {logq2, 1}]
+    ]
+
+LogQStar[\[Alpha]100_?NumericQ, log\[Sigma]w_?NumericQ, log\[Sigma]b_
+    ?NumericQ, \[Phi]_, \[Infinity]] :=
+    With[{\[Alpha] = \[Alpha]100 / 100},
+        LogSumExp[{logq2, \[Alpha] log\[Sigma]b}] /. FindRoot[logq2 -
+             \[Alpha] log\[Sigma]w - Log @ NExpectation[Exp[\[Alpha] Log @ Abs[\[Phi][
+            z Exp[LogSumExp[{logq2, \[Alpha] log\[Sigma]b}] / \[Alpha]]]]], {z \[Distributed]
+             StableDist[\[Alpha]]}], {logq2, 1}]
+    ]
+
+LogQStar[\[Alpha]100_?NumericQ, log\[Sigma]w_?NumericQ, log\[Sigma]b_
+    ?NumericQ, \[Phi]_, numSamples_] :=
+    With[{z = GetStableSamples[\[Alpha]100, numSamples], \[Alpha] = \[Alpha]100
+         / 100},
+        LogSumExp[{logq2, \[Alpha] log\[Sigma]b}] /. FindRoot[logq2 -
+             \[Alpha] log\[Sigma]w - LogAvgExp[\[Alpha] Log @ Abs[\[Phi][z * Exp[
+            LogSumExp[{logq2, \[Alpha] log\[Sigma]b}] / \[Alpha]]]]], {logq2, 1}]
+            
+    ]
+
+GetLogQStar[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, \[Phi]_, numSamples_,
+     label_:"logqStar"] :=
+    With[{paths = FileNames @ StringTemplate["``/``/``/``/``_``_*"][prefix,
+         \[Alpha]100, \[Sigma]w100, \[Sigma]b100, label, numSamples]},
+        If[Length @ paths > 0,
+            Import[First @ paths, "Table"][[1, 1]]
+            ,
+            With[{log\[Sigma]w = Log[\[Sigma]w100 / 100], log\[Sigma]b
+                 = Log[\[Sigma]b100 / 100]},
+                    LogQStar[\[Alpha]100, log\[Sigma]w, log\[Sigma]b,
+                         \[Phi], numSamples]
+                ] //
+                With[{fname = StringTemplate["``/``/``/``/``_``_``.txt"
+                    ][prefix, \[Alpha]100, \[Sigma]w100, \[Sigma]b100, label, numSamples,
+                     CreateUUID[]]},
+                    Quiet[CreateDirectory @ DirectoryName @ fname, CreateDirectory
+                        ::eexist];
+                    Export[fname, #, "Table"];
+                    #
+                ]&
         ]
-    ]
-
-LogFPStable[\[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, Log\[Sigma]b_
-    ?NumericQ, \[Phi]_] :=
-    If[Log\[Sigma]w == -\[Infinity],
-        \[Alpha] Log\[Sigma]b
-        ,
-        LogSumExp[{Logq2, \[Alpha] Log\[Sigma]b}] /. FindRoot[Logq2 -
-             \[Alpha] Log\[Sigma]w - Log @ NExpectation[Exp[\[Alpha] Log @ Abs[\[Phi][
-            z Exp[LogSumExp[{Logq2, \[Alpha] Log\[Sigma]b}] / \[Alpha]]]]], {z \[Distributed]
-             StableDist[\[Alpha]]}], {Logq2, 1}]
-    ]
-
-LogFPStable[\[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, -\[Infinity],
-     \[Phi]_] :=
-    If[Log\[Sigma]w == -\[Infinity],
-        -\[Infinity]
-        ,
-        Logq2 /. FindRoot[Logq2 - \[Alpha] Log\[Sigma]w - Log @ NExpectation[
-            Exp[\[Alpha] Log @ Abs[\[Phi][z Exp[Logq2 / \[Alpha]]]]], {z \[Distributed]
-             StableDist[\[Alpha]]}], {Logq2, 1}]
     ]
 
 LogSech2[x_ ? (VectorQ[#, NumericQ]&)] :=
@@ -119,164 +162,122 @@ LogSech2[x_ ? (VectorQ[#, NumericQ]&)] :=
 LogSech2[x_?NumericQ] :=
     First @ LogSech[{x}]
 
-LogY[\[Alpha]_?NumericQ, Logr_?NumericQ, Log\[Chi]_ ? (VectorQ[#, NumericQ
-    ]&), LogS_ ? (VectorQ[#, NumericQ]&), LogSp_ ? (VectorQ[#, NumericQ]&
-    )] :=
-    Logy /.
-        FindRoot[
-            \[Alpha] Logy - LogAvgExp[(\[Alpha] / 2) (2 Log\[Chi] + LogS
-                 - LogSumExp[{ConstantArray[2 Logr - 2 Logy, Length @ Log\[Chi]], 2 Log\[Chi]
-                 + LogS + LogSp}])], {Logy, 0}(*,
-EvaluationMonitor:>Print[Logy]*) ]
-
-LogY[\[Alpha]_?NumericQ, Logr_?NumericQ, \[Chi]Dist_?DistributionParameterQ,
-     Log\[Chi]Fn_] :=
-    Logy /. FindRoot[-\[Alpha] Logy + Log @ NExpectation[Exp[(\[Alpha]
-         / 2) (2 Log\[Chi]Fn[\[Chi]] + Log @ S - LogSumExp[{2 Logr - 2 Logy, 
-        2 Log\[Chi]Fn[\[Chi]] + Log @ S + Log @ Sp}])], {S \[Distributed] SDist[
-        \[Alpha]], Sp \[Distributed] SDist[\[Alpha]], \[Chi] \[Distributed] \[Chi]Dist
-        }], {Logy, 0}]
-
-LogEigCDF[\[Alpha]_?NumericQ, Logr_?NumericQ, Log\[Chi]_ ? (VectorQ[#,
-     NumericQ]&)] :=
-    With[{LogS = Log @ RandomVariate[SDist[\[Alpha]], Length @ Log\[Chi]
-        ]},
-        With[{LogSp = RotateRight @ LogS},
-            With[{Logy = LogY[\[Alpha], Logr, Log\[Chi], LogS, LogSp]
-                },
-                2 Logr - 2 Logy + LogAvgExp[-LogSumExp[{ConstantArray[
-                    2 Logr - 2 Logy, Length @ Log\[Chi]], 2 Log\[Chi] + LogS + LogSp}]]
-            ]
+LogY[\[Alpha]100_?NumericQ, logr_?NumericQ, log\[Chi]_ ? (VectorQ[#, 
+    NumericQ]&), seed_:42] :=
+    BlockRandom[
+        SeedRandom[seed];
+        With[{logS = RandomSample @ Log @ GetSSamples[\[Alpha]100, Length
+             @ log\[Chi]], \[Alpha] = \[Alpha]100 / 100, logSp = RandomSample @ Log
+             @ GetSSamples[\[Alpha]100, Length @ log\[Chi]]},
+            logy /.
+                FindRoot[
+                    \[Alpha] logy - LogAvgExp[(\[Alpha] / 2) (2 log\[Chi]
+                         + logS - LogSumExp[{ConstantArray[2 logr - 2 logy, Length @ log\[Chi]
+                        ], 2 log\[Chi] + logS + logSp}])], {logy, 0}(*,EvaluationMonitor:>Print[logy]
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                *) ]
         ]
     ]
 
-LogEigCDF[\[Alpha]_?NumericQ, Logr_?NumericQ, \[Chi]Dist_?DistributionParameterQ,
-     Log\[Chi]Fn_] :=
-    With[{Logy = LogY[\[Alpha], Logr, \[Chi]Dist, Log\[Chi]Fn]},
-        2 Logr - 2 Logy + Log @ NExpectation[Exp[-LogSumExp[{2 Logr -
-             2 Logy, 2 Log\[Chi]Fn[\[Chi]] + Log @ S + Log @ Sp}]], {S \[Distributed]
-             SDist[\[Alpha]], Sp \[Distributed] SDist[\[Alpha]], \[Chi] \[Distributed]
-             \[Chi]Dist}]
-    ]
+(*if invCDFflag=False, logs is log the survival fn (i.e.log(1-cdf) instead of log the cdf*)
 
-LogEigSurvival[\[Alpha]_?NumericQ, Logr_?NumericQ, Log\[Chi]_ ? (VectorQ[
-    #, NumericQ]&)] :=
-    With[{LogS = Log @ RandomVariate[SDist[\[Alpha]], Length @ Log\[Chi]
-        ]},
-        With[{LogSp = RotateRight @ LogS},
-            With[{Logy = LogY[\[Alpha], Logr, Log\[Chi], LogS, LogSp]
-                },
-                LogAvgExp[2 Log\[Chi] + LogS + LogSp - LogSumExp[{ConstantArray[
-                    2 Logr - 2 Logy, Length @ Log\[Chi]], 2 Log\[Chi] + LogS + LogSp}]]
-            ]
-        ]
-    ]
-
-LogEigSurvival[\[Alpha]_?NumericQ, Logr_?NumericQ, \[Chi]Dist_?DistributionParameterQ,
-     Log\[Chi]Fn_] :=
-    With[{Logy = LogY[\[Alpha], Logr, \[Chi]Dist, Log\[Chi]Fn]},
-        Log @ NExpectation[Exp[2 Log\[Chi]Fn[\[Chi]] + Log @ S + Log 
-            @ Sp - LogSumExp[{2 Logr - 2 Logy, 2 Log\[Chi]Fn[\[Chi]] + Log @ S + 
-            Log @ Sp}]], {S \[Distributed] SDist[\[Alpha]], Sp \[Distributed] SDist[
-            \[Alpha]], \[Chi] \[Distributed] \[Chi]Dist}]
-    ]
-
-(* here fn can be LogEigCDF or LogEigSurvival *)
-
-JacobianDNN[fn_, \[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, Log\[Sigma]b_,
-     \[Phi]_, Logr_?NumericQ, Log\[Phi]p_, stableSamples_, LogfpStable_:None
-    ] :=
-    With[{
-        hList =
-            If[IntegerQ @ stableSamples,
-                RandomVariate[StableDist[\[Alpha]], stableSamples]
+LogEigCDF[\[Alpha]100_?NumericQ, logr_?NumericQ, log\[Chi]_ ? (VectorQ[
+    #, NumericQ]&), survivalFlag_:False, seed_:42] :=
+    BlockRandom[
+        SeedRandom[seed];
+        With[{logS = RandomSample @ Log @ GetSSamples[\[Alpha]100, Length
+             @ log\[Chi]], \[Alpha] = \[Alpha]100 / 100, logSp = RandomSample @ Log
+             @ GetSSamples[\[Alpha]100, Length @ log\[Chi]], logy = LogY[\[Alpha]100,
+             logr, log\[Chi], seed]},
+            If[survivalFlag,
+                LogAvgExp[2 log\[Chi] + logS + logSp - LogSumExp[{ConstantArray[
+                    2 logr - 2 logy, Length @ log\[Chi]], 2 log\[Chi] + logS + logSp}]]
                 ,
-                stableSamples
+                2 logr - 2 logy + LogAvgExp[-LogSumExp[{ConstantArray[
+                    2 logr - 2 logy, Length @ log\[Chi]], 2 log\[Chi] + logS + logSp}]]
             ]
-    },
-        With[{
-            Log\[Chi] =
-                Log\[Sigma]w +
-                    Log\[Phi]p[
-                        Exp[
-                                If[LogfpStable === None,
-                                        LogFPStable[\[Alpha], Log\[Sigma]w,
-                                             Log\[Sigma]b, \[Phi], hList]
-                                        ,
-                                        LogfpStable
-                                    ] / \[Alpha]
-                            ] hList
-                    ]
-        },
-            fn[\[Alpha], Logr, Log\[Chi]]
         ]
     ]
 
-JacobianTanh[fn_, \[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, Logr_?NumericQ,
-     stableSamples_, LogfpStable_:None] :=
-    JacobianDNN[fn, \[Alpha], Log\[Sigma]w, Log @ 0, Tanh, Logr, LogSech2,
-         stableSamples, LogfpStable]
+LogRHat[\[Alpha]100_?NumericQ, logs_?NumericQ, log\[Chi]_ ? (VectorQ[
+    #, NumericQ]&), survivalFlag_:False, seed_:42] :=
+    BlockRandom[
+        SeedRandom[seed];
+        With[{logS = RandomSample @ Log @ GetSSamples[\[Alpha]100, Length
+             @ log\[Chi]], logSp = RandomSample @ Log @ GetSSamples[\[Alpha]100, 
+            Length @ log\[Chi]]},
+            logrHat /.
+                If[survivalFlag,
+                    FindRoot[logs - LogAvgExp[2 log\[Chi] + logS + logSp
+                         - LogSumExp[{ConstantArray[2 logrHat, Length @ log\[Chi]], 2 log\[Chi]
+                         + logS + logSp}]], {logrHat, 0}]
+                    ,
+                    FindRoot[logs - 2 logrHat - LogAvgExp[-LogSumExp[
+                        {ConstantArray[2 logrHat, Length @ log\[Chi]], 2 log\[Chi] + logS + logSp
+                        }]], {logrHat, 0}]
+                ]
+        ]
+    ]
 
-LogRHat[\[Alpha]_?NumericQ, Logs_?NumericQ, Log\[Chi]_ ? (VectorQ[#, 
-    NumericQ]&), LogS_ ? (VectorQ[#, NumericQ]&), LogSp_ ? (VectorQ[#, NumericQ
-    ]&), invCDFflag_:True] :=
-    LogrHat /.
-        If[invCDFflag,
-            FindRoot[Logs - 2 LogrHat - LogAvgExp[-LogSumExp[{ConstantArray[
-                2 LogrHat, Length @ Log\[Chi]], 2 Log\[Chi] + LogS + LogSp}]], {LogrHat,
-                 0}]
+LogInvCDF[\[Alpha]100_?NumericQ, logs_?NumericQ, log\[Chi]_ ? (VectorQ[
+    #, NumericQ]&), survivalFlag_:False, seed_:42] :=
+    BlockRandom[
+        SeedRandom[seed];
+        With[{logS = RandomSample @ Log @ GetSSamples[\[Alpha]100, Length
+             @ log\[Chi]], logSp = RandomSample @ Log @ GetSSamples[\[Alpha]100, 
+            Length @ log\[Chi]], logrHat = LogRHat[\[Alpha]100, logs, log\[Chi], 
+            survivalFlag, seed], \[Alpha] = \[Alpha]100 / 100},
+            logrHat + (1 / \[Alpha]) LogAvgExp[(\[Alpha] / 2) (2 log\[Chi]
+                 + logS - LogSumExp[{ConstantArray[2 logrHat, Length @ log\[Chi]], 2 
+                * log\[Chi] + logS + logSp}])]
+        ]
+    ]
+
+PutJacobianLogInvCDF[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, numSamples_,
+     seed_:42, label_:"loginvCDF"] :=
+    Table[
+            LogInvCDF[
+                \[Alpha]100
+                ,
+                If[s < 0.5,
+                    Log @ s
+                    ,
+                    Log[1 - s]
+                ]
+                ,
+                Log\[Chi][\[Alpha]100, \[Sigma]w100, \[Sigma]b100, Tanh,
+                     numSamples, LogSech2]
+                ,
+                s > 0.5
+                ,
+                seed
+            ]
             ,
-(*in this case Logs is log the survival fn (i.e. log(1-cdf)
-    *)
-            FindRoot[Logs - LogAvgExp[2 Log\[Chi] + LogS + LogSp - LogSumExp[
-                {ConstantArray[2 LogrHat, Length @ Log\[Chi]], 2 Log\[Chi] + LogS + LogSp
-                }]], {LogrHat, 0}]
-        ]
+            {s, Most @ Rest @ Subdivide[numSamples + 1]}
+        ] // Export[FileNameJoin @ {prefix, ToString @ \[Alpha]100, ToString
+             @ \[Sigma]w100, ToString @ \[Sigma]b100, StringTemplate["``_``_``.txt"
+            ][label, numSamples, seed]}, #, "Table"]&
 
-LogInvCDF[\[Alpha]_?NumericQ, Logs_?NumericQ, Log\[Chi]_ ? (VectorQ[#,
-     NumericQ]&), invCDFFlag_:True] :=
-    With[{LogS = Log @ RandomVariate[SDist[\[Alpha]], Length @ Log\[Chi]
-        ]},
-        With[{LogSp = RotateRight @ LogS},
-            With[{LogrHat = LogRHat[\[Alpha], Logs, Log\[Chi], LogS, 
-                LogSp, invCDFFlag]},
-                LogrHat + (1 / \[Alpha]) LogAvgExp[2 LogrHat - LogSumExp[
-                    {ConstantArray[2 LogrHat, Length @ Log\[Chi]], 2 Log\[Chi] + LogS + LogSp
-                    }]]
-            ]
-        ]
+
+
+Log\[Chi][\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, \[Phi]_, numSamples_,
+     log\[Phi]p_] :=
+    With[{\[Alpha] = \[Alpha]100 / 100, log\[Sigma]w = Log[\[Sigma]w100
+         / 100]},
+        log\[Sigma]w + log\[Phi]p[Exp[GetLogQStar[\[Alpha]100, \[Sigma]w100,
+             \[Sigma]b100, \[Phi], numSamples] / \[Alpha]] GetStableSamples[\[Alpha]100,
+             numSamples]]
     ]
 
-JacobianLogInvCDF[\[Alpha]_?NumericQ, Log\[Sigma]w_?NumericQ, Log\[Sigma]b_,
-     \[Phi]_, Logs_?NumericQ, Log\[Phi]p_, stableSamples_, invCDFflag_:True,
-     LogfpStable_:None] :=
-    With[{
-        hList =
-            If[IntegerQ @ stableSamples,
-                RandomVariate[StableDist[\[Alpha]], stableSamples]
-                ,
-                stableSamples
-            ]
-    },
-        With[{
-            Log\[Chi] =
-                Log\[Sigma]w +
-                    Log\[Phi]p[
-                        Exp[
-                                If[LogfpStable === None,
-                                        LogFPStable[\[Alpha], Log\[Sigma]w,
-                                             Log\[Sigma]b, \[Phi], hList]
-                                        ,
-                                        LogfpStable
-                                    ] / \[Alpha]
-                            ] hList
-                    ]
-        },
-            LogInvCDF[\[Alpha], Logs, Log\[Chi], invCDFflag]
-        ]
-    ]
 
-EmpiricalH[\[Alpha]_, \[Sigma]w_, \[Sigma]b_, \[Phi]_, width_, depth_
+(* EmpiricalH[\[Alpha]_, \[Sigma]w_, \[Sigma]b_, \[Phi]_, width_, depth_
     ] :=
     Module[{h = RandomReal[{-1, 1}, width]},
         Do[
@@ -289,71 +290,17 @@ EmpiricalH[\[Alpha]_, \[Sigma]w_, \[Sigma]b_, \[Phi]_, width_, depth_
             depth
         ];
         h
-    ]
+    ] *)
 
 (* Map functions *)
+
 (* one should probably prefer more uniform samples with fewer stable samples to get an accurate average (but more stable samples are better for getting the shape of the CDF) *)
 
-GetLogFPStable[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, prefix_:"fig/data"
-    ] :=
-    With[{paths = FileNames[StringTemplate["``/``/``/``/logfp_*"][prefix,
-         \[Alpha]100, \[Sigma]w100, \[Sigma]b100]]},
-        If[Length @ paths > 0,
-            Get @ First @ paths
-            ,
-            With[{fname = FileNameJoin @ {prefix, StringTemplate["``/``/``/logfp_``.txt"
-                ][\[Alpha]100, \[Sigma]w100, \[Sigma]b100, CreateUUID[]]}, logfpStable
-                 = LogFPStable[\[Alpha]100 / 100., N @ Log[\[Sigma]w100 / 100], N @ Log[
-                \[Sigma]b100 / 100], Tanh]},
-                Quiet[CreateDirectory @ DirectoryName @ fname, CreateDirectory
-                    ::eexist];
-                Put[logfpStable, fname];
-                logfpStable
-            ]
-        ]
-    ]
-
-SavePuts[label_, fmt_:"Table", red_:Identity, prefix_:"fig/data"] :=
+SavePuts[label_, fmt_:"Table", red_:Identity] :=
     GroupBy[FileNames @ FileNameJoin @ {prefix, StringTemplate["*/*/*/``_*.txt"
         ][label]}, (ToExpression @ FileNameSplit[#][[-4 ;; -2]]&) -> (Import[
         #, fmt]&), red] // Export[FileNameJoin @ {prefix, StringTemplate["``.mx"
         ][label]}, #]&
-
-PutJacobianLogInvCDF[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
-     numAvgSamples_, prefix_:"fig/data"] :=
-    With[{logfpStable = GetLogFPStable[\[Alpha]100, \[Sigma]w100, \[Sigma]b100
-        ]},
-            Table[
-                Quiet @
-                    JacobianLogInvCDF[
-                        \[Alpha]100 / 100.
-                        ,
-                        N @ Log[\[Sigma]w100 / 100]
-                        ,
-                        N @ Log[\[Sigma]b100 / 100]
-                        ,
-                        Tanh
-                        ,
-                        If[s < 0.5,
-                            Log @ s
-                            ,
-                            Log[1 - s]
-                        ]
-                        ,
-                        LogSech2
-                        ,
-                        stableSamples
-                        ,
-                        s < 0.5
-                        ,
-                        logfpStable
-                    ]
-                ,
-                {s, RandomReal[1, numAvgSamples]}
-            ]
-        ] // Export[FileNameJoin @ {prefix, StringTemplate["``/``/``/loginvCDF_``_``.txt"
-            ][\[Alpha]100, \[Sigma]w100, \[Sigma]b100, stableSamples, CreateUUID[
-            ]]}, #, "Table"]&
 
 (* PutJacobianEigs[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, n_, prefix_
     :"fig/data"] :=
@@ -374,8 +321,8 @@ PutJacobianLogInvCDF[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
         ]
     ] *)
 
-PutLogNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, Infinity, prefix_:
-    "fig/data"] :=
+(* PutLogNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, Infinity,
+     prefix_:"fig/data"] :=
     With[{logfpStable = GetLogFPStable[\[Alpha]100, \[Sigma]w100, \[Sigma]b100
         ]},
             Log @ NExpectation[Tanh[Exp[logfpStable / (\[Alpha]100 / 
@@ -385,17 +332,14 @@ PutLogNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, Infinity, prefix_:
             ]&
 
 PutLogNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, stableSamples_,
-  prefix_ : "fig/data"] := 
- With[{logfpStable = 
-     GetLogFPStable[\[Alpha]100, \[Sigma]w100, \[Sigma]b100]}, 
-   LogAvgExp[
-    2 Log@Abs@
-       Tanh[Exp[logfpStable/(\[Alpha]100/100.)] RandomVariate[
-          StableDist[\[Alpha]100/100.], 1000]]]] // 
-  Export[FileNameJoin@{prefix, 
-      StringTemplate[
-        "``/``/``/logNeuralNorm_``.txt"][\[Alpha]100, \[Sigma]w100, \
-\[Sigma]b100, CreateUUID[]]}, #, "Table"] &
+     prefix_:"fig/data"] :=
+    With[{logfpStable = GetLogFPStable[\[Alpha]100, \[Sigma]w100, \[Sigma]b100
+        ]},
+            LogAvgExp[2 Log @ Abs @ Tanh[Exp[logfpStable / (\[Alpha]100
+                 / 100.)] RandomVariate[StableDist[\[Alpha]100 / 100.], 1000]]]
+        ] // Export[FileNameJoin @ {prefix, StringTemplate["``/``/``/logNeuralNorm_``.txt"
+            ][\[Alpha]100, \[Sigma]w100, \[Sigma]b100, CreateUUID[]]}, #, "Table"
+            ]&
 
 PutEmpiricalLogNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_,
      width_, depth_, prefix_:"fig/data"] :=
@@ -405,8 +349,6 @@ PutEmpiricalLogNeuralNorm[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_,
         ] // Export[FileNameJoin @ {prefix, StringTemplate["``/``/``/empiricalLogNeuralNorm_``_``_``.txt"
             ][\[Alpha]100, \[Sigma]w100, \[Sigma]b100, width, depth, CreateUUID[]
             ]}, #, "Table"]&
-
-
 
 PutEmpiricalLogSingVals[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, width_,
      depth_, \[Phi]_:Tanh, prefix_:"fig/data", label_:"empiricalLogSingVals"
@@ -436,7 +378,7 @@ PutEmpiricalLogAbsEigs[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, width_,
             ]
         ] // Export[FileNameJoin @ {prefix, StringTemplate["``/``/``/``_``_``_``.txt"
             ][\[Alpha]100, \[Sigma]w100, \[Sigma]b100, label, width, depth, CreateUUID[
-            ]]}, #, "Table"]&
+            ]]}, #, "Table"]& *)
 
 (*
     Usage: wolframscript -f filename.wl Function1[...] ... FunctionN[...]
