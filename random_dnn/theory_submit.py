@@ -13,7 +13,8 @@ def submit(num_samples=1000):
     (Path(".") / "fig" / "data").mkdir(parents=True, exist_ok=True)
     cmd_list = [
         f"""
-            {scriptpath} -f theory.wl "PutJacobianLogInvCDF[{alpha100}, {g100}, 0, {num_samples}, {seed}]"
+            # {scriptpath} -f theory.wl "PutJacobianLogInvCDF[{alpha100}, {g100}, 0, {num_samples}, {seed}]"
+            {scriptpath} -f theory.wl "PutEmpiricalMLP[{alpha100}, {g100}, 0, Tanh, {num_samples}, 50, {seed}]"
         """
         for alpha100 in range(100, 201, 5)
         for g100 in range(0, 301, 5)[1:]
@@ -33,7 +34,8 @@ def submit(num_samples=1000):
 
 def submit_reducer(depend_after=False):
     cmd_list = [
-        rf"""{scriptpath} -f theory.wl "SavePuts[\"loginvCDF_1000\", \"Table\", ToExpression]" """,
+        rf"""{scriptpath} -f theory.wl "SavePuts[\"empiricalMLP\", None]" """,
+        # rf"""{scriptpath} -f theory.wl "SavePuts[\"loginvCDF_1000\", \"Table\", ToExpression]" """,
         # rf"""{scriptpath} -f theory.wl SavePuts[\"empiricalLogSingVals_1000_50\"]""",
         # rf"""{scriptpath} -f theory.wl SavePuts[\"empiricalLogAbsEigs_1000_50\"]""",
     ]

@@ -182,6 +182,10 @@ LogY[\[Alpha]100_?NumericQ, logr_?NumericQ, log\[Chi]_ ? (VectorQ[#,
                         
                         
                         
+                        
+                        
+                        
+                        
                 *) ]
         ]
     ]
@@ -265,8 +269,6 @@ PutJacobianLogInvCDF[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, numSamples_,
              @ \[Sigma]w100, ToString @ \[Sigma]b100, StringTemplate["``_``_``.txt"
             ][label, numSamples, seed]}, #, "Table"]&
 
-
-
 Log\[Chi][\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, \[Phi]_, numSamples_,
      log\[Phi]p_] :=
     With[{\[Alpha] = \[Alpha]100 / 100, log\[Sigma]w = Log[\[Sigma]w100
@@ -276,6 +278,37 @@ Log\[Chi][\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, \[Phi]_, numSamples_,
              numSamples]]
     ]
 
+PutEmpiricalMLP[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, \[Phi]_, 
+    width_, depth_, seed_, label_:"empiricalMLP"] :=
+    With[{\[Alpha] = \[Alpha]100 / 100., \[Sigma]w = \[Sigma]w100 / 100.,
+         \[Sigma]b = \[Sigma]b100 / 100.},
+        BlockRandom[
+            SeedRandom[seed];
+            Module[{h = RandomReal[{-1, 1}, width]},
+                Do[
+                    With[{M = \[Sigma]w width ^ (-1 / \[Alpha]) RandomVariate[
+                        StableDist[\[Alpha]], {width, width}], b = \[Sigma]b RandomVariate[StableDist[
+                        \[Alpha]], width]},
+                        h = M . \[Phi][h] + b;
+                        Export[
+                            FileNameJoin @ {prefix, StringTemplate["``/``/``/``_``_``_``.txt"
+                                ][\[Alpha]100, \[Sigma]w100, \[Sigma]b100, label, width, seed, d]}
+                            ,
+                            With[{jac = M . DiagonalMatrix[\[Phi]'[h]
+                                ]},
+                                Transpose @ {h, Log @ Abs @ Eigenvalues
+                                     @ jac, Log @ SingularValueList[jac, Length @ h]}
+                            ]
+                            ,
+                            "Table"
+                        ]
+                    ]
+                    ,
+                    {d, depth}
+                ]
+            ]
+        ]
+    ]
 
 (* EmpiricalH[\[Alpha]_, \[Sigma]w_, \[Sigma]b_, \[Phi]_, width_, depth_
     ] :=
@@ -296,11 +329,34 @@ Log\[Chi][\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, \[Phi]_, numSamples_,
 
 (* one should probably prefer more uniform samples with fewer stable samples to get an accurate average (but more stable samples are better for getting the shape of the CDF) *)
 
-SavePuts[label_, fmt_:"Table", red_:Identity] :=
-    GroupBy[FileNames @ FileNameJoin @ {prefix, StringTemplate["*/*/*/``_*.txt"
-        ][label]}, (ToExpression @ FileNameSplit[#][[-4 ;; -2]]&) -> (Import[
-        #, fmt]&), red] // Export[FileNameJoin @ {prefix, StringTemplate["``.mx"
-        ][label]}, #]&
+(* By default SavePuts[] gathers together all the files with the same label into a single key. But if red is None then separate the stems and do not gather *)
+
+SavePuts[label_, red_:Identity, fmt_:"Table"] :=
+    (Export[FileNameJoin[{prefix, StringTemplate["``.mx"][label]}], #1
+        ]&)[
+        GroupBy[
+            FileNames[FileNameJoin[{prefix, StringTemplate["*/*/*/``_*.txt"
+                ][label]}]]
+            ,
+            (
+                    ToExpression[
+                        FileNameSplit[#1][[-4 ;; -2]] ~ Join ~
+                            If[red === None,
+                                StringSplit[FileBaseName[#1], "_"][[2
+                                     ;; ]]
+                                ,
+                                {}
+                            ]
+                    ]&
+                ) -> (Import[#1, fmt]&)
+            ,
+            If[red === None,
+                First
+                ,
+                red
+            ]
+        ]
+    ]
 
 (* PutJacobianEigs[\[Alpha]100_, \[Sigma]w100_, \[Sigma]b100_, n_, prefix_
     :"fig/data"] :=
