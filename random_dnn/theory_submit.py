@@ -9,27 +9,17 @@ from pathlib import Path
 scriptpath = "~/wolfram/13.3/Executables/wolframscript"
 
 
-def submit(num_samples=1000):
-    (Path(".") / "fig" / "data").mkdir(parents=True, exist_ok=True)
+def submit_qmap():
     cmd_list = [
         f"""
-            # {scriptpath} -f theory.wl "PutJacobianLogInvCDF[{alpha100}, {g100}, 0, {num_samples}, {seed}]"
-            {scriptpath} -f theory.wl "PutEmpiricalMLP[{alpha100}, {g100}, 0, Tanh, {num_samples}, 50, {seed}]"
+            {scriptpath} -f theory.wl "PutLogQMap[{alpha100}, {g100}, 0]"
         """
         for alpha100 in range(100, 201, 5)
         for g100 in range(0, 301, 5)[1:]
-        for seed in [42] #range(10)
-        # if alpha100 == 150 and g100 in [150, 200, 300]
     ]
     random.shuffle(cmd_list)
-    jobids = qsub(
-        cmd_list,
-        Path(".") / "fig",
-        mem="4GB",
-        # max_run_subjobs=200,
-        # depend_after=True,
-    )
-    submit_reducer(jobids[-1])
+    jobids = qsub(cmd_list, Path(".") / "fig")
+    # submit_reducer(jobids[-1])
 
 
 def submit_reducer(depend_after=False):
