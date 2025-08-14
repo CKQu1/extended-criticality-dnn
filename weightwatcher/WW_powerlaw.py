@@ -11,6 +11,7 @@ if not sys.warnoptions:
 
 import powerlaw
 import numpy as np
+from tqdm import tqdm
 
 from .constants import *
 #from constants import *
@@ -115,7 +116,8 @@ class WWFit(object):
 
         # --------- modified ----------
         # for a more computationally efficient method
-        for idx, i in enumerate(range(0, self.N-1, round((self.N-1)/self.total_is))):
+        #for idx, i in enumerate(range(0, self.N-1, round((self.N-1)/self.total_is))):
+        for idx, i in tqdm(enumerate(range(0, self.N-1, round((self.N-1)/self.total_is)))):
             xmin = self.data[i]
             n = float(self.N - i)
             alpha = 1 + n / (np.sum(log_data[i:]) - n * log_data[i])
