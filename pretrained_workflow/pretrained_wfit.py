@@ -27,7 +27,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
-from path_names import root_data
+from constants import root_data
 
 t0 = time.time()
 
@@ -214,7 +214,7 @@ def w_conversion_submit(*args):
     assert total_weights == df.shape[0]    
 
     from qsub import qsub, job_divider, command_setup, project_ls
-    from path_names import singularity_path, bind_path
+    from constants import SPATH, BPATH
 
     # number of elements in each list
     #chunks = 15  
@@ -231,7 +231,7 @@ def w_conversion_submit(*args):
     #quit()
 
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)    
+    command = command_setup(SPATH, bind_path=BPATH, ncpus=ncpus, ngpus=ngpus)    
                 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
@@ -607,6 +607,11 @@ def pretrained_moments(weight_path, save_dir, n_weight, replace=True):
 
 
 # two-sided powerlaw fit (based on weightwatcher: https://github.com/CalculatedContent/WeightWatcher/blob/master/weightwatcher/WW_powerlaw.py)
+"""
+python -i pretrained_workflow/pretrained_wfit.py pretrained_ww_plfit\
+ /project/PDLAI/project2_data/pretrained_workflow/weights_all\
+ /project/PDLAI/project2_data/pretrained_workflow/ww_plfit_v2/ 6
+"""
 def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
                         plot=True):
                         #**kwargs):  # ,remove_weights=False
@@ -675,7 +680,7 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
     layer_idx, wmat_idx = int(df.loc[n_weight,"idx"]), int(df.loc[n_weight,"wmat_idx"])
     model_name = df.loc[n_weight,"model_name"]
 
-    print(f"{n_weight}: {weight_name}")
+    print(f"{n_weight}: {weight_name} \n")
 
     model_path = join(save_dir, model_name)
 
@@ -778,6 +783,8 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
             #     ratio = 100
 
             total_is = int((len(locals()[tail_name]) - 1) / ratio)
+            print(f'Tail {tail_name}')
+            print(f'total_is = {total_is}, ratio = {ratio}')
             
             # 1. pl_fit direct
             #plfit = pl_fit(locals()[tail_name])
@@ -875,7 +882,9 @@ def pretrained_ww_plfit(weight_path, save_dir, n_weight, replace=True,
                 else:
                     print(f"{plot_id} {tail_name} tail")
                     print(f"Status: {status} \n")
-                    return False     
+                    return False    
+
+            print('\n')
 
         #quit()
 
@@ -1197,14 +1206,12 @@ def plfit_submit(*args):
         save_dir = join(main_path, "ww_plfit_all_tf")
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path    
+    from constants import SPATH, BPATH    
     pbs_array_data = []
     n_weights = []  # just for noting
     
-    #for n_weight in range(50):
-    #for n_weight in [699,700,701,702]:
-    for n_weight in list(range(total_weights)):
-    #for n_weight in list(range(10)): 
+    #for n_weight in list(range(total_weights)):     
+    for n_weight in [2751, 4973]:  # first one is dummy since at least 2 jobs are required
         
         model_name = df.loc[n_weight,"model_name"]
         weight_name = df.loc[n_weight,"weight_file"]
@@ -1218,11 +1225,11 @@ def plfit_submit(*args):
             pbs_array_data.append( (root_path, save_dir, n_weight) )
             n_weights.append(n_weight)
  
-    #pbs_array_data = pbs_array_data[:500]
+    #pbs_array_data = pbs_array_data[:4]  # delete
     print(len(pbs_array_data))
 
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)                
+    command = command_setup(SPATH, bind_path=BPATH, ncpus=ncpus, ngpus=ngpus)                
         
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     #quit()  # delete
@@ -1234,13 +1241,17 @@ def plfit_submit(*args):
         #qsub(f'singularity exec dist_fit.sif python {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
              #path=join(main_path,'jobs_all/ww_plfit_all'),  
-             path=join(main_path,'jobs_all', args[0]),
+             #path=join(main_path,'jobs_all', args[0]),
+             #path=join(main_path,'jobs_all', args[0], '20240326'),
+             #path=join(main_path,'jobs_all', args[0], '20240326_48h'),
+             path=join(main_path,'jobs_all', args[0], 'final_sets'),
              P=project_ls[pidx], 
              #source="virt-test-qu/bin/activate",
-             walltime='23:59:59',
+             #walltime='23:59:59',
+             walltime='47:59:59',
              ncpus=ncpus,
              ngpus=ngpus,
-             mem="3GB")   
+             mem="6GB")   
 
 
 def plfit_submit_terminal():
@@ -1254,7 +1265,7 @@ def plfit_submit_terminal():
         save_dir = join(main_path, "ww_plfit_all_tf")
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path    
+    from constants import SPATH, BPATH    
     pbs_array_data = []
     n_weights = []  # just for noting
     
@@ -1292,7 +1303,7 @@ def mmt_submit(*args):
         save_dir = join(main_path, "moments_v2")
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path    
+    from constants import SPATH, BPATH    
     pbs_array_data = []
     n_weights = []  # just for noting
     
@@ -1312,7 +1323,7 @@ def mmt_submit(*args):
     print(len(pbs_array_data))
 
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)                
+    command = command_setup(SPATH, bind_path=BPATH, ncpus=ncpus, ngpus=ngpus)                
         
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     quit()  # delete
@@ -1405,7 +1416,7 @@ def batch_submit(*args):
     fit_path1 = join(os.path.dirname(root_path), allfit_folder) 
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path    
+    from constants import SPATH, BPATH    
         
     is_first_time = True
     if is_first_time:
@@ -1435,7 +1446,7 @@ def batch_submit(*args):
     print(f'Total jobs: {len(pbs_array_data)}')    
     
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)    
+    command = command_setup(SPATH, bind_path=BPATH, ncpus=ncpus, ngpus=ngpus)    
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
 
@@ -2214,7 +2225,7 @@ def submit(*args):
     fit_path2 = join(os.path.dirname(root_path), allfit_folder2) 
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from constants import SPATH, BPATH
     pbs_array_data = []
     
     # pretrained_allfit()    
@@ -2254,7 +2265,7 @@ def submit(*args):
     print(len(pbs_array_data))
 
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)       
+    command = command_setup(SPATH, bind_path=BPATH, ncpus=ncpus, ngpus=ngpus)       
 
     #quit()
 
@@ -2287,7 +2298,7 @@ def submit_terminal():
     fit_path2 = join(os.path.dirname(root_path), allfit_folder2) 
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from constants import SPATH, BPATH
     pbs_array_data = []
     
     with_logl = False
@@ -2330,7 +2341,7 @@ def divided_submit(*args):
     dist_types = ['levy_stable', 'normal', 'tstudent', 'lognorm']
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from constants import SPATH, BPATH
     pbs_array_data = []
     
     B = 15
@@ -2380,7 +2391,7 @@ def divided_submit(*args):
     quit()    
     
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)    
+    command = command_setup(SPATH, bind_path=BPATH, ncpus=ncpus, ngpus=ngpus)    
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
@@ -2415,7 +2426,7 @@ def group_divided_submit(*args):
     dist_types = ['levy_stable', 'normal', 'tstudent', 'lognorm']
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from constants import SPATH, BPATH
     pbs_array_data = []
     
     B = 15
@@ -2439,7 +2450,7 @@ def group_divided_submit(*args):
     #quit()    
     
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)    
+    command = command_setup(SPATH, bind_path=BPATH, ncpus=ncpus, ngpus=ngpus)    
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     for idx, pidx in enumerate(perm):
@@ -2472,7 +2483,7 @@ def group_divided_run():
     dist_types = ['levy_stable', 'normal', 'tstudent', 'lognorm']
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path
+    from constants import SPATH, BPATH
     pbs_array_data = []
     
     B = 15
@@ -2571,7 +2582,7 @@ def batch_allfit_submit(*args):
     fit_path1 = join(os.path.dirname(root_path), allfit_folder) 
 
     from qsub import qsub, job_divider, project_ls, command_setup
-    from path_names import singularity_path, bind_path 
+    from constants import SPATH, BPATH 
     
     n_weights = []
     for n_weight in list(range(total_weights)):
@@ -2594,7 +2605,7 @@ def batch_allfit_submit(*args):
     print(len(pbs_array_data))    
     
     ncpus, ngpus = 1, 0
-    command = command_setup(singularity_path, bind_path=bind_path, ncpus=ncpus, ngpus=ngpus)    
+    command = command_setup(SPATH, bind_path=BPATH, ncpus=ncpus, ngpus=ngpus)    
 
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
     #pbss = pbss[:-1]  # delete
