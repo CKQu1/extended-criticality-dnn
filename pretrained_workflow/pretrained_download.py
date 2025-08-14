@@ -90,12 +90,26 @@ def log(save_path, file_name, **kwargs):
                 df = df_og
             # order alphabetically
             df = df.sort_values(by=['model_name'])
-            df = df.reset_index(drop = True)
+            df = df.reset_index(drop=True)
         elif "weight_info" in file_name:
+            # add new col name to the end
+            add_cols = []
+            for col in list(kwargs.keys()):
+                if col not in df_og.columns:
+                    df_og[col] = [None]*df_og.shape[0]                
+                    add_cols.append(col)
+            
             if kwargs.get('name') not in df_og[df_og['model_name'] == kwargs.get('model_name')]['name'].unique():
                 df = pd.concat([df_og,df], axis=0, ignore_index=True)
-            else:
-                df = df_og            
+            else:   
+                # adds elements which can't be None
+                idxs = df_og.index[(df_og['model_name'] == kwargs.get('model_name')) & (df_og['name'] == kwargs.get('name'))].tolist()                    
+                assert len(idxs) == 1
+                idx = idxs[0]
+                for col in list(kwargs.keys()):
+                    if df_og.isnull().loc[idx,col]:
+                        df_og.loc[idx,col] = df.loc[0,col]
+                df = df_og
     else:
         if not os.path.isdir(f"{save_path}"): os.makedirs(save_path)
     df.to_csv(fi, index=False)
@@ -281,6 +295,8 @@ def pretrained_store_check():
                     log(main_path, "weight_info", 
                         model_name=model_name, name=name, param_shape=list(param.shape),
                         weight_num=len(weights), fit_size=len(weights[torch.abs(weights) > weight_threshold]),
+                        weight_threshold = weight_threshold,
+                        wmin = weights.min().item(), wmax = weights.max().item(), 
                         wmat_idx=wmat_idx, idx=i,
                         weight_path=weight_path, weight_file=weight_file)                       
 
