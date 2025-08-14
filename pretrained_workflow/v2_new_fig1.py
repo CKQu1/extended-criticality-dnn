@@ -17,6 +17,7 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
 from pretrained_wfit import replace_name
+from constants import DROOT
 
 pub_font = {'family' : 'sans-serif'}
 plt.rc('font', **pub_font)
@@ -109,6 +110,7 @@ metric_names_tail = ['alpha_lower', 'alpha_upper',
                     #'total_entries', 'fit_entries', 'xmin', 'xmax', 
                     'xmin_lower', 'xmax_lower', 'xmin_upper', 'xmax_upper',
                     'entries_lower', 'entries_upper',
+                    'fitentries_lower', 'fitentries_upper',
                     'xlogrange_lower', 'xlogrange_upper',
                     'warning_lower', 'warning_upper',
                     #'best_fit_1', 'best_fit_2',
@@ -338,7 +340,8 @@ if do_compute or replace:
             xmax_lower, xmax_upper = df_pl.loc[:,'xmax']
 
             # fitted entry number
-            entries_lower, entries_upper = df_pl.loc[:,'fit_entries']    
+            entries_lower, entries_upper = df_pl.loc[:,'total_entries']    
+            fitentries_lower, fitentries_upper = df_pl.loc[:,'fit_entries'] 
 
             xlogrange_lower = (np.log(xmax_lower) - np.log(xmin_lower)) / np.log(10)
             xlogrange_upper = (np.log(xmax_upper) - np.log(xmin_upper)) / np.log(10)
@@ -347,15 +350,19 @@ if do_compute or replace:
             warning_lower, warning_upper = df_pl.loc[:,'warning']
         else:          
             alpha_lower, alpha_upper = [np.nan] * 2
+            tpl_alpha_lower, tpl_alpha_upper = [np.nan] * 2
             #bf1_lower, bf1_upper, bf2_lower, bf2_upper = [np.nan] * 4
+            entries_lower, entries_upper = [np.nan] * 2
+            fitentries_lower, fitentries_upper = [np.nan] * 2
             bf1_lower, bf1_upper = [np.nan] * 2
             xmin_lower, xmin_upper, xmax_lower, xmax_upper = [np.nan] * 4
+            xlogrange_lower, xlogrange_upper = [np.nan] * 2
             warning_lower, warning_upper = [np.nan] * 2
 
             files_failed_tail.append( weight_foldername )
 
         #for prefix in ['alpha', 'bf1', 'bf2', 'xmin', 'xmax', 'xlogrange']:
-        for prefix in ['alpha', 'tpl_alpha', 'bf1', 'xmin', 'xmax', 'entries', 'xlogrange', 'warning']:
+        for prefix in ['alpha', 'tpl_alpha', 'bf1', 'xmin', 'xmax', 'entries', 'fitentries', 'xlogrange', 'warning']:
             for tail_type in ['lower', 'upper']:
                 metrics_tail[f'{prefix}_{tail_type}'].append( locals()[f'{prefix}_{tail_type}'] )
 
@@ -941,7 +948,8 @@ for i, metric_name in enumerate(metric_names_plot):
         fig_file = f'fig1_{alphabet[i-1]}.pdf'
         metric_labels.append((alphabet[i-1], metric_names_plot[i]))
 
-    fig1_path = "/project/PDLAI/project2_data/figure_ms/pretrained_fitting"
+    #fig1_path = "/project/PDLAI/project2_data/figure_ms/pretrained_fitting"
+    fig1_path = join(DROOT, 'figure_ms', 'pretrained_fitting')
     if not isdir(fig1_path): os.makedirs(fig1_path)
     #axis.subplots_adjust(hspace=0.2)
     plt.tight_layout()    
