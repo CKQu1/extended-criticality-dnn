@@ -741,10 +741,10 @@ def plot_loghist(x, bins=100, xmin=None):
 def ax_plot_loghist(ax, x, bins=100, xmin=None):
     hist, bins = np.histogram(x, bins=bins, density=True)
     logbins = np.logspace(np.log10(bins[0]),np.log10(bins[-1]),len(bins))
-    ax.hist(x, bins=logbins, density=True)
+    ax.hist(x, bins=logbins, density=True)  #histtype='step'
 
     if xmin:
-        ax.axvline(xmin, color='r', label=r'$x_{min}$')
+        ax.axvline(xmin, color='r', label=r'$x_{\min}$')
     
     return hist, bins
     
