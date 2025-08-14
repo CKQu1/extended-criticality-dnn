@@ -44,6 +44,7 @@ c_ls_1 = ["forestgreen", "coral"]
 c_ls_2 = ["peru", "dodgerblue", "limegreen"]
 c_ls_3 = ["red", "blue"]
 c_ls_4 = ["blue", "red"]
+#c_ls_4 = ["darkblue", "darkred"]
 c_ls_5 = ['tab:blue', 'tab:orange', 'tab:green']
 #c_ls_3 = ["black", "darkgray"]
 #c_ls_3 = ["indianred", "dodgerblue"]
@@ -55,7 +56,7 @@ tick_size = 18.5 * 1.5
 label_size = 18.5 * 1.5
 axis_size = 18.5 * 1.5
 legend_size = 14 * 1.5
-lwidth = 4.2
+lwidth = 3.9
 text_size = 14 * 1.5
 marker_size = 20
 
@@ -150,7 +151,8 @@ for net_path in [net_paths1[0], net_paths2[0]]:
 
 # relevant labels
 xlabel_ls = [r"$\mathbf{{W}}^{{{}}}$ ".format(wmat_idx + 1), "Epoch", "Epoch"]
-title_ls = ["Right tail", r"$k$", "Test Acc."]
+#title_ls = ["Right tail", r"$k$", "Test Acc."]
+title_ls = ["Right tail", "Test Acc.", r"$\vert\vert \Delta \Theta \vert\vert$"]
 
 for ii, axis in enumerate([ax1, ax2, ax3]):
     axis.set_xlabel(f"{xlabel_ls[ii]}", fontsize=axis_size)
@@ -173,25 +175,36 @@ for ii, net_path in tqdm(enumerate([net_paths1[0], net_paths2[0]])):
     alpha = alpha100/100
     net_alphas.append(alpha)
 
-    if alpha100 != 200:
+    if alpha100 != 200:        
         import powerlaw as plaw
-        #xmin = np.percentile(wmat, 75)
-        #plaw_fit = plaw.Fit(wmat, xmin=xmin, verbose=False)
+        from weightwatcher.WW_powerlaw import fit_powerlaw
+
+        # method 1        
         scinote = "{:e}".format(wmat.max())
         e_idx = scinote.find("e")
         integer = float(scinote[:e_idx])
         power = int(scinote[e_idx+1:])   
-        xmin, xmax = integer*10**(power-4), integer*10**(power-1)    
+        #xmin, xmax = integer*10**(power-4), integer*10**(power-1)    
+        xmin, xmax = integer*10**(power-4), wmat.max()
         plaw_fit = plaw.Fit(wmat, xmin=xmin, xmax=xmax, fit_method="KS", verbose=False)
 
-        plaw_fit.plot_ccdf(ax=ax1, c=c_ls_4[0], linewidth=lwidth, label=rf'$\alpha$ = {round(alpha, 2)}')
-        plaw_fit.power_law.plot_ccdf(ax=ax1, color='r', linestyle='--', label='Power law fit')  
+        # method 2        
+        # plfit = fit_powerlaw(wmat, total_is=len(wmat), plot_id=None, savedir=None,
+        #                         plot=False)       
+        # alpha, Lambda, xmin, xmax, D, sigma, num_pl_spikes, num_fingers, raw_alpha, status, warning, best_fit_1, Rs_all, ps_all = plfit
+        # plaw_fit = plaw.Fit(wmat, xmin=xmin, xmax=xmax, fit_method="KS", verbose=False)
+
+        #plaw_fit.plot_ccdf(ax=ax1, c=c_ls_4[0], linewidth=lwidth, label=rf'$\alpha$ = {round(alpha, 2)}')
+        plaw_fit.plot_ccdf(ax=ax1, c=c_ls_4[0], linewidth=lwidth)
+        #plaw_fit.power_law.plot_ccdf(ax=ax1, color='k', linestyle='--', label='Power law fit')  
+        plaw_fit.power_law.plot_ccdf(ax=ax1, color='k', linestyle='dotted', label='Power law fit')
     else:
-        sns.distplot(wmat, hist=False, color=c_ls_4[1], label=rf'$\alpha$ = {round(alpha, 2)}', ax=ax1)
+        #sns.distplot(wmat, hist=False, color=c_ls_4[1], label=rf'$\alpha$ = {round(alpha, 2)}', ax=ax1)
+        sns.distplot(wmat, hist=False, color=c_ls_4[1], ax=ax1, kde_kws={'linestyle':'--', 'linewidth':'width'})
 
-ax1.legend(loc='upper right', bbox_to_anchor=(1, 1), ncol=1, fontsize=legend_size, frameon=False)
+#ax1.legend(loc='upper right', bbox_to_anchor=(1, 1), ncol=1, fontsize=legend_size, frameon=False)
 
-# -------------------- Figure B --------------------
+# # -------------------- Figure B (old) --------------------
 
 save_epoch = 10
 epochs = [0] + list(range(save_epoch, total_epoch+1, save_epoch))
@@ -202,57 +215,57 @@ net_path = net_paths1[0]
 wmat_idxs = list(range(len(model_dims) - 1))
 fitted_alphas = np.zeros([ensembles, len(wmat_idxs), len(epochs)])
 
-replace = False
-for net_idx in range(ensembles):
-    for eidx, epoch in tqdm(enumerate(epochs)):
-        # load weight matrix
-        weights_all = np.load(join(net_path, f"epoch_{epoch}", "weights.npy"))     
-        start = 0   
-        if os.path.isfile(join(net_path, f"epoch_{epoch}", 'plfit.csv')) and not replace:
-            df_plfit = pd.read_csv(join(net_path, f"epoch_{epoch}", 'plfit.csv'))
-            fitted_alphas[net_idx, :, eidx] = df_plfit.loc[:,'plfit_alpha'] - 1
-        else:
-            dict_df = {'plfit_alpha': [], 'xmin': [], 'xmax': []}
-            for wmat_idx in wmat_idxs:
-                end = start + model_dims[wmat_idx] * model_dims[wmat_idx+1]
-                wmat = weights_all[start:end]
-                start = end      
+# replace = False
+# for net_idx in range(ensembles):
+#     for eidx, epoch in tqdm(enumerate(epochs)):
+#         # load weight matrix
+#         weights_all = np.load(join(net_path, f"epoch_{epoch}", "weights.npy"))     
+#         start = 0   
+#         if os.path.isfile(join(net_path, f"epoch_{epoch}", 'plfit.csv')) and not replace:
+#             df_plfit = pd.read_csv(join(net_path, f"epoch_{epoch}", 'plfit.csv'))
+#             fitted_alphas[net_idx, :, eidx] = df_plfit.loc[:,'plfit_alpha'] - 1
+#         else:
+#             dict_df = {'plfit_alpha': [], 'xmin': [], 'xmax': []}
+#             for wmat_idx in wmat_idxs:
+#                 end = start + model_dims[wmat_idx] * model_dims[wmat_idx+1]
+#                 wmat = weights_all[start:end]
+#                 start = end      
 
-                #xmin = np.quantile(wmat, 0.75)
-                #plaw_fit = plaw.Fit(wmat, xmin=xmin, verbose=False)
+#                 #xmin = np.quantile(wmat, 0.75)
+#                 #plaw_fit = plaw.Fit(wmat, xmin=xmin, verbose=False)
 
-                # PL fit
-                scinote = "{:e}".format(wmat.max())
-                e_idx = scinote.find("e")
-                integer = float(scinote[:e_idx])
-                power = int(scinote[e_idx+1:])   
-                xmin, xmax = integer*10**(power-3), integer*10**(power-1)
-                #plaw_fit = plaw.Fit(wmat, xmin=xmin, verbose=False)
-                plaw_fit = plaw.Fit(wmat, xmin=xmin, xmax=xmax, verbose=False)                
-                fitted_alphas[net_idx, wmat_idx, eidx] = plaw_fit.alpha - 1   
+#                 # PL fit
+#                 scinote = "{:e}".format(wmat.max())
+#                 e_idx = scinote.find("e")
+#                 integer = float(scinote[:e_idx])
+#                 power = int(scinote[e_idx+1:])   
+#                 xmin, xmax = integer*10**(power-3), integer*10**(power-1)
+#                 #plaw_fit = plaw.Fit(wmat, xmin=xmin, verbose=False)
+#                 plaw_fit = plaw.Fit(wmat, xmin=xmin, xmax=xmax, verbose=False)                
+#                 fitted_alphas[net_idx, wmat_idx, eidx] = plaw_fit.alpha - 1   
 
-                # save df
-                dict_df['plfit_alpha'].append(plaw_fit.alpha)
-                dict_df['xmin'].append(xmin)
-                dict_df['xmax'].append(xmax) 
+#                 # save df
+#                 dict_df['plfit_alpha'].append(plaw_fit.alpha)
+#                 dict_df['xmin'].append(xmin)
+#                 dict_df['xmax'].append(xmax) 
 
-            df_plfit = pd.DataFrame.from_dict(dict_df)              
-            df_plfit.to_csv(join(net_path, f"epoch_{epoch}", 'plfit.csv'))
+#             df_plfit = pd.DataFrame.from_dict(dict_df)              
+#             df_plfit.to_csv(join(net_path, f"epoch_{epoch}", 'plfit.csv'))
          
 
-fitted_alphas_mean = fitted_alphas.mean(0)
-fitted_alphas_std = fitted_alphas.std(0)
-for wmat_idx in wmat_idxs:  
-    ax2.plot(epochs, fitted_alphas_mean[wmat_idx,:], c=c_ls_5[wmat_idx], linewidth=lwidth, label=r"$\mathbf{{W}}^{{{}}}$ ".format(wmat_idx + 1))
+# fitted_alphas_mean = fitted_alphas.mean(0)
+# fitted_alphas_std = fitted_alphas.std(0)
+# for wmat_idx in wmat_idxs:  
+#     ax2.plot(epochs, fitted_alphas_mean[wmat_idx,:], c=c_ls_5[wmat_idx], linewidth=lwidth, label=r"$\mathbf{{W}}^{{{}}}$ ".format(wmat_idx + 1))
 
-    # ax2.fill_between(epochs, fitted_alphas_mean[wmat_idx,:] - fitted_alphas_std[wmat_idx,:], 
-    #                  fitted_alphas_mean[wmat_idx,:] + fitted_alphas_std[wmat_idx,:],
-    #                  color=c_ls_5[wmat_idx], alpha=0.5)
+#     # ax2.fill_between(epochs, fitted_alphas_mean[wmat_idx,:] - fitted_alphas_std[wmat_idx,:], 
+#     #                  fitted_alphas_mean[wmat_idx,:] + fitted_alphas_std[wmat_idx,:],
+#     #                  color=c_ls_5[wmat_idx], alpha=0.5)
 
-ax2.legend(loc='upper left', ncol=1, fontsize=legend_size, frameon=False)
+# ax2.legend(loc='upper left', ncol=1, fontsize=legend_size, frameon=False)
 
-# -------------------- Figure C --------------------
-print("Figure C \n")
+# -------------------- Figure B --------------------
+print("Figure B \n")
 
 acc_loss = pd.read_csv(join(net_paths1[0], "acc_loss"))
 for ii, net_paths in enumerate([net_paths1, net_paths2]):
@@ -269,15 +282,18 @@ for ii, net_paths in enumerate([net_paths1, net_paths2]):
     alpha = alpha100/100
 
     accs_mean = accs.mean(0)
-    accs_std = accs.mean(0)
-    ax3.plot(list(range(epochs[-1]+1)),accs_mean, c=c_ls_4[ii], linewidth=lwidth, linestyle=linestyles[ii], label=rf'$\alpha$ = {round(alpha, 2)}')
+    accs_std = accs.std(0)
+    ax2.plot(list(range(epochs[-1]+1)), accs_mean, 
+             c=c_ls_4[ii], linewidth=lwidth, linestyle=linestyles[ii], label=rf'$\alpha$ = {round(alpha, 2)}')
 
-    # ax3.fill_between(list(range(epochs[-1]+1)), accs_mean - accs_std, 
-    #                  accs_mean + accs_std,
-    #                  color=c_ls_4[ii], alpha=0.5)    
+    ax2.fill_between(list(range(epochs[-1]+1)), accs_mean - accs_std, 
+                     accs_mean + accs_std,
+                     color=c_ls_4[ii], alpha=0.5)   
 
-# -------------------- Figure D, E, F --------------------
-print("Figure D, E, F \n")
+ax2.set_xlim([-5,max(epochs) + 5])                      
+
+# -------------------- Figure C, D, E, F --------------------
+print("Figure C, D, E, F \n")
 
 from path_names import root_data
 from NetPortal.models import ModelFactory
@@ -286,7 +302,8 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from utils_dnn import compute_dq
 
-title_ls = [r"$\vert\vert \Delta \Theta \vert\vert$", rf"$\alpha$ = 1", rf"$\alpha$ = 2"]
+#title_ls = [r"$\vert\vert \Delta \Theta \vert\vert$", rf"$\alpha$ = 1", rf"$\alpha$ = 2"]
+title_ls = ['Input', rf"$\alpha$ = 1", rf"$\alpha$ = 2"]
 axs_3 = [ax4, ax5, ax6]
 # load MNIST
 image_type = 'mnist'
@@ -304,7 +321,7 @@ image = images[0,:][None,:]
 init_epochs = [200]
 l = 1
 
-# -------------------- Figure D -------------------- (plot change of weights)
+# -------------------- Figure C -------------------- (plot change of weights)
 for ii, net_paths in enumerate([net_paths1, net_paths2]):
     weight_diffs = np.zeros([len(net_paths), len(epochs)])
     for ensemble, net_path in enumerate(net_paths):
@@ -316,13 +333,19 @@ for ii, net_paths in enumerate([net_paths1, net_paths2]):
                 weight_diffs[ensemble,idx] = np.sqrt(((weights_all_cur - weights_all_prev)**2).sum())  
 
     alpha = net_alphas[ii]
-    axs_3[0].plot(epochs, weight_diffs.mean(0), c=c_ls_4[ii], linewidth=lwidth, label=rf"$\alpha$={alpha}")                              
+    ax3.plot(epochs[1:], weight_diffs.mean(0)[1:], 
+             c=c_ls_4[ii], linestyle=linestyles[ii], linewidth=lwidth, label=rf"$\alpha$={alpha}")                              
 
-    # axs_3[0].fill_between(epochs, weight_diffs.mean(0) - weight_diffs.std(0), 
-    #                       weight_diffs.mean(0) + weight_diffs.std(0),
-    #                       color=c_ls_4[ii], alpha=0.5)
+    ax3.fill_between(epochs[1:], weight_diffs.mean(0)[1:] - weight_diffs.std(0)[1:], 
+                     weight_diffs.mean(0)[1:] + weight_diffs.std(0)[1:],
+                     color=c_ls_4[ii], alpha=0.5)
 
-plot_layer, post = False, False
+ax3.set_xlim([-5,max(epochs) + 5])
+
+# -------------------- Figure D - F -------------------- (input image + neural representation)
+                              
+
+plot_layer, post = True, False
 for net_idx, net_path in enumerate([net_paths1[0], net_paths2[0]]):
     # load network
     kwargs = {"architecture": "fc", "activation": net_log.loc[0,"activation"], "dims": model_dims,
@@ -404,12 +427,17 @@ for net_idx, net_path in enumerate([net_paths1[0], net_paths2[0]]):
 
     # remove pixels with small acitivity
     #hidden_layer[np.abs(hidden_layer) < 5e-1] = np.NaN
-    quantity = quantity.reshape(28,28)
-    
-    colmap = plt.cm.get_cmap(cm_type_2)
-    # need to mention the threshold
-    #hidden_layer[np.abs(hidden_layer) < 1e-2] = np.NaN
-    #colmap.set_bad(color="k")
+    quantity = quantity.reshape(28,28)    
+
+    # -------------------- Figure D --------------------
+    if net_idx == 0:
+        colmap = plt.cm.get_cmap(cm_type_2)
+        # need to mention the threshold
+        #hidden_layer[np.abs(hidden_layer) < 1e-2] = np.NaN
+        #colmap.set_bad(color="k")        
+        im = axs_3[0].imshow(image.reshape(28,28),   # init_idx
+                            vmin=-3, vmax=3,
+                            aspect="auto", cmap=colmap)     
 
     im = axs_3[net_idx+1].imshow(quantity,   # init_idx
                                  vmin=-3, vmax=3,
@@ -445,7 +473,7 @@ for net_idx, net_path in enumerate([net_paths1[0], net_paths2[0]]):
 
     xyticks = np.array([0,27])
     #for col in range(3):
-    for col in [1,2]:
+    for col in [0,1,2]:
         axs_3[col].set_xticks(xyticks)
         axs_3[col].set_yticks(xyticks)
         axs_3[col].set_xticklabels(xyticks+1, fontsize=tick_size)
@@ -454,14 +482,15 @@ for net_idx, net_path in enumerate([net_paths1[0], net_paths2[0]]):
         else:
             axs_3[col].set_yticklabels([])
 
-axs_3[0].spines['top'].set_visible(False)
-axs_3[0].spines['right'].set_visible(False)
+# axs_3[0].spines['top'].set_visible(False)
+# axs_3[0].spines['right'].set_visible(False)
 
-axs_3[0].set_xscale("log"); axs_3[0].set_yscale("log")
+#axs_3[0].set_xscale("log"); axs_3[0].set_yscale("log")
 #axs_3[0].legend(loc='upper right', bbox_to_anchor=(1, 1), ncol=1, fontsize=legend_size, frameon=False)
-axs_3[0].set_ylabel(f"Layer {l+1}, Epoch {init_epochs[0]}")
-axs_3[1].set_ylabel(f"Top PD")
-axs_3[2].set_ylabel(f"Top PD")
+# axs_3[0].set_ylabel(f"Layer {l+1}, Epoch {init_epochs[0]}")
+# axs_3[1].set_ylabel(f"Top PD")
+# axs_3[2].set_ylabel(f"Top PD")
+# axs_3[0].set_xlabel('Epoch')
 for ii in range(len(axs_3)):
     axs_3[ii].set_title(title_ls[ii], fontsize=axis_size)
 
