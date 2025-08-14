@@ -21,6 +21,7 @@ from matplotlib.pyplot import figure
 from matplotlib.ticker import AutoMinorLocator
 
 from pretrained_wfit import replace_name
+from constants import DROOT
 
 pub_font = {'family' : 'sans-serif'}
 plt.rc('font', **pub_font)
@@ -310,7 +311,12 @@ plt.subplots_adjust(hspace=0.2)
 plt.tight_layout()
 #plt.show()
 
-fig1_path = "/project/PDLAI/project2_data/figure_ms"
-plt.savefig(f"{fig1_path}/pretrained_fig1.pdf", bbox_inches='tight')
+#fig1_path = "/project/PDLAI/project2_data/figure_ms/pretrained_fitting"
+fig1_path = join(DROOT, 'figure_ms', 'pretrained_fitting')
+if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
+fig1_f = f"{fig1_path}/pretrained_fig1.pdf"
+plt.savefig(fig1_f, bbox_inches='tight')
+
+print(f'Figure saved as {fig1_f}')
 #plt.show()
 
