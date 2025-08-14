@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import pandas as pd
 import sys
+from ast import literal_eval
 from os.path import join
 from tqdm import tqdm
 
@@ -26,29 +27,30 @@ def num_to_scifi_str(num):
 def get_plot_rc(num: int, ncols: int):
     return num // ncols, num % ncols
 
-def postfit_stats(pytorch, with_outliers=True):
+def postfit_stats_new(pytorch=1, display=True, with_outliers=True):
+    """
+    Processing the powerlaw fitting of the tails using pretrained_plfit from pretrained_ww_wfit.py
+        - pytorch (int)
+            - 0: tensorflow
+            - 1: pytorch
+            - 2: both
+    """
+
     global df, fitfiles, subdirs, df_summary, total_nn, total_wm
     global ll_summary, aic_summary, bic_summary
     global data_dict, ll_summary, aic_summary, bic_summary
     global LL_maxs, AIC_mins, BIC_mins, fit_sizes
     global error_files, dist_fit_sizes, fit_sizes, idxs
 
-    """
-
-    pytorch (variable)
-    - 0: tensorflow
-    - 1: pytorch
-    - 2: both
-
-    """
-
+    display = display if isinstance(display, bool) else literal_eval(display)
     pytorch = int(pytorch)
     assert pytorch in [0,1,2], "pytorch can only take values 0, 1 or 2"
+    # using new version of pytorch (which contains the networks)
     main_paths = ["/project/PDLAI/project2_data/pretrained_workflow/allfit_all",
                   "/project/PDLAI/project2_data/pretrained_workflow/nan_allfit_all", 
                   "/project/PDLAI/project2_data/pretrained_workflow/allfit_all_tf",
                   "/project/PDLAI/project2_data/pretrained_workflow/nan_allfit_all_tf"
-                 ]
+                  ]
     if pytorch == 0:
         main_paths = main_paths[2:]
     elif pytorch == 1:
@@ -72,8 +74,7 @@ def postfit_stats(pytorch, with_outliers=True):
 
     param_shape_map = {'stable': 4, 'normal': 2,
                        'tstudent': 3, 'lognorm': 3}
-    fit_sizes = pd.DataFrame({"fit_size": []})
-    depths = pd.DataFrame({"depths": []})
+
     data_types = ['ll', "aic", "bic", "ks"]
     dist_types = list(LL_colname_map.keys())    
 
@@ -84,9 +85,10 @@ def postfit_stats(pytorch, with_outliers=True):
             content_dict[dist_name] = []
         data_dict[data_type] = pd.DataFrame(content_dict)
         del content_dict
-
+    fit_sizes_ls = []
+    depths_ls = []
     error_files = []
-    # separating different networks
+    # separating different networks (stablefit)
     for sidx, subdir in tqdm(enumerate(subdirs)):
         fitfiles = [join(subdir,fitfile) for fitfile in os.listdir(subdir) if fitfile[-4:]==".csv" ]    # and "_1_2" in fitfile 
         for fitfile in fitfiles:
@@ -116,12 +118,18 @@ def postfit_stats(pytorch, with_outliers=True):
                 data_dict['bic'].loc[total_wm] = BICs
 
                 # get fit_size and depths
-                fit_sizes.loc[total_wm] = fit_size
-                depths.loc[total_wm] = depth
+                #print(fit_size)
+                #fit_sizes.loc[total_wm] = fit_size
+                #depths.loc[total_wm] = depth
+                fit_sizes_ls.append(fit_size)
+                depths_ls.append(depth)
                 total_wm += 1
 
             else:
                 error_files.append( fitfile )
+
+    fit_sizes = pd.DataFrame({"fit_size": fit_sizes_ls})
+    depths = pd.DataFrame({"depths": depths_ls})
 
     print(f"Total weight matrices: {total_wm}")
 
@@ -167,14 +175,179 @@ def postfit_stats(pytorch, with_outliers=True):
     axs[1,0].set_ylabel("Weight depths")
     plt.suptitle(f"Total weights: {total_wm}")
 
-    save_path = join(root_data, "pretrained_workflow", "weight_summary_stats")
+    #save_path = join(root_data, "pretrained_workflow", "weight_summary_stats")
+    save_path = join(root_data, "figure_ms", "weight_summary_stats")
     if not os.path.isdir(save_path): os.makedirs(save_path)
     # save summary
     # ----- code here -----
 
-    # save plot    
-    plot_name = "fit_size_dist"
-    plt.savefig(f"{save_path}/{plot_name}.pdf", bbox_inches='tight', format='pdf')  
+    # save plot
+    if display:
+        plt.show()
+    else:
+        plot_name = "fit_size_dist"
+        plt.savefig(f"{save_path}/{plot_name}.pdf", bbox_inches='tight', format='pdf')      
+
+
+def postfit_stats(pytorch, display=True, with_outliers=True):
+    """
+    Processing the powerlaw fitting of the tails using pretrained_plfit from pretrained_wfit.py
+        - pytorch (int)
+            - 0: tensorflow
+            - 1: pytorch
+            - 2: both
+    """
+
+    global df, fitfiles, subdirs, df_summary, total_nn, total_wm
+    global ll_summary, aic_summary, bic_summary
+    global data_dict, ll_summary, aic_summary, bic_summary
+    global LL_maxs, AIC_mins, BIC_mins, fit_sizes
+    global error_files, dist_fit_sizes, fit_sizes, idxs
+
+    display = display if isinstance(display, bool) else literal_eval(display)
+    pytorch = int(pytorch)
+    assert pytorch in [0,1,2], "pytorch can only take values 0, 1 or 2"
+    main_paths = ["/project/PDLAI/project2_data/pretrained_workflow/allfit_all",
+                  "/project/PDLAI/project2_data/pretrained_workflow/nan_allfit_all", 
+                  "/project/PDLAI/project2_data/pretrained_workflow/allfit_all_tf",
+                  "/project/PDLAI/project2_data/pretrained_workflow/nan_allfit_all_tf"
+                 ]
+    if pytorch == 0:
+        main_paths = main_paths[2:]
+    elif pytorch == 1:
+        main_paths = main_paths[0:2]           
+
+    subdirs = []
+    for main_path in main_paths:
+        for x in next(os.walk(main_path))[1]:
+            subdirs.append(join(main_path, x))
+
+    total_nn = len(subdirs)
+    print(f"Total networks: {total_nn}")
+    total_wm = 0
+
+    LL_colname_map = {'stable': 'logl_stable', 'normal': 'logl_norm',
+                      'tstudent': 'logl_t', 'lognorm': 'logl_lognorm'}
+    ad_colname_map = {'stable': 'ad sig level stable', 'normal': 'ad sig level normal',
+                      'tstudent': 'ad sig level tstudent', 'lognorm': 'ad sig level lognorm'}
+    ks_colname_map = {'stable': 'ks pvalue stable', 'normal': 'ks pvalue normal',
+                      'tstudent': 'ks pvalue tstudent', 'lognorm': 'ks pvalue lognorm'}                      
+
+    param_shape_map = {'stable': 4, 'normal': 2,
+                       'tstudent': 3, 'lognorm': 3}
+
+    data_types = ['ll', "aic", "bic", "ks"]
+    dist_types = list(LL_colname_map.keys())    
+
+    data_dict = {}  # for storing all dataframes
+    for data_type in data_types:
+        content_dict = {}
+        for dist_name in dist_types:
+            content_dict[dist_name] = []
+        data_dict[data_type] = pd.DataFrame(content_dict)
+        del content_dict
+    fit_sizes_ls = []
+    depths_ls = []
+    error_files = []
+    # separating different networks
+    for sidx, subdir in tqdm(enumerate(subdirs)):
+        fitfiles = [join(subdir,fitfile) for fitfile in os.listdir(subdir) if fitfile[-4:]==".csv" ]    # and "_1_2" in fitfile 
+        for fitfile in fitfiles:
+            df = pd.read_csv(fitfile)
+            fit_size = df.loc[0,'fit_size']
+            depth = df.loc[0,'wmat_idx']
+            # get LL first
+            LLs = [ df.loc[0, LL_colname_map[dist_type] ] for dist_type in dist_types ]
+            isnotnan = True
+            for LL in LLs:
+                #isnotnan = isnotnan and is_num_defined(LL)
+                isnotnan = isnotnan and not np.isnan(LL)
+            
+            if isnotnan:
+                # get AD and KS test pvalues
+                #data_dict['ad'].loc[total_wm] = [ df.loc[0, ad_colname_map[dist_type] ] for dist_type in dist_types ]
+                data_dict['ks'].loc[total_wm] = [ df.loc[0, ks_colname_map[dist_type] ] for dist_type in dist_types ]
+
+                data_dict['ll'].loc[total_wm] = LLs
+                # compute AIC/BIC
+                AICs = []; BICs = []
+                for kidx, dist_type in enumerate(dist_types):
+                    AICs.append( compute_aic(fit_size, param_shape_map[dist_types[kidx]], LLs[kidx]) )
+                    BICs.append( compute_bic(fit_size, param_shape_map[dist_types[kidx]], LLs[kidx]) )
+
+                data_dict['aic'].loc[total_wm] = AICs
+                data_dict['bic'].loc[total_wm] = BICs
+
+                # get fit_size and depths
+                #print(fit_size)
+                #fit_sizes.loc[total_wm] = fit_size
+                #depths.loc[total_wm] = depth
+                fit_sizes_ls.append(fit_size)
+                depths_ls.append(depth)
+                total_wm += 1
+
+            else:
+                error_files.append( fitfile )
+
+    fit_sizes = pd.DataFrame({"fit_size": fit_sizes_ls})
+    depths = pd.DataFrame({"depths": depths_ls})
+
+    print(f"Total weight matrices: {total_wm}")
+
+    # box plots
+    fig, axs = plt.subplots(2, 4, figsize=(17/3*4, 5.67*2))    
+
+    # summarize stats
+    selected_dists = [ data_dict['ll'].idxmax(axis=1), data_dict['aic'].idxmin(axis=1), data_dict['bic'].idxmin(axis=1),
+                       data_dict['ks'].idxmax(axis=1) ]
+    ll_summary = {}; aic_summary = {}; bic_summary = {}; ad_summary = {}; ks_summary = {}   
+    summaries1 = [[] for i in range(len(selected_dists))]        
+    for didx, data_type in enumerate(data_types):
+        dist_fit_sizes = {}; dist_depths = {}
+        fit_sizes_legends = []
+        summaries1[didx] = {}   
+        row, col = get_plot_rc(didx, axs.shape[1])     
+        for colname in data_dict['ll'].columns:
+            idxs = selected_dists[didx] == colname
+            percentage = idxs.sum()/total_wm
+            summaries1[didx][colname] = [percentage]
+            # distribution for fit_sizes            
+            dist_fit_sizes[colname] = list(fit_sizes[idxs].iloc[:,0])
+            dist_depths[colname] = list(depths[idxs].iloc[:,0])
+            fit_sizes_legends.append(str(round(percentage*100, 2)) + "%")
+
+        if with_outliers:
+            axs[row, col].boxplot(dist_fit_sizes.values())
+            axs[row + 1, col].boxplot(dist_depths.values())
+        else:
+            axs[row, col].boxplot(dist_fit_sizes.values(), showfliers=False) 
+            axs[row + 1, col].boxplot(dist_depths.values(), showfliers=False)
+
+        axs[row, col].set_xticklabels(dist_fit_sizes.keys())        
+        axs[row, col].set_title(data_type.upper() + ": " + ',  '.join(fit_sizes_legends))
+        #axs[didx].set_ylim([0,1e8])
+
+        # print results
+        print(f"{data_types[didx]}")
+        print(summaries1[didx])
+        print('\n')
+    
+    axs[0,0].set_ylabel("Weight sizes")
+    axs[1,0].set_ylabel("Weight depths")
+    plt.suptitle(f"Total weights: {total_wm}")
+
+    #save_path = join(root_data, "pretrained_workflow", "weight_summary_stats")
+    save_path = join(root_data, "figure_ms", "weight_summary_stats")
+    if not os.path.isdir(save_path): os.makedirs(save_path)
+    # save summary
+    # ----- code here -----
+
+    # save plot
+    if display:
+        plt.show()
+    else:
+        plot_name = "fit_size_dist"
+        plt.savefig(f"{save_path}/{plot_name}.pdf", bbox_inches='tight', format='pdf')  
 
 
 if __name__ == '__main__':
