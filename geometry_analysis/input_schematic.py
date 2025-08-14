@@ -10,6 +10,10 @@ from mpl_toolkits.mplot3d import axes3d
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
 
+'''
+For plotting the input circular manifold.
+'''
+
 class MyAxes3D(axes3d.Axes3D):
 
     def __init__(self, baseObject, sides_to_draw):
