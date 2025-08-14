@@ -15,7 +15,7 @@ from tqdm import tqdm
 sys.path.append(os.getcwd())
 
 from npc_fcn import get_dataset
-from path_names import root_data, model_log, id_to_path, get_model_id, get_alpha_g
+from constants import root_data, model_log, id_to_path, get_model_id, get_alpha_g
 from utils_dnn import setting_from_path
 
 # plot settings
@@ -173,6 +173,10 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=2, epochs=[0,650], 
     true_limits = []
     center_shifts = []
     x_scales = [0.5]*len(pca_epochs)
+    N_data = 500
+    transparency = 1    
+    msize = 10
+    marker = 's'
     if "class_sep" in metric_ls:
         for gidx, g100 in enumerate(g100_ls):
             for aidx, alpha100 in enumerate(alpha100_ls):  
@@ -196,42 +200,46 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=2, epochs=[0,650], 
                 if gidx == 0 and aidx == 0:
                     # 3D scatter
                     if is_3d:
-                        im = axs[gidx,aidx].scatter(X_pca[:,0], X_pca[:,1], 
-                                                    X_pca[:,2],
+                        im = axs[gidx,aidx].scatter(X_pca[:N_data,0], X_pca[:N_data,1], 
+                                                    X_pca[:N_data,2],
                                                     #vmin=0, vmax=len(selected_target_idxs)-1,
                                                     #c=np.full(sample_indices.sum(),iidx), 
-                                                    c=colors_all,
+                                                    c=colors_all[:N_data],
                                                     #c=c_ls_targets[iidx],
-                                                    s=1.5, alpha=0.2, cmap=cmap)  
+                                                    marker=marker,
+                                                    s=msize, alpha=transparency, cmap=cmap)  
 
                     # 2D scatter
                     else:
-                        im = axs[gidx,aidx].scatter(X_pca[:,0], X_pca[:,1], 
+                        im = axs[gidx,aidx].scatter(X_pca[:N_data,0], X_pca[:N_data,1], 
                                                     vmin=0, vmax=len(selected_target_idxs)-1,
                                                     #c=np.full(sample_indices.sum(),iidx), 
                                                     #c=c_ls_targets[iidx],
-                                                    c=colors_all,
-                                                    s=1.5, alpha=0.2, cmap=cmap)  
+                                                    c=colors_all[:N_data],
+                                                    marker=marker,
+                                                    s=msize, alpha=transparency, cmap=cmap)  
 
                 else:
                     # 3D scatter
                     if is_3d:
-                        axs[gidx,aidx].scatter(X_pca[:,0], X_pca[:,1], 
-                                                X_pca[:,2],
+                        axs[gidx,aidx].scatter(X_pca[:N_data,0], X_pca[:N_data,1], 
+                                                X_pca[:N_data,2],
                                                 #vmin=0, vmax=len(selected_target_idxs)-1,
                                                 #c=np.full(sample_indices.sum(),iidx), 
-                                                c=colors_all,
+                                                c=colors_all[:N_data],
                                                 #c=c_ls_targets[iidx],
-                                                s=1.5, alpha=0.2, cmap=cmap)      
+                                                marker=marker,
+                                                s=msize, alpha=transparency, cmap=cmap)      
                         
                     # 2D scatter 
                     else:
-                        axs[gidx,aidx].scatter(X_pca[:,0], X_pca[:,1], 
+                        axs[gidx,aidx].scatter(X_pca[:N_data,0], X_pca[:N_data,1], 
                                             vmin=0, vmax=len(selected_target_idxs)-1,
                                             #c=np.full(sample_indices.sum(),iidx),                                             
                                             #c=c_ls_targets[iidx],
-                                            c=colors_all,
-                                            s=1.5, alpha=0.2, cmap=cmap)                            
+                                            c=colors_all[:N_data],
+                                            marker=marker,
+                                            s=msize, alpha=transparency, cmap=cmap)                            
                                         
                 #print(X_pca[indices,0].shape)  # delete
 
@@ -411,6 +419,7 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=2, epochs=[0,650], 
     g100_str = "_".join(g100_str)
     metric_str = "_".join(metric_ls)
 
+    total_classes = 10
     if not display:
         if "fcn_grid" in data_path or "gaussian_data" not in data_path:
             file_full = f"{plot_path}/{fcn}_mnist_post={post}_epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf"
@@ -429,13 +438,15 @@ def metrics_vs_depth(data_path, post=0, display=False, n_top=2, epochs=[0,650], 
         fig_cbar = plt.figure()
         #cbar_ax = fig.add_axes([0.85, 0.20, 0.03, 0.75])  # vertical cbar
         cbar_ax = fig_cbar.add_axes([0.85, 0.20, 0.75, 0.03])  # horizontal cbar
-        cbar_ticks = list(range(10))
+        cbar_ticks = [(total_classes - 1)/total_classes * (0.5 + i) for i in range(total_classes)]
+        cbar_tick_labels = list(range(total_classes))
         cbar = fig_cbar.colorbar(im, cax=cbar_ax, ticks=cbar_ticks, orientation='horizontal')
+        cbar.outline.set_visible(False)
         
         #colorbar_index(ncolors=len(selected_target_idxs), cmap=cmap)   
 
         cbar.ax.xaxis.set_ticks_position("top")
-        cbar.ax.set_xticklabels(cbar_ticks)
+        cbar.ax.set_xticklabels(cbar_tick_labels)
         cbar.ax.tick_params(axis='x', labelsize=tick_size)
         
         plt.savefig(join(plot_path, f'pca_cbar_post={post}.pdf'), bbox_inches='tight')           
