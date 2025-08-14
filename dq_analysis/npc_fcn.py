@@ -14,7 +14,7 @@ from tqdm import tqdm
 #plt.switch_backend('agg')
 
 sys.path.append(os.getcwd())
-from path_names import root_data
+from constants import root_data
 from utils_dnn import IPR, compute_dq, effective_dimension, setting_from_path
 from train_supervised import get_data, set_data
 
@@ -114,6 +114,7 @@ def npc_layerwise_ed(data_path, post, alpha100, g100, epochs):
     epoch = 0
     hidden_N = [784]*L + [10]
     with_bias = False
+    #is_weight_share = False
     kwargs = {"dims": hidden_N, "alpha": None, "g": None,
               "init_path": join(data_path, net_folder), "init_epoch": epoch,
               "activation": 'tanh', "with_bias": with_bias,
@@ -440,7 +441,7 @@ def class_separation_pca(data_path, alpha100, g100, epochs):
     #global trainloader, gaussian_data_kwargs, eigvecs, hidden_layer, targets_indices, X_pca
     #global centers, cluster_class_label
     #global net, hidden_N, targets
-    global testloader
+    global testloader, net
 
     from NetPortal.models import ModelFactory
     from sklearn.decomposition import PCA
@@ -492,6 +493,7 @@ def class_separation_pca(data_path, alpha100, g100, epochs):
                       "activation": 'tanh', "with_bias": with_bias,
                       "architecture": 'fc'}
             net = ModelFactory(**kwargs)
+            #quit()  # delete
 
             hidden_layer = testloader[0]
             # create batches and compute and mean/std over the batches
@@ -510,14 +512,15 @@ def class_separation_pca(data_path, alpha100, g100, epochs):
     np.save(join(save_path, "target"), targets.detach().numpy())                
 
 
-# functions: hidden_layerwise_d2(), npc_layerwise_d2()
+# functions: npc_layerwise_ed(), hidden_layerwise_d2(), npc_layerwise_d2()
 def submit(*args):
     from qsub import qsub, job_divider, project_ls, command_setup
     input_idxs = str( list(range(1,50)) ).replace(" ", "")
     #post = 1
     #epochs = [0,1] + list(range(50,651,50))
     #epochs = [0,1,50,100,150,200,250,300,650]
-    epochs = [0,650]
+    #epochs = [0,650]
+    epochs = [0,1,50,100,650]
     post_ls = [0,1,2]
     perm_epoch, pbss_epoch = job_divider(epochs, 3)
     epochs_ls = [str(epoch_ls).replace(" ", "") for epoch_ls in pbss_epoch]
@@ -544,7 +547,8 @@ def submit(*args):
         print(project_ls[pidx])
         qsub(f'{command} {sys.argv[0]} {" ".join(args)}',    
              pbs_array_true, 
-             path=join(root_data, "geometry_data", "jobs_all", "hidden_layerwise_d2"),
+             #path=join(root_data, "geometry_data", "jobs_all", "hidden_layerwise_d2"),
+             path=join(root_data, "geometry_data", "jobs_all", args[0]),
              P=project_ls[pidx],
              ncpus=1,
              walltime='23:59:59',
