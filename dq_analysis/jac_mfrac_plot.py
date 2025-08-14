@@ -7,16 +7,16 @@ import scipy.io as sio
 import torch
 
 import pandas as pd
-import seaborn as sns
+#import seaborn as sns
 from ast import literal_eval
 from matplotlib.pyplot import figure
 from matplotlib.ticker import AutoMinorLocator
-from mpl_toolkits.axes_grid.inset_locator import inset_axes
+#from mpl_toolkits.axes_grid.inset_locator import inset_axes
 from numpy import linalg as la
 from os.path import join
 
 sys.path.append(os.getcwd())
-from path_names import root_data
+from constants import DROOT
 from pubplot import set_size
 from utils_dnn import IPR, D_q
 
@@ -41,6 +41,9 @@ reig_dict = {0:'l', 1:'r'}
 c_ls = ["darkblue", "darkred"]
 
 # original dq_magnitude_epoch_plot.py
+"""
+Plots absolute value of principal eigenvector sites for one input
+"""
 def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, inset=False):
     post, reig = int(post), int(reig)
 
@@ -52,15 +55,15 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, inset=
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
-    main_path = join(root_data, "trained_mlps")
-    path = f"{main_path}/fcn_grid/{fcn}_grid"
+    # main_path = join(DROOT, "trained_mlps")
+    # path = f"{main_path}/fcn_grid/{fcn}_grid"
 
     assert post == 1 or post == 0, "No such option!"
     assert reig == 1 or reig == 0, "No such option!"
 
     #dq_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}"
     #data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
-    data_path = join(root_data, f"geometry_data/{post_dict[post]}jac_layerwise")
+    data_path = join(DROOT, f"geometry_data/{post_dict[post]}jac_layerwise")
 
     missing_data = []
     # in the future for ipidx might be needed
@@ -89,9 +92,6 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, inset=
                     # ticks
                     #ax1.set_xticks(np.arange(0,2.05,0.5))
 
-                    ax.spines['top'].set_visible(False)
-                    ax.spines['right'].set_visible(False)
-
                     # set ticks
                     if inset:
                         xticks = [0,25,50,75,100]
@@ -110,9 +110,13 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, inset=
                     if inset:
                         ax.tick_params(axis='x', labelsize=(axis_size - 1)*1.5)
                         ax.tick_params(axis='y', labelsize=(axis_size - 1)*1.5)
+
                     else:
                         ax.tick_params(axis='x', labelsize=axis_size - 1)
                         ax.tick_params(axis='y', labelsize=axis_size - 1)
+
+                        ax.spines['top'].set_visible(False)
+                        ax.spines['right'].set_visible(False)                        
 
                     # minor ticks
                     ax.xaxis.set_minor_locator(AutoMinorLocator())
@@ -162,10 +166,11 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, inset=
                     #plt.show()
 
                     #fig1_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots"
-                    fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
+                    fig1_path = join(DROOT, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
                     if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
                     # alleviate memory
                     fig_name = f"jac_eigvec_mag_{post_dict[post]}_{reig_dict[reig]}_alpha100={alpha100}_g100={g100}_l={layer}_epoch={epoch}"
+                    print(f'Saved in {fig1_path} as {fig_name}')
                     if inset:
                         fig_name += "_inset"
                     plt.savefig(join(fig1_path, fig_name + ".pdf"), bbox_inches='tight')
@@ -177,23 +182,26 @@ def eigvec_magnitude(alpha100_ls = [120,200], g100 = 100, post=0, reig=1, inset=
         print(f"Epoch {epoch} done!")
 
     # missing data due to simulation errors or jobs not submitted properly
-    #np.savetxt(join(root_data,"geometry_data/missing_data.txt"), np.array(missing_data), fmt='%s')
+    #np.savetxt(join(DROOT,"geometry_data/missing_data.txt"), np.array(missing_data), fmt='%s')
 
 
 # original dq_single_epoch_plot.py
+"""
+Plots D_q vs q for one input
+"""
 def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
     post, reig = int(post), int(reig)
 
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
-    main_path = join(root_data, "trained_mlps")
+    main_path = join(DROOT, "trained_mlps")
     path = f"{main_path}/fcn_grid/{fcn}_grid"
 
     assert post == 1 or post == 0, "No such option!"
     assert reig == 1 or reig == 0, "No such option!"
 
-    dq_path = join(root_data, f"geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}")
+    dq_path = join(DROOT, f"geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}")
 
     q_folder_idx = 25
     missing_data = []
@@ -268,7 +276,7 @@ def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
             #plt.show()
 
             #fig1_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots"
-            fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
+            fig1_path = join(DROOT, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
             if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
             # alleviate memory
             plt.savefig(f"{fig1_path}/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_l={layer}_epoch={epoch}.pdf", bbox_inches='tight')
@@ -282,28 +290,34 @@ def dq_vs_q(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
 
 
 # original d2-vs-depth.py
-def d2_vs_depth(alpha100_ls=[120,200], g100 = 100, post=0, reig=1, appendix=False):
+"""
+Plots d2 (averaged across all eigenvectors) against network depth
+"""
+def d2_vs_depth(alpha100_ls=[120,200], g100=25, post=0, reig=1, appendix=False):
 
     post, reig = int(post), int(reig)
     appendix = literal_eval(appendix) if isinstance(appendix, str) else appendix
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
-    main_path = join(root_data, "trained_mlps")
+    main_path = join(DROOT, "trained_mlps")
 
     path = f"{main_path}/fcn_grid/{fcn}_grid"
 
     assert post == 1 or post == 0, "No such option!"
     assert reig == 1 or reig == 0, "No such option!"
 
-    dq_path = join(root_data, f"geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}")
+    dq_path = join(DROOT, f"geometry_data/dq_layerwise_{post_dict[post]}_{reig_dict[reig]}")
 
     missing_data = []
     # in the future for ipidx might be needed
     #depths = np.arange(9)     # not including the final layer since there are only 10 neurons
     depths = np.arange(10)
+    #epochs = [0, 650]
+    #epochs = [50]
+    epochs = [1]
     #for epoch in [0,1] + list(range(50,651,50)):   # all
-    for epoch in [0, 650]:
+    for epoch in epochs:
 
         #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = False,sharey=False,figsize=(9.5,7.142))
         fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))
@@ -389,10 +403,10 @@ def d2_vs_depth(alpha100_ls=[120,200], g100 = 100, post=0, reig=1, appendix=Fals
         #          frameon=True)
         plt.tight_layout()
 
-        fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
+        fig1_path = join(DROOT, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
         if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
         # alleviate memory
-        plt.savefig(f"{fig1_path}/jac_d2-vs-depth_{post_dict[post]}_{reig_dict[reig]}_g100={g100}_epoch={epoch}.pdf", bbox_inches='tight')
+        plt.savefig(f"{fig1_path}/jac_d2-vs-depth_{post_dict[post]}_{reig_dict[reig]}_g100={g100}_epochs={epochs}.pdf", bbox_inches='tight')
         #plt.clf()
         #plt.close(fig)
         #plt.show()
@@ -401,7 +415,10 @@ def d2_vs_depth(alpha100_ls=[120,200], g100 = 100, post=0, reig=1, appendix=Fals
         print(f"Epoch {epoch} done!")
 
 
-def d2mean_vs_depth(alpha100_ls=[120, 200], g100=100, post=0, reig=1, appendix=False, display=False):
+"""
+Plots d2 (averaged across all eigenvectors AND different inputs) against network depth
+"""
+def d2mean_vs_depth(alpha100_ls=[120, 200], g100=300, post=0, reig=1, appendix=False, display=False):
     global ms, stds
 
     post, reig = int(post), int(reig)
@@ -410,7 +427,7 @@ def d2mean_vs_depth(alpha100_ls=[120, 200], g100=100, post=0, reig=1, appendix=F
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
-    main_path = join(root_data, "trained_mlps")
+    main_path = join(DROOT, "trained_mlps")
 
     path = f"{main_path}/fcn_grid/{fcn}_grid"
 
@@ -418,14 +435,16 @@ def d2mean_vs_depth(alpha100_ls=[120, 200], g100=100, post=0, reig=1, appendix=F
     assert reig == 1 or reig == 0, "No such option!"
 
     trans_ls = [1, 0.5]
-    dq_path = join(root_data, f"geometry_data/d2_layerwise_navg=1000_{post_dict[post]}_{reig_dict[reig]}")
+    dq_path = join(DROOT, f"geometry_data/d2_layerwise_navg=1000_{post_dict[post]}_{reig_dict[reig]}")
 
     missing_data = []
     # in the future for ipidx might be needed
     #depths = np.arange(9)     # not including the final layer since there are only 10 neurons
     depths = np.arange(10)
     l = 4
-    for epoch in [0, 650]:
+    #epochs = [0, 650]
+    epochs = [0,1]
+    for epoch in epochs:
 
         #fig, ((ax1,ax2), (ax3,ax4)) = plt.subplots(2, 2,sharex = False,sharey=False,figsize=(9.5,7.142))
         fig, ax = plt.subplots(1, 1 ,figsize=(figw, figh))
@@ -479,13 +498,13 @@ def d2mean_vs_depth(alpha100_ls=[120, 200], g100=100, post=0, reig=1, appendix=F
 
         plt.tight_layout()
 
-        fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
+        fig1_path = join(DROOT, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
         if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
         # alleviate memory
         if display:
             plt.show()
         else:
-            plt.savefig(f"{fig1_path}/jac_d2mean-vs-depth_{post_dict[post]}_{reig_dict[reig]}_g100={g100}_epoch={epoch}.pdf", bbox_inches='tight')
+            plt.savefig(f"{fig1_path}/jac_d2mean-vs-depth_{post_dict[post]}_{reig_dict[reig]}_g100={g100}_epoch={epochs}.pdf", bbox_inches='tight')
         #plt.clf()
         #plt.close(fig)
         #plt.show()
@@ -504,7 +523,7 @@ def d2_dist(alpha100_ls=[120,200], g100=100, post=0, reig=1, appendix=False, dis
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
-    main_path = join(root_data, "trained_mlps")
+    main_path = join(DROOT, "trained_mlps")
 
     path = f"{main_path}/fcn_grid/{fcn}_grid"
 
@@ -512,7 +531,7 @@ def d2_dist(alpha100_ls=[120,200], g100=100, post=0, reig=1, appendix=False, dis
     assert reig == 1 or reig == 0, "No such option!"
 
     trans_ls = [0.5,1]
-    dq_path = join(root_data, f"geometry_data/d2_layerwise_navg=1000_{post_dict[post]}_{reig_dict[reig]}")
+    dq_path = join(DROOT, f"geometry_data/d2_layerwise_navg=1000_{post_dict[post]}_{reig_dict[reig]}")
 
     missing_data = []
     # in the future for ipidx might be needed
@@ -566,7 +585,7 @@ def d2_dist(alpha100_ls=[120,200], g100=100, post=0, reig=1, appendix=False, dis
 
         plt.tight_layout()
 
-        fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
+        fig1_path = join(DROOT, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
         if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
         # alleviate memory
         if display:
@@ -589,14 +608,14 @@ def d2_vs_eigvals(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
     fcn = "fc10"
     net_type = f"{fcn}_mnist_tanh"
     #net_type = f"{fcn}_mnist_tanh_2"
-    main_path = join(root_data, "trained_mlps")
+    main_path = join(DROOT, "trained_mlps")
     path = f"{main_path}/fcn_grid/{fcn}_grid"
 
     assert post == 1 or post == 0, "No such option!"
     assert reig == 1 or reig == 0, "No such option!"
 
     #data_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/geometry_data/{post_dict[post]}jac_layerwise"
-    data_path = join(root_data, f"geometry_data/{post_dict[post]}jac_layerwise")
+    data_path = join(DROOT, f"geometry_data/{post_dict[post]}jac_layerwise")
 
     trans_ls = np.linspace(0,1,len(alpha100_ls)+1)[::-1]
     max_mag = 0     # maximum magnitude of eigenvalues
@@ -672,7 +691,7 @@ def d2_vs_eigvals(alpha100_ls = [120,200], g100 = 100, post=0, reig=1):
         plt.tight_layout()
 
         #fig1_path = f"/project/phys_DL/Anomalous-diffusion-dynamics-of-SGD/figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots"
-        fig1_path = join(root_data, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
+        fig1_path = join(DROOT, f"figure_ms/dq_jac_single_{post_dict[post]}_{reig_dict[reig]}_plots")
         if not os.path.isdir(fig1_path): os.makedirs(fig1_path)
         # alleviate memory
         plt.savefig(f"{fig1_path}/jac_d2-vs-eigval_{post_dict[post]}_{reig_dict[reig]}_alpha100={alpha100}_g100={g100}_l={layer}_epoch={epoch}.pdf", bbox_inches='tight')
