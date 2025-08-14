@@ -1,4 +1,5 @@
 import argparse
+#import seaborn as sns
 import scipy.io as sio
 import math
 import matplotlib as mpl
@@ -51,33 +52,27 @@ c_ls_3 = ["red", "blue"]
 c_hist_1 = "tab:blue"
 c_hist_2 = "dimgrey"
 
-tick_size = 18.5 * 1.5
-label_size = 18.5 * 1.5
-axis_size = 18.5 * 1.5
-legend_size = 14 * 1.5
-lwidth = 4.2
-text_size = 14 * 1.5
-marker_size = 20
-
 label_ls = [f"({letter})" for letter in list(string.ascii_lowercase)]
 linestyle_ls = ["solid", "dashed","dashdot"]
 
-params = {'legend.fontsize': legend_size,
-          'axes.labelsize': label_size,
-          'axes.titlesize': label_size,
-          'xtick.labelsize': label_size,
-          'ytick.labelsize': label_size}
-plt.rcParams.update(params)
+lwidth = 4.2
+axis_size_1 = 18.5 * 1.5 * 4
+label_size_1 = 18.5 * 1.5 * 4
+legend_size_1 = 14 * 1.5 * 4
+param_sizes_1 = {'legend.fontsize': legend_size_1,
+                 'axes.labelsize': label_size_1,
+                 'axes.titlesize': label_size_1,
+                 'xtick.labelsize': label_size_1,
+                 'ytick.labelsize': label_size_1}
 
-# fig = plt.figure(figsize=(24, 16))
-# gs = mpl.gridspec.GridSpec(490, 740, wspace=0, hspace=0)   
-# # main plots 
-# ax1 = fig.add_subplot(gs[0:200, 0:200])
-# ax2 = fig.add_subplot(gs[0:200, 260:460])
-# ax3 = fig.add_subplot(gs[0:200, 520:720])
-# ax4 = fig.add_subplot(gs[290:490, 0:200])
-# ax5 = fig.add_subplot(gs[290:490, 260:460])
-# ax6 = fig.add_subplot(gs[290:490, 520:720])
+axis_size_2 = 18.5 * 1.5 * 8
+label_size_2 = 18.5 * 1.5 * 8
+legend_size_2 = 14 * 1.5 * 3
+param_sizes_2 = {'legend.fontsize': legend_size_2,
+                 'axes.labelsize': label_size_2,
+                 'axes.titlesize': label_size_2,
+                 'xtick.labelsize': label_size_2,
+                 'ytick.labelsize': label_size_2}                 
 
 # ---------------------------
 
@@ -330,7 +325,7 @@ else:
 
 # -------------------- add AIC and BIC for df_full --------------------
 full_dist_names = [col.split('_')[1] for col in df_full.columns if "logl_" in col]  # the columns that contain log_l
-params_dict = {'stable':4, 'norm': 2, 't': 3, 'lognorm':2}  # number of params in each type of distribution
+params_dict = {'stable':4, 'norm': 2, 't': 3, 'lognorm':3}  # number of params in each type of distribution
 for ii, dist_name in enumerate(full_dist_names):
     # AIC
     df_full[f"aic_{dist_name}"] = 2 * params_dict[dist_name] - 2 * df_full.loc[:,f'logl_{dist_name}']
@@ -456,6 +451,12 @@ w_type = f"{net}_layer_{l}_{wmat_idx}"
 param_type = f"{net}_allfit_{l}_{wmat_idx}"
 w_path = f"{prepath}/weights_all/{w_type}"
 
+print('----------------------------')
+print(f'Featured networks: {net} \n')
+print(f'{param_type} \n')
+print('----------------------------')
+
+
 #allfit_path = f"{prepath}/{allfit_path_dir}/{net}/{param_type}.csv"
 
 for allfit_path_dir in allfit_paths:
@@ -513,6 +514,7 @@ bin_ls = [250] * 6
 bin_ls[1] = 50
 bin_ls[2] = 50
 bin_ls[3] = 500
+bin_ls[4] = 50
 
 # xlabel_ls = [r"$\mathbf{{W}}^{{{}}}$ ".format(l + 1) + f"entries ({net.upper()})"] \
 #             + [r"$\alpha$ (Stable)", r"$\nu$ (Student t)"] \
@@ -525,19 +527,29 @@ xlabel_ls = ["Weights"] \
 ylabel_ls = ["Probability density", "Probability density", "Probability density", 
              "Probability density", "Probability density", "Probability density"]
 
-xlim_ls = [[-0.3, 0.3], [0.5,2], [0,1267035], [1e-2, 1], [0,20], [0,5]]
-ylim_ls = [[0,12.5], [0,5], [0,3e-3], [1e-4,500], [0,0.3], [0,2]]
+# xlim_ls = [[-0.3, 0.3], [0.5,2], [0,1267035], [1e-2, 1], [0,15], [0,5]]
+# ylim_ls = [[0,12.5], [0,5], [0,3e-3], [1e-4,500], [0,0.3], [0,2]]
+xlim_ls = [[-0.3, 0.3], [0.5,2], [0,3e-3], [1e-4,500], [0,15], [0,5]]
+ylim_ls = [[0,12.5], [0,5], [0,1267035], [1e-2, 1], [0,0.3], [0,2]]
 
 #axs_1 = [ax1, ax2, ax3, ax4, ax5, ax6]
 #metric_names_plot = ["sample_w", "alpha", "nu", "sample_w", "alpha_tail_tpl", "alpha_tail_pl"]
-metric_names_plot = ["sample_w", "alpha", "nu", "sample_w", "alpha_tail_tpl", "xlogrange_pl"]
+#metric_names_plot = ["sample_w", "alpha", "nu", "sample_w", "alpha_tail_tpl", "xlogrange_pl"]
+metric_names_plot = ["sample_w", "alpha", "nu", "sample_w", "alpha_tail_pl", "xlogrange_pl"]
+metrics_all_plot = {}
 top_n = 'top-5'     # choose Top-1 or Top-5 accuracy
 
 for i, metric_name in enumerate(metric_names_plot):
 
-    # set up individual figures
-    fig = plt.figure(figsize=(24, 24))
+    fig = plt.figure(figsize=(24, 21))
     axis = plt.subplot(111)
+    # set up individual figures
+    if i != 3:
+        plt.rcParams.update(param_sizes_2)
+        axis.spines['top'].set_visible(False)
+        axis.spines['right'].set_visible(False)             
+    else:
+        plt.rcParams.update(param_sizes_1)    
 
     # full distribution
     if metric_name in ['alpha','nu']:
@@ -548,10 +560,10 @@ for i, metric_name in enumerate(metric_names_plot):
         #cond = (df_merge.loc[:,'weight_num'] > min_weight_num)
         #cond = (df_merge.loc[:,'fit_size'] > min_weight_num)
         cond = (df_merge.loc[:,'removed_perc'] <= max_removed_perc)
-        if param_selection_base == 'ad':
-            cond = cond & (df_merge.loc[:,'ad_best'] == best_ad)
-        elif param_selection_base == 'ks':
-            cond = cond & (df_merge.loc[:,'ks_best'] == best_ks)            
+        # if param_selection_base == 'ad':
+        #     cond = cond & (df_merge.loc[:,'ad_best'] == best_ad)
+        # elif param_selection_base == 'ks':
+        #     cond = cond & (df_merge.loc[:,'ks_best'] == best_ks)            
         if pass_ks_test:
             cond = cond & (df_merge.loc[:,best_ks] >= 0.05)        
         if pass_ad_test:
@@ -561,9 +573,13 @@ for i, metric_name in enumerate(metric_names_plot):
 
         metric = df_merge.loc[selected_idxs,metric_name]
         #print(f'plotted {metric_name}: {len(metric)} \n')
+
+        if metric_name == 'nu':
+            metric = metric[metric < 18]  # remove outliers
+
+        metrics_all_plot[metric_name] = metric
     
-    elif metric_name in ['alpha_tail_tpl', 'alpha_tail_pl']:
-        
+    elif metric_name in ['alpha_tail_tpl', 'alpha_tail_pl']:        
 
         best_tailfit = "truncated_power_law" if metric_name == 'alpha_tail_tpl' else 'power_law'        
 
@@ -580,9 +596,12 @@ for i, metric_name in enumerate(metric_names_plot):
 
         metric = pd.concat([alpha_lower, alpha_upper])
 
+        metrics_all_plot[metric_name] = metric
+
     elif metric_name in ['xlogrange_pl']:
 
-        best_tailfit = "truncated_power_law"
+        #best_tailfit = "truncated_power_law"
+        best_tailfit = 'power_law'
 
         # filter
         #cond = (df_merge.loc[:,'fit_size'] > min_weight_num) & (df_merge.loc[:,'bf1_lower'] == best_tailfit)
@@ -595,10 +614,9 @@ for i, metric_name in enumerate(metric_names_plot):
         selected_idxs = df_merge[cond].index        
         xlogrange_upper = df_merge.loc[cond,'xlogrange_upper']
 
-        metric = pd.concat([xlogrange_lower, xlogrange_upper])        
+        metric = pd.concat([xlogrange_lower, xlogrange_upper])       
 
-    axis.spines['top'].set_visible(False)
-    axis.spines['right'].set_visible(False)
+        metrics_all_plot[metric_name] = metric 
 
     # plotting the histogram
     if i == 0:
@@ -614,24 +632,35 @@ for i, metric_name in enumerate(metric_names_plot):
         #axis.plot(x, y_tstudent, linewidth=lwidth, c=c_ls_1[2], linestyle='dashdot', label = 'Student t')
         #axis.plot(x, y_lognorm, linewidth=lwidth, c=c_ls_1[3], linestyle='dotted', label = 'Log-normal')  
 
-        xlim_ls[0][0], xlim_ls[0][1] = sample_w[np.abs(sample_w) > 1e-5].min(), sample_w[np.abs(sample_w) > 1e-5].max()
+        #xlim_ls[0][0], xlim_ls[0][1] = sample_w[np.abs(sample_w) > 1e-5].min(), sample_w[np.abs(sample_w) > 1e-5].max()
         ylim_ls[0][1] = max(y_stable.max(), y_normal.max()) + 2
 
     elif i == 1:
-        density = sst.gaussian_kde(metric)
-        x = np.linspace(0,2,1000) 
+        # KDE
+        #density = sst.gaussian_kde(metric)
+        #x = np.linspace(0,2,1000) 
         #axis.plot(x, density(x))   
 
+        # HIST
         axis.hist(metric, bin_ls[i], color=c_ls_2[i], density=True)
+        #sns.distplot(metric, hist=False, color=c_ls_2[i], ax=axis)  # kde_kws={'linestyle':'--', 'linewidth':'width'}
+
         #axis.set_xlim(np.percentile(metric, 1), np.percentile(metric, 99))
 
     elif i == 2:
-        density = sst.gaussian_kde(metric)
-        x = np.linspace(0,160,1000) 
-        #axis.plot(x, density(x))       
+        # KDE
+        # density = sst.gaussian_kde(metric)
+        # x = np.linspace(0,160,1000) 
+        # #axis.plot(x, density(x))    
 
+        # HIST   
         axis.hist(metric, bin_ls[i], color=c_ls_2[i], density=True)
-        axis.set_xscale('log')
+        #sns.distplot(metric, hist=False, color=c_ls_2[i], ax=axis)  # kde_kws={'linestyle':'--', 'linewidth':'width'}
+
+        # BOXPLOT
+        # bp = axis.boxplot(metric, showfliers=False)
+        # for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
+        #     plt.setp(bp[element], color=c_ls_2[i], linewidth=lwidth)                
 
     elif i == 3 and isfile(tailfit_path):
         # distribution tail
@@ -690,7 +719,7 @@ for i, metric_name in enumerate(metric_names_plot):
         axis.axvline(xmin, color='r', label=r"$x_{{{}}}$".format("min"))
         """
 
-        # --- eye guide 1 --- 
+        # --- eye guide 1 --- (from PL)
         binEdges = binEdges[1:]
         xc = binEdges[binEdges>=xmin].min()
         yc = counts[binEdges>=xmin].max()
@@ -706,11 +735,11 @@ for i, metric_name in enumerate(metric_names_plot):
         ys = 10**b * xs**(-k)
         axis.plot(xs, ys, c='g', linestyle='dotted', label=rf'PL fit ($k$ = {round(k,2)})')
 
-        # --- eye guide 2 ---    
-        k_stable = params_stable[0] + 1               
-        b_stable = (np.log(yc) + k_stable * np.log(xc))/np.log(10) + 1
-        ys_stable = 10**b_stable * xs**(-k_stable)
-        axis.plot(xs, ys_stable, c='b', linestyle='dotted', label=rf'Stable fit ($k$ = {round(params_stable[0] + 1,2)})')
+        # --- eye guide 2 --- (from stable)   
+        # k_stable = params_stable[0] + 1               
+        # b_stable = (np.log(yc) + k_stable * np.log(xc))/np.log(10) + 1
+        # ys_stable = 10**b_stable * xs**(-k_stable)
+        # axis.plot(xs, ys_stable, c='b', linestyle='dotted', label=rf'Stable fit ($k$ = {round(params_stable[0] + 1,2)})')
 
         # mark xmin
         #axis.plot([], [], c='r', linestyle='dashed', label=rf'$x_{{\min}}$ = {round(xmin,2)}') 
@@ -731,18 +760,27 @@ for i, metric_name in enumerate(metric_names_plot):
         #                 labelbottom=False, bottom=False)       
 
     elif i == 4:
-        # get kde
+        # KDE
         #density = sst.gaussian_kde(metric)
         #x = np.linspace(0,2,500) 
         #axis.plot(x, density(x))  
 
+        # HIST
         axis.hist(metric, bin_ls[i], color=c_ls_2[3], density=True) 
+        #sns.distplot(metric, hist=False, color=c_ls_2[3], ax=axis)  # kde_kws={'linestyle':'--', 'linewidth':'width'}
+        
+
+        # bp = axis.boxplot(metric)
+        # for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
+        #     plt.setp(bp[element], color=c_ls_2[i-1], linewidth=lwidth)           
          
     elif i == 5:
-        axis.hist(metric, bin_ls[i], color=c_ls_2[4], density=True)
-      
-    if i == 0 or i == 3:
-        axis.legend(loc = 'upper left', fontsize = legend_size, frameon=False)
+        axis.hist(metric, bin_ls[i], color=c_ls_2[4], density=True)        
+        #sns.distplot(metric, hist=False, color=c_ls_2[4], ax=axis)  # kde_kws={'linestyle':'--', 'linewidth':'width'}
+
+    #if i == 0 or i == 3:
+    if i == 0:
+        axis.legend(loc = 'upper left', fontsize = legend_size_1, frameon=False)
 
     if i not in [0,3]:
         plotted_metrics[metric_name] = metric
@@ -751,25 +789,39 @@ for i, metric_name in enumerate(metric_names_plot):
             print(print(f"{metric_name} smaller than 1.9: {len(metric[metric <= 1.9])} \n"))
 
     # set axis limit
-    if i != 3:  # delete
+    #if i != 3:  
+    if i not in [1,2,3,4]:
         axis.set_xlim(xlim_ls[i])
         axis.set_ylim(ylim_ls[i])
 
     # tick labels
-    axis.tick_params(axis='x', labelsize=axis_size - 1)
-    axis.tick_params(axis='y', labelsize=axis_size - 1)
+    if i != 3:
+        axis.tick_params(axis='x', labelsize=axis_size_1)
+        axis.tick_params(axis='y', labelsize=axis_size_1)
+    else:
+        axis.tick_params(axis='x', labelsize=axis_size_2)
+        axis.tick_params(axis='y', labelsize=axis_size_2)  
+        axis.set_yticklabels([])      
 
     # minor ticks
     #axis.xaxis.set_minor_locator(AutoMinorLocator())
     #axis.yaxis.set_minor_locator(AutoMinorLocator())
 
-    axis.set_xlabel(f"{xlabel_ls[i]}", fontsize=axis_size)
+    #axis.set_xlabel(f"{xlabel_ls[i]}", fontsize=axis_size)
+
     #if i == 0 or i == 1:
     #axis.set_ylabel(f"{ylabel_ls[i]}", fontsize=axis_size)
     #axis.set_title(f"{ylabel_ls[i]}", fontsize=axis_size)
 
     # -------------------- Save fig --------------------
-    fig_file = f'fig1_{alphabet[i]}_net={net}_l={l}.pdf' if i == 0 else f'fig1_{alphabet[i]}.pdf'
+    if i == 0:
+        fig_file = f'fig1_{alphabet[i]}_net={net}_l={l}.pdf'
+    elif i < 3:
+        fig_file = f'fig1_{alphabet[i]}.pdf'
+    elif i == 3:
+        fig_file = 'fig1_a_inset.pdf'
+    else:
+        fig_file = f'fig1_{alphabet[i-1]}.pdf'
 
     fig1_path = "/project/PDLAI/project2_data/figure_ms/pretrained_fitting"
     if not isdir(fig1_path): os.makedirs(fig1_path)
