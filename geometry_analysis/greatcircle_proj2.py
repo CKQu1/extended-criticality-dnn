@@ -202,7 +202,7 @@ def corr_save(N, L, N_thetas,
         np.save(f"{path}/corrstd_alpha100={alpha100}_g100={g100}_ensemble={ensemble}", r_std)  
 
 
-def corr_plot(N, alpha100s=[100,150,200], g100s=[10,100,300], *args):
+def corr_plot(N, alpha100s=[100,150,200], g100s=[300], *args):
     '''
     Plots results from corr_save()
     '''
@@ -215,15 +215,18 @@ def corr_plot(N, alpha100s=[100,150,200], g100s=[10,100,300], *args):
     c_ls = list(mcl.TABLEAU_COLORS.keys())
     path = join(root_data, 'geometry_data', 'corr_data')
 
-    selected_ls = [5, 10, 20, 30]
+    #selected_ls = [5, 10, 20, 30]
+    selected_ls = [5, 10, 20]
     N = int(N)
     #alpha100s = literal_eval(alpha100s)
     #g100s = literal_eval(g100s)
     ensembles = list(range(5))
 
-    nrows, ncols = len(alpha100s), len(g100s)
+    nrows, ncols = len(g100s), len(alpha100s)
     fig_size = (11/2*ncols,9.142/2*nrows)
     fig, axs = plt.subplots(nrows, ncols,sharex=True,sharey=True,figsize=fig_size)
+    if len(g100s) == 1:
+        axs = axs[None,:]
     total_seeds = 10
     path = join(root_data, 'geometry_data', f'corr_data_N={N}')
     
@@ -241,7 +244,7 @@ def corr_plot(N, alpha100s=[100,150,200], g100s=[10,100,300], *args):
             r_ /= len(ensembles)
             r_std /= len(ensembles)
 
-            axis = axs[aidx,gidx]
+            axis = axs[gidx,aidx]
             #axis.set_xlim([-0.5,0.5])    
 
             q_fixed = 1
@@ -268,9 +271,9 @@ def corr_plot(N, alpha100s=[100,150,200], g100s=[10,100,300], *args):
                 axis.fill_between(thetas, r_[l]-r_std[l], r_[l]+r_std[l], color=c_ls[lidx], alpha=0.2, label='_nolegend_')
 
 
-            axs[0,gidx].set_title(rf'$\sigma_w$ = {g}')
-            axs[1,gidx].set_xlabel(r'$\Delta \theta$ (offset)')
-        axs[aidx,0].set_ylabel(rf'$\alpha$ = {alpha}')
+            axs[gidx,0].set_ylabel(rf'$\sigma_w$ = {g}')
+        axs[-1,aidx].set_xlabel(r'$\Delta \theta$ (offset)')
+        axs[0,aidx].set_title(rf'$\alpha$ = {alpha}')
 
     axs[0,0].legend(frameon=False)
 
@@ -520,14 +523,13 @@ def submit_v3(*args):
     path = join(root_data, 'geometry_data', f'corr_data_N={N}')
 
     L = 50
-    #alpha100s = [100,150,200]
-    alpha100s = [150,200]
+    alpha100s = [100,150,200]    
     g100s = [10,50,100,200,300]
     pbs_array_data = [(N, L, N_thetas, alpha100, g100, path, seed)
                       for alpha100 in alpha100s
                       for g100 in g100s
-                      #for seed in range(total_seeds)
-                      for seed in [4]
+                      for seed in range(total_seeds)
+                      #for seed in [4]
                       ]
 
     #pbs_array_data = pbs_array_data[:2]
