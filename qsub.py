@@ -62,6 +62,12 @@ def qsub(command, pbs_array_data, **kwargs):
         conda_activate = f"conda activate {kwargs.get('conda')}"
     else:
         conda_activate = ''
+    # additional command
+    if 'add_command' in kwargs:  
+        add_command_exists = 'true' if 'add_command' in kwargs else 'false'
+        add_command = kwargs.get('add_command')
+    else:
+        add_command = ''    
     if kwargs.get('local', False):  # Run the subjobs in the current process.
         for pbs_array_args in pbs_array_data:
             str_pbs_array_args = ' '.join(map(str, pbs_array_args))
@@ -97,6 +103,7 @@ args=($(python -c "import sys;print(' '.join(map(str, {pbs_array_data_chunk}[int
 cd {kwargs.get('cd', '$PBS_O_WORKDIR')}
 echo "pbs_array_args = ${{args[*]}}"
 # <<remove1>>
+{add_command}
 {source_activate}
 {conda_activate}            
 {command} ${{args[*]}} {post_command}
