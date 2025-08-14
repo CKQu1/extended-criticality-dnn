@@ -228,13 +228,16 @@ def batch_submit(*args):
     print(len(pbs_array_data))    
         
     perm, pbss = job_divider(pbs_array_data, len(project_ls))
-    for idx, pidx in enumerate(perm):
+    pbss = pbss[:-1]  # delete
+    #for idx, pidx in enumerate(perm):  
+    for idx, pidx in enumerate(perm[:-1]):  # delete
         pbs_array_true = pbss[idx]
+        pbs_array_true = pbs_array_true[:2]  # delete
         print(project_ls[pidx])
 
         qsub(f'python {sys.argv[0]} {" ".join(args)}', 
              pbs_array_true, 
-             path=main_path,  
+             path=join(main_path,"jobs_all","stablefit"),  
              P=project_ls[pidx], 
              mem="2GB")            
 
