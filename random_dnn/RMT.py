@@ -50,7 +50,7 @@ def savetxt(fname, func, *args, **kwargs):
     Path(fname).parent.mkdir(parents=True, exist_ok=True)
     data = func(*args, **kwargs)
     np.savetxt(fname, data)
-    print(f"Saved {fname} in {time()-tic:.2f} sec")
+    print(f"Computed in {time()-tic:.2f} sec and saved to {fname}")
     return fname
 
 
