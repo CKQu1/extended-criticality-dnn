@@ -26,9 +26,13 @@ def MLP_log_svdvals(alpha, sigma_W, sigma_b, phi, width, depth, seed=None, devic
     for _ in range(depth):
         # M = torch.from_numpy(levy_stable.rvs(alpha, 0, scale=sigma_W * width**(-1/alpha), size=(width, width))).to(device, dtype=x.dtype)
         M = stable_dist_sample(
-            alpha, 0, scale=sigma_W * width ** (-1 / alpha), size=(width, width)
+            alpha, 0, scale=sigma_W * (2 * width) ** (-1 / alpha), size=(width, width)
         )
-        b = sigma_b * torch.randn(width) if sigma_b > 0 else 0
+        b = (
+            stable_dist_sample(alpha, 0, scale=sigma_b * 2 ** (-1 / alpha), size=width)
+            if sigma_b > 0
+            else 0
+        )
         h = M @ x + b
         x = phi(h)
         # pbar.set_postfix({"mean": x.mean().item(), "std": x.std().item()})
@@ -42,8 +46,10 @@ def worker(sigma_W, alphas, sigma_b, phi, width, depth):
         for alpha in alphas
     ]
 
+
 from pathlib import Path
 from time import time
+
 
 def savetxt(fname, func, *args, **kwargs):
     tic = time()
@@ -54,13 +60,13 @@ def savetxt(fname, func, *args, **kwargs):
     return fname
 
 
-
 if __name__ == "__main__":
     # Example usage:
     # python filename.py func_name arg1_name arg1 arg1_type arg2_name arg2 arg2_type ...
     # the arguments will be passed in as keyword args
     import sys
     from time import time
+
     tic = time()
     func = eval(sys.argv[1])
     args = [sys.argv[i : i + 3] for i in range(2, len(sys.argv), 3)]
@@ -69,4 +75,3 @@ if __name__ == "__main__":
     print(result)
     toc = time()
     print(f"Time: {toc - tic:.2f} sec")
-

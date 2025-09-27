@@ -6,7 +6,31 @@ from datetime import datetime
 import random
 from pathlib import Path
 
+import concurrent.futures as cf
+
 scriptpath = "~/wolfram/13.3/Executables/wolframscript"
+
+
+def consolidate_arrays(path: Path):
+    import numpy as np
+    from tqdm import tqdm
+    path = Path(path)
+    pattern = "alpha*_g*_seed*.txt"
+    files = path.glob(pattern)
+    arrays_dict = {}
+    with cf.ThreadPoolExecutor() as executor:
+        future_to_file_stem = {
+            executor.submit(np.loadtxt, file): file.stem for file in files
+        }
+        for future in tqdm(cf.as_completed(future_to_file_stem)):
+            file_stem = future_to_file_stem[future]
+            arrays_dict[file_stem] = future.result()
+    # for file in tqdm(files):
+    #     arrays_dict[file.stem] = np.loadtxt(file)
+    if arrays_dict:
+        np.savez(path.with_suffix(".npz"), **arrays_dict)
+    del arrays_dict
+
 
 # at width 1000, depth 50: about 5 seconds on a CPU core
 def submit_RMT(host, q):
@@ -49,7 +73,7 @@ def submit_RMT(host, q):
         ncpus=1,
         # ngpus=1,
         # ncpus=12,
-        walltime='0:30:00',
+        walltime="0:59:00",
     )
 
 
