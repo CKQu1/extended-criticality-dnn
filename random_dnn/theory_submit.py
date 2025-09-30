@@ -117,7 +117,6 @@ def qsub(
     mem="1GB",
     ngpus: int = None,
     walltime="23:59:00",
-    storage=None,  # this appears to be specific to NCI Gadi
     max_array_size=1000,
     max_run_subjobs: int = None,
     depend_after=False,  # False, True or the name of a job
@@ -156,7 +155,6 @@ def qsub(
 #PBS -o {jobpath}/ -e {jobpath}/
 #PBS -l select={select}:ncpus={ncpus}:mem={mem}{f':ngpus={ngpus}' if ngpus else ''}
 #PBS -l walltime={walltime}
-{f'#PBS -l storage={storage}' if storage else ''}
 #PBS -J {max_array_size*chunk_idx}-{max_array_size*chunk_idx + len(cmd_list_chunk) - 1}{f'%{max_run_subjobs}' if max_run_subjobs else ''}
 {('#PBS -W depend=afterany:'+lastjobid) if depend_after and (lastjobid is not None) else ''}
 cd $PBS_O_WORKDIR
@@ -188,6 +186,11 @@ def qsub_gadi(
     depend_after=False,  # False, True or the name of a job
     print_script=False,
 ):
+    """A `qsub` variant for NCI Gadi because it doesn't accept array jobs.
+    
+    TODO:
+    - Submit to multiple queues simultaneously
+    """
     if "/" in N:
         N = N.split("/")[-1]
     lastjobid = None if depend_after in [False, True] else depend_after

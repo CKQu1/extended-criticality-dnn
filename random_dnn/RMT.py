@@ -7,6 +7,7 @@ from torchlevy import stable_dist
 
 
 def stable_dist_sample(*args, **kwargs):
+    """Wrapper for `stable_dist.sample` that avoids nans"""
     nanflag = True
     while nanflag:
         # torchlevy has this issue with occasional nans
@@ -58,6 +59,91 @@ def savetxt(fname, func, *args, **kwargs):
     np.savetxt(fname, data)
     print(f"Computed in {time()-tic:.2f} sec and saved to {fname}")
     return fname
+
+
+from tqdm.auto import tqdm
+
+
+def resolvent_pdf(g1, g2):
+    return (g1.imag.sum(1) + g2.imag.sum(1)) / (torch.pi * g2.shape[1])
+
+
+def singular_value_resolvent(
+    alpha,
+    chi_samples,
+    sing_vals,
+    num_steps,
+    g1=None,
+    g2=None,
+    leave=True,
+):
+    if g1 is None:
+        g1 = torch.rand((len(sing_vals), len(chi_samples)), dtype=torch.cfloat)
+    if g2 is None:
+        g2 = torch.rand((len(sing_vals), len(chi_samples)), dtype=torch.cfloat)
+    scale = (g1.shape[1] + g2.shape[1]) ** (-1 / alpha)
+    for i in (pbar := tqdm(range(num_steps), leave=leave)):
+        i_g1 = i % g1.shape[1]
+        i_g2 = i % g2.shape[1]
+        stable_sample_g2 = stable_dist_sample(alpha, scale=scale, size=g2.shape[1]) ** 2
+        g1[:, i_g1] = -1 / (sing_vals + (stable_sample_g2 * chi_samples * g2).sum(1))
+        stable_sample_g1 = stable_dist_sample(alpha, scale=scale, size=g1.shape[1]) ** 2
+        g2[:, i_g2] = -1 / (sing_vals + chi_samples[i_g2] * (stable_sample_g1 * g1).sum(1))
+        if num_steps > 100 and i % (num_steps // 100) == 0:
+            pbar.set_postfix_str(torch.std_mean(resolvent_pdf(g1, g2)))
+    return g1, g2
+
+
+def singular_value_pdf(*args, **kwargs):
+    return resolvent_pdf(*singular_value_resolvent(*args, **kwargs))
+
+
+
+def q_star_MC(
+    alpha,
+    sigma_W,
+    sigma_b=0,
+    phi=torch.tanh,
+    q_init=3.0,
+    tol=1e-9,
+    seed=None,
+    num_samples=1000000,
+):
+    """Monte-Carlo version.
+    
+    This is needed because evaluating pdfs is slow on scipy
+    and inaccurate on torchlevy, especially for alpha close to 1.
+    This issue does not exist for torchlevy when generating random samples.
+
+    Takes about 10 MB of memory and 0.2 seconds for 1 million samples on cpu,
+    with a numerical error of about 0.5%.
+
+    Returns a list of floats.
+    """
+    qs = [q_init]
+    if seed is not None:
+        torch.manual_seed(seed)
+    stable_samples = stable_dist_sample(
+        alpha, scale=2 ** (-1 / alpha), size=num_samples
+    )
+    converged = False
+    while not converged:
+        q = (sigma_W**alpha) * (
+            abs(phi(qs[-1] ** (1 / alpha) * stable_samples)) ** alpha
+        ).mean() + sigma_b**alpha
+        qs.append(q.item())
+        converged = abs(qs[-1] - qs[-2]) < tol
+    if seed is not None:
+        torch.seed()
+    return qs
+
+
+def jacobian_singular_value_pdf(alpha, sigma_W, sing_vals, pop_size, num_steps, phi):
+    stable_samples = stable_dist_sample(alpha, scale=2 ** (-1 / alpha), size=pop_size)
+    chi_samples = sigma_W * torch.vmap(torch.func.grad(phi))(
+        q_star_MC(alpha, sigma_W)[-1] ** (1 / alpha) * stable_samples
+    )
+    return singular_value_pdf(alpha, chi_samples, sing_vals, num_steps)
 
 
 if __name__ == "__main__":
