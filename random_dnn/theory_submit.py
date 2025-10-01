@@ -11,11 +11,11 @@ import concurrent.futures as cf
 scriptpath = "~/wolfram/13.3/Executables/wolframscript"
 
 
-def consolidate_arrays(path: Path):
+def consolidate_arrays(path: Path, pattern="alpha*_g*_seed*.txt"):
     import numpy as np
     from tqdm import tqdm
+
     path = Path(path)
-    pattern = "alpha*_g*_seed*.txt"
     files = path.glob(pattern)
     arrays_dict = {}
     with cf.ThreadPoolExecutor() as executor:
@@ -32,8 +32,58 @@ def consolidate_arrays(path: Path):
     del arrays_dict
 
 
+def submit_jac_cavity_svd_pdf(num_doublings=6):
+    num_func_calls_per_subjob = 1
+    logspace_params = tuple(map(str, (-3, 3, 1000)))
+    func_calls = [
+        f"savetxt('{fname}', "
+        "jac_cavity_svd_pdf, "
+        f"np.logspace({','.join(logspace_params)}), "
+        f"{alpha100/100}, {sigma_W/100}, "
+        f"num_doublings={num_doublings})"
+        for alpha100 in range(100, 201, 5)
+        for sigma_W in range(1, 301, 5)
+        if not Path(
+            fname := f"fig/jac_cavity_svd_pdf/"
+            f"doublings{num_doublings}_logspace_{'_'.join(logspace_params)}"
+            f"/alpha{alpha100}_sigmaW{sigma_W}.txt"
+        ).exists()
+    ]
+    init = "\n".join(
+        ["module load python3 cuda", "source /g/data/au05/venv/bin/activate"]
+    )
+    pythonpath = "python3"
+    subjobs = [
+        "\n".join(
+            [init, f'{pythonpath} -c "from RMT import *']
+            + func_calls[i : i + num_func_calls_per_subjob]
+            + ['"']
+        )
+        for i in range(0, len(func_calls), num_func_calls_per_subjob)
+    ]
+    # print(subjobs[0])
+    # return
+    queue_rotation = (
+        ["normal" for _ in range(300)]
+        + ["normalsr" for _ in range(300)]
+        + ["normalbw" for _ in range(300)]
+        + ["normalsl" for _ in range(300)]
+    )
+    qsub_single(
+        subjobs,
+        "/scratch/au05/aw9402/job",
+        q=queue_rotation[: len(subjobs)],
+        storage="gdata/au05+scratch/au05",
+        P="au05",
+        ncpus=1,
+        # ngpus=1,
+        # ncpus=12,
+        walltime="0:59:00",
+    )
+
+
 # at width 1000, depth 50: about 5 seconds on a CPU core
-def submit_RMT(host, q):
+def submit_MLP_log_svdvals(host, q):
     width = 1000
     depth = 50
     num_func_calls_per_subjob = 210
@@ -66,7 +116,7 @@ def submit_RMT(host, q):
     # return
     qsub_gadi(
         subjobs,
-        "/scratch/au05/aw9402" if host == "gadi" else Path(".") / "fig",
+        "/scratch/au05/aw9402/job" if host == "gadi" else Path(".") / "fig",
         q=q,
         storage="gdata/au05+scratch/au05" if host == "gadi" else None,
         P="au05",
@@ -129,7 +179,7 @@ def qsub(
         cmd_list.append("")
     path = Path(path)
     label = datetime.now().strftime(rf"{N}_%Y%m%d_%H%M%S_%f")
-    jobpath = (path / "job" / label).resolve()
+    jobpath = (path / label).resolve()
     jobpath.mkdir(parents=True, exist_ok=True)
     # Create the input files.
     for idx, cmd in enumerate(cmd_list):
@@ -170,57 +220,43 @@ END"""
     return jobids
 
 
-def qsub_gadi(
+def qsub_single(
     cmd_list: list[str],
     path: Path = Path("."),
     N=sys.argv[0] or "job",
     P="''",
-    q="defaultQ",
+    q: str | list[str] = "defaultQ",
     ncpus=1,
     mem="1GB",
     ngpus: int = None,
     walltime="23:59:00",
     storage=None,  # this appears to be specific to NCI Gadi
-    max_array_size=1,
-    max_run_subjobs: int = None,
-    depend_after=False,  # False, True or the name of a job
     print_script=False,
 ):
-    """A `qsub` variant for NCI Gadi because it doesn't accept array jobs.
-    
-    TODO:
-    - Submit to multiple queues simultaneously
+    """A `qsub` variant that does not use array jobs.
+
+    Needed for NCI Gadi.
+
+    If `q` is a list it will rotate through the queues for each job.
     """
     if "/" in N:
         N = N.split("/")[-1]
-    lastjobid = None if depend_after in [False, True] else depend_after
-    if max_run_subjobs is None:
-        max_run_subjobs = max_array_size
-    if len(cmd_list) == 1:
-        cmd_list.append("")
     path = Path(path)
     label = datetime.now().strftime(rf"{N}_%Y%m%d_%H%M%S_%f")
-    jobpath = (path / "job" / label).resolve()
+    jobpath = (path / label).resolve()
     jobpath.mkdir(parents=True, exist_ok=True)
     # Create the input files.
-    for idx, cmd in enumerate(cmd_list):
-        with open(jobpath / f"cmd_{idx}.sh", "w") as f:
+    for cmd_idx, cmd in enumerate(cmd_list):
+        with open(jobpath / f"cmd_{cmd_idx}.sh", "w") as f:
             f.write(cmd)
-    cmd_list_chunks = [
-        cmd_list[i : i + max_array_size]
-        for i in range(0, len(cmd_list), max_array_size)
-    ]
-    # Make sure no array job has length 1.
-    # if len(cmd_list_chunks[-1]) == 1:
-    #     cmd_list_chunks[-1].insert(0, cmd_list_chunks[-2].pop())
     jobids = []
-    for chunk_idx, cmd_list_chunk in enumerate(cmd_list_chunks):
+    for cmd_idx, cmd in enumerate(cmd_list):
         PBS_SCRIPT = f"""<<'END'
 #!/bin/bash
 #PBS -k oed
 #PBS -N {N}
 #PBS -P {P}
-#PBS -q {q}
+#PBS -q {q if isinstance(q, str) else q[cmd_idx % len(q)]}
 #PBS -V
 #PBS -m n
 #PBS -o {jobpath}/ -e {jobpath}/
@@ -229,17 +265,16 @@ def qsub_gadi(
 {f'#PBS -l ngpus={ngpus}' if ngpus else ''}
 #PBS -l walltime={walltime}
 {f'#PBS -l storage={storage}' if storage else ''}
-{('#PBS -W depend=afterany:'+lastjobid) if depend_after and (lastjobid is not None) else ''}
 cd $PBS_O_WORKDIR
-bash {jobpath}/cmd_{chunk_idx}.sh
+bash {jobpath}/cmd_{cmd_idx}.sh
 END"""
-        lastjobid = subprocess.check_output(
+        jobid = subprocess.check_output(
             f"qsub {PBS_SCRIPT}", shell=True, text=True
         ).strip()
-        print(lastjobid)
-        jobids.append(lastjobid)
+        jobids.append(jobid)
         if print_script:
             print(PBS_SCRIPT)
+    print(f"Submitted {len(cmd_list)} jobs: {jobids[0]} ... {jobids[-1]}")
     return jobids
 
 

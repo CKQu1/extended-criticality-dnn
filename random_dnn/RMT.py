@@ -69,7 +69,7 @@ def resolvent_pdf(g1, g2):
     return (g1.imag.sum(1) + g2.imag.sum(1)) / (torch.pi * g2.shape[1])
 
 
-def singular_value_resolvent(
+def cavity_svd_resolvent(
     sing_vals,
     alpha,
     chi_samples,
@@ -104,8 +104,8 @@ def singular_value_resolvent(
     return g1, g2
 
 
-def singular_value_pdf(*args, **kwargs):
-    return resolvent_pdf(*singular_value_resolvent(*args, **kwargs))
+def cavity_svd_pdf(*args, **kwargs):
+    return resolvent_pdf(*cavity_svd_resolvent(*args, **kwargs))
 
 
 def q_star_MC(
@@ -150,11 +150,11 @@ def q_star_MC(
     return qs
 
 
-def jacobian_singular_value_pdf(
-    sing_vals,
-    alpha,
-    sigma_W,
-    sigma_b=0,
+def jac_cavity_svd_pdf(
+    sing_vals: np.ndarray,
+    alpha: float,
+    sigma_W: float,
+    sigma_b: float = 0,
     phi=torch.tanh,
     num_doublings=4,
     num_steps_fn=lambda pop_size: pop_size**2,
@@ -164,6 +164,8 @@ def jacobian_singular_value_pdf(
 
     Because of the two sources of randomness we quickly build the resolvent by iteratively doubling
     its size and running for a number of steps scaling as the square of the population size.
+
+    Accepts and returns a numpy array, but runs on the default torch device.
     """
     q_star = q_star_MC(alpha, sigma_W, sigma_b, phi)[-1]
     pop_size = 1
@@ -178,8 +180,8 @@ def jacobian_singular_value_pdf(
         chi_samples = sigma_W * torch.vmap(torch.func.grad(phi))(
             q_star ** (1 / alpha) * stable_samples
         )
-        g1, g2 = singular_value_resolvent(
-            sing_vals,
+        g1, g2 = cavity_svd_resolvent(
+            torch.tensor(sing_vals),
             alpha,
             chi_samples,
             num_steps_fn(pop_size),
@@ -188,6 +190,19 @@ def jacobian_singular_value_pdf(
             progress=progress,
         )
     return resolvent_pdf(g1, g2).cpu().numpy()
+
+
+from functools import partial
+
+
+def starstar(mapfn, f, kwargs_list) -> list:
+    """Maps `f` to `kwargs_list` using `mapfn`."""
+    return mapfn(partial(apply_kwargs, f), kwargs_list)
+
+
+def apply_kwargs(f, kwargs):
+    """Applies `f` to `kwargs`."""
+    return f(**kwargs)
 
 
 if __name__ == "__main__":
