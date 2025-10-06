@@ -150,7 +150,7 @@ def q_star_MC(
     return qs
 
 
-def jac_cavity_svd_pdf(
+def jac_cavity_svd_log_pdf(
     sing_vals: np.ndarray,
     alpha: float,
     sigma_W: float,
@@ -189,7 +189,7 @@ def jac_cavity_svd_pdf(
             g2=None if i == 0 else g2.repeat(1, 2),
             progress=progress,
         )
-    return resolvent_pdf(g1, g2).cpu().numpy()
+    return resolvent_pdf(g1, g2).abs().log().cpu().numpy()
 
 
 from functools import partial

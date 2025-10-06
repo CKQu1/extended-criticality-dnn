@@ -32,20 +32,23 @@ def consolidate_arrays(path: Path, pattern="alpha*_g*_seed*.txt"):
     del arrays_dict
 
 
-def submit_jac_cavity_svd_pdf(num_doublings=6):
+def submit_jac_cavity_svd_log_pdf(
+    num_doublings="6",
+    logspace_params="-3,3,1000",
+    walltime="0:59:00",
+):
     num_func_calls_per_subjob = 1
-    logspace_params = tuple(map(str, (-3, 3, 1000)))
     func_calls = [
         f"savetxt('{fname}', "
-        "jac_cavity_svd_pdf, "
-        f"np.logspace({','.join(logspace_params)}), "
+        "jac_cavity_svd_log_pdf, "
+        f"np.logspace({logspace_params}), "
         f"{alpha100/100}, {sigma_W/100}, "
         f"num_doublings={num_doublings})"
         for alpha100 in range(100, 201, 5)
         for sigma_W in range(1, 301, 5)
         if not Path(
-            fname := f"fig/jac_cavity_svd_pdf/"
-            f"doublings{num_doublings}_logspace_{'_'.join(logspace_params)}"
+            fname := f"fig/jac_cavity_svd_log_pdf/"
+            f"doublings{num_doublings}_logspace_{logspace_params}"
             f"/alpha{alpha100}_sigmaW{sigma_W}.txt"
         ).exists()
     ]
@@ -63,7 +66,7 @@ def submit_jac_cavity_svd_pdf(num_doublings=6):
     ]
     # print(subjobs[0])
     # return
-    queue_rotation = (
+    queue_rotation = (  # max walltime 48 hours
         ["normal" for _ in range(300)]
         + ["normalsr" for _ in range(300)]
         + ["normalbw" for _ in range(300)]
@@ -78,7 +81,7 @@ def submit_jac_cavity_svd_pdf(num_doublings=6):
         ncpus=1,
         # ngpus=1,
         # ncpus=12,
-        walltime="0:59:00",
+        walltime=walltime,
     )
 
 
@@ -114,7 +117,7 @@ def submit_MLP_log_svdvals(host, q):
     ]
     # print(subjobs[0])
     # return
-    qsub_gadi(
+    qsub_single(
         subjobs,
         "/scratch/au05/aw9402/job" if host == "gadi" else Path(".") / "fig",
         q=q,
