@@ -2,33 +2,90 @@
 
 import sys
 import subprocess
-from datetime import datetime
 import random
+import concurrent.futures as cf
+from datetime import datetime
 from pathlib import Path
 
-import concurrent.futures as cf
 
 scriptpath = "~/wolfram/13.3/Executables/wolframscript"
 
 
-def consolidate_arrays(path: Path, pattern="alpha*_g*_seed*.txt"):
+def updatez(file, *args, **kwds):
+    """Like `np.savez` but appends.
+
+    Follows the logic in the underlying function
+    [`numpy.lib.npyio._savez()`](https://github.com/numpy/numpy/blob/v2.3.0/numpy/lib/_npyio_impl.py#L769).
+
+    Appending with an existing filename in the archive will cause duplicate names,
+    so we only add new names.
+
+    Returns the set of new keys added.
+
+    Refs:
+    - [demonstration on npz file](https://stackoverflow.com/a/66618141)
+    - [append demonstration on compressed zip](https://stackoverflow.com/a/25154589)
+    """
+    import zipfile
+    import numpy as np
+
+    namedict = kwds
+    for i, val in enumerate(args):
+        key = "arr_%d" % i
+        if key in namedict.keys():
+            raise ValueError("Cannot use un-named variables and keyword %s" % key)
+        namedict[key] = val
+
+    with zipfile.ZipFile(file, mode="a") as zipf:
+        new_keys = kwds.keys() - set(zipf.namelist())  # only append new names
+        for key in new_keys:
+            val = np.asanyarray(namedict[key])
+            fname = key + ".npy"
+            with zipf.open(fname, "w", force_zip64=True) as fid:
+                np.lib.format.write_array(fid, val)
+    return new_keys
+
+
+def consolidate_arrays(path: Path, pattern="*.txt", file_delay_minutes=0):
     import numpy as np
     from tqdm import tqdm
 
-    path = Path(path)
-    files = path.glob(pattern)
+    # Find all files matching the pattern that are older than file_delay_minutes
+    current_time_sec = int(datetime.now().timestamp())
+    files = set(
+        f
+        for f in path.glob(pattern)
+        if f.stat().st_mtime < current_time_sec - file_delay_minutes * 60
+    )
+    # If the npz file already exists, skip files that are already in it
+    npz_path = path.with_suffix(".npz")
+    if npz_path.exists():
+        with np.load(npz_path) as npz:
+            files = files - npz.keys()
+    # Load the files in parallel
     arrays_dict = {}
     with cf.ThreadPoolExecutor() as executor:
-        future_to_file_stem = {
-            executor.submit(np.loadtxt, file): file.stem for file in files
+        future_to_file = {
+            executor.submit(np.loadtxt, file): str(file.relative_to(path))
+            for file in files
         }
-        for future in tqdm(cf.as_completed(future_to_file_stem)):
-            file_stem = future_to_file_stem[future]
-            arrays_dict[file_stem] = future.result()
+        for future in tqdm(cf.as_completed(future_to_file)):
+            file = future_to_file[future]
+            arrays_dict[file] = future.result()
     # for file in tqdm(files):
     #     arrays_dict[file.stem] = np.loadtxt(file)
     if arrays_dict:
-        np.savez(path.with_suffix(".npz"), **arrays_dict)
+        # Save to npz, appending if it already exists
+        if npz_path.exists():
+            saved_files = updatez(npz_path, **arrays_dict)
+            print(f"Appended {len(saved_files)} files to {npz_path}")
+        else:
+            np.savez(npz_path, **arrays_dict)
+            saved_files = arrays_dict.keys()
+            print(f"Saved {len(saved_files)} files to {npz_path}")
+        # Delete the saved files
+        for file in saved_files:
+            (path / file).unlink()
     del arrays_dict
 
 
@@ -36,22 +93,37 @@ def submit_jac_cavity_svd_log_pdf(
     num_doublings="6",
     logspace_params="-3,3,1000",
     walltime="0:59:00",
+    mem="1GB",
+    dry=False,
 ):
     num_func_calls_per_subjob = 1
-    func_calls = [
-        f"savetxt('{fname}', "
+    path = (
+        Path("fig")
+        / "jac_cavity_svd_log_pdf"
+        / f"doublings{num_doublings}_logspace_{logspace_params}"
+    )
+    func_calls_dict = {
+        fname: f"savetxt('{path/fname}', "
         "jac_cavity_svd_log_pdf, "
         f"np.logspace({logspace_params}), "
         f"{alpha100/100}, {sigma_W/100}, "
         f"num_doublings={num_doublings})"
         for alpha100 in range(100, 201, 5)
         for sigma_W in range(1, 301, 5)
-        if not Path(
-            fname := f"fig/jac_cavity_svd_log_pdf/"
-            f"doublings{num_doublings}_logspace_{logspace_params}"
-            f"/alpha{alpha100}_sigmaW{sigma_W}.txt"
-        ).exists()
-    ]
+        if not (path / (fname := f"alpha{alpha100}_sigmaW{sigma_W}.txt")).exists()
+    }
+    if path.with_suffix(".npz").exists():
+        import zipfile
+
+        with zipfile.ZipFile(path.with_suffix(".npz"), "r") as zipf:
+            remaining_keys = func_calls_dict.keys() - set(
+                name.removesuffix(".npy") for name in zipf.namelist()
+            )
+            func_calls_dict = {k: func_calls_dict[k] for k in remaining_keys}
+    func_calls = list(func_calls_dict.values())
+    if not func_calls:
+        print("No new files.")
+        return
     init = "\n".join(
         ["module load python3 cuda", "source /g/data/au05/venv/bin/activate"]
     )
@@ -64,8 +136,9 @@ def submit_jac_cavity_svd_log_pdf(
         )
         for i in range(0, len(func_calls), num_func_calls_per_subjob)
     ]
-    # print(subjobs[0])
-    # return
+    if dry:
+        print(f"Would submit {len(subjobs)} jobs.")
+        return
     queue_rotation = (  # max walltime 48 hours
         ["normal" for _ in range(300)]
         + ["normalsr" for _ in range(300)]
@@ -79,14 +152,22 @@ def submit_jac_cavity_svd_log_pdf(
         storage="gdata/au05+scratch/au05",
         P="au05",
         ncpus=1,
+        mem=mem,
         # ngpus=1,
         # ncpus=12,
         walltime=walltime,
     )
 
 
-# at width 1000, depth 50: about 5 seconds on a CPU core
 def submit_MLP_log_svdvals(host, q):
+    """We are chaining function calls to save on the pytorch loading time
+
+    at width 1000, depth 50: about 5 seconds on a CPU core
+
+    TODO: 
+    - combine this and the other submit function into a generalised python function call submission
+        - and provide two wrapper functions for the MLP and RMT evaluations
+    """
     width = 1000
     depth = 50
     num_func_calls_per_subjob = 210
@@ -282,7 +363,17 @@ END"""
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python %s FUNCTION_NAME ARG1 ... ARGN" % sys.argv[0])
-        quit()
-    result = globals()[sys.argv[1]](*sys.argv[2:])
+    # Example usage:
+    # python filename.py func_name arg1_name arg1 arg1_type arg2_name arg2 arg2_type ...
+    # the arguments will be passed in as keyword args
+    import sys
+    from time import time
+
+    tic = time()
+    func = eval(sys.argv[1])
+    args = [sys.argv[i : i + 3] for i in range(2, len(sys.argv), 3)]
+    arg_dict = {arg[0]: eval(arg[2])(arg[1]) for arg in args}
+    result = func(**arg_dict)
+    print(result)
+    toc = time()
+    print(f"Time: {toc - tic:.2f} sec")

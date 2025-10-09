@@ -1,31 +1,72 @@
 import numpy as np
+from tqdm.auto import tqdm
+
 import torch
 from torch.autograd.functional import jacobian
 from torchlevy import stable_dist
 
-# from scipy.stats import levy_stable
+from functools import partial
+from pathlib import Path
+from time import time
+
+# Helper functions
 
 
 def stable_dist_sample(*args, **kwargs):
-    """Wrapper for `stable_dist.sample` that avoids nans"""
+    """Wrapper for `stable_dist.sample` that avoids nans.
+
+    torchlevy has an issue with occasional nans, while scipy is slow at generating stable samples.
+    """
     nanflag = True
     while nanflag:
-        # torchlevy has this issue with occasional nans
         out = stable_dist.sample(*args, **kwargs)
         nanflag = out.sum().isnan()
     return out
 
 
-# LogSingValsMLP[\[Alpha]_, \[Sigma]w_, \[Sigma]b_, \[Phi]_, width_, depth_, fn_ : Identity ] :=
-def MLP_log_svdvals(alpha, sigma_W, sigma_b, phi, width, depth, seed=None, device=None):
-    if seed is not None:
-        torch.manual_seed(seed)
+def savetxt(fname, data):
+    """Save `data` to `fname` with `np.savetxt`.
+
+    If `data` is a dictionary, save its values to separate files suffixed by the keys.
+    """
+    tic = time()
+    Path(fname).parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(data, dict):
+        for key, value in data.items():
+            np.savetxt(f"{fname}_{key}.txt", value)
+    else:
+        np.savetxt(fname, data)
+    print(f"Computed in {time()-tic:.2f} sec and saved to {fname}")
+    return fname
+
+
+# Empirical MLP functions with randomly drawn weights
+
+
+def MLP_log_svdvals(
+    alpha,
+    sigma_W,
+    sigma_b,
+    phi,
+    width,
+    depth,
+    x_init=None,
+    seed=None,
+    device=None,
+    return_full=False,
+):
+    """Get the logarithm of the Jacobian singular values of a random MLP.
+
+    Can optionally return the postactivations too.
+    """
     if device is not None:
         torch.set_default_device(device)
-    x = torch.randn(width)
-    # for _ in (pbar := tqdm(range(depth))):
-    for _ in range(depth):
-        # M = torch.from_numpy(levy_stable.rvs(alpha, 0, scale=sigma_W * width**(-1/alpha), size=(width, width))).to(device, dtype=x.dtype)
+    if seed is not None:
+        torch.manual_seed(seed)
+    x = torch.randn(width) if x_init is None else torch.as_tensor(x_init)
+    postact_arr = torch.zeros((depth, width))
+    log_svdvals_arr = torch.zeros((depth, width))
+    for layer in range(depth):
         M = stable_dist_sample(
             alpha, 0, scale=sigma_W * (2 * width) ** (-1 / alpha), size=(width, width)
         )
@@ -36,32 +77,104 @@ def MLP_log_svdvals(alpha, sigma_W, sigma_b, phi, width, depth, seed=None, devic
         )
         h = M @ x + b
         x = phi(h)
-        # pbar.set_postfix({"mean": x.mean().item(), "std": x.std().item()})
-    # fn@Log@SingularValueList[DiagonalMatrix[\[Phi]'[h]] . M]
-    return torch.linalg.svdvals(jacobian(phi, h) @ M).log().cpu().numpy()
+        postact_arr[layer] = x
+        log_svdvals_arr[layer] = torch.linalg.svdvals(jacobian(phi, h) @ M).log()
+    if return_full:
+        return {
+            "postact": postact_arr.cpu().numpy(),
+            "log_svdvals": log_svdvals_arr.cpu().numpy(),
+            "svd_U": (svd := torch.linalg.svd(jacobian(phi, h) @ M))
+            .U.cpu()
+            .numpy(),  # cols are left sing vecs
+            "svd_Vh": svd.Vh.cpu().numpy(),  # rows are right sing vecs
+        }
+    else:
+        return log_svdvals_arr.cpu().numpy()
 
 
-def worker(sigma_W, alphas, sigma_b, phi, width, depth):
-    return [
-        MLP_log_svdvals(alpha, sigma_W, sigma_b, phi, width, depth).mean().item()
-        for alpha in alphas
-    ]
+# MFT functions
 
 
-from pathlib import Path
-from time import time
+def q_star_MC(
+    alpha,
+    sigma_W,
+    sigma_b=0,
+    phi=torch.tanh,
+    q_init=3.0,
+    tol=1e-9,
+    seed=None,
+    num_samples=int(1e6),
+):
+    """Monte-Carlo version of the fixed point pseudolength.
+
+    A MC approach was needed because evaluating pdfs is slow on scipy
+    and inaccurate on torchlevy, especially for alpha close to 1.
+    This issue does not exist for torchlevy when generating random samples.
+
+    Takes about 10 MB of memory and 0.2 seconds for 1 million samples on cpu,
+    with a numerical error of about 0.5%.
+
+    Returns a list of floats.
+    """
+    qs = [q_init]
+    if seed is not None:
+        torch.manual_seed(seed)
+    if alpha != 2:
+        stable_samples = stable_dist_sample(
+            alpha, scale=2 ** (-1 / alpha), size=num_samples
+        )
+    else:
+        stable_samples = torch.randn(num_samples)
+    converged = False
+    while not converged:
+        q = (sigma_W**alpha) * (
+            abs(phi(qs[-1] ** (1 / alpha) * stable_samples)) ** alpha
+        ).mean() + sigma_b**alpha
+        qs.append(q.item())
+        converged = abs(qs[-1] - qs[-2]) < tol
+    if seed is not None:
+        torch.seed()
+    return qs
 
 
-def savetxt(fname, func, *args, **kwargs):
-    tic = time()
-    Path(fname).parent.mkdir(parents=True, exist_ok=True)
-    data = func(*args, **kwargs)
-    np.savetxt(fname, data)
-    print(f"Computed in {time()-tic:.2f} sec and saved to {fname}")
-    return fname
+def MFT_average(
+    fn,
+    alpha,
+    sigma_W,
+    sigma_b=0,
+    phi=torch.tanh,
+    num_samples=int(1e6),
+    qs=None,
+):
+    """Return the mean-field average of `fn` over the post-activations."""
+    if alpha != 2:
+        stable_samples = stable_dist_sample(
+            alpha, scale=2 ** (-1 / alpha), size=num_samples
+        )
+    else:
+        stable_samples = torch.randn(num_samples)
+    if qs is None:
+        qs = torch.tensor(
+            q_star_MC(
+                alpha,
+                sigma_W,
+                sigma_b,
+                phi,
+                num_samples=num_samples,
+            ),
+            device=stable_samples.device,
+        )
+    try:
+        return fn(phi(qs[:, None] ** (1 / alpha) * stable_samples)).mean(1).tolist()
+    except TypeError:  # fn is a list of functions
+        fn_list = fn
+        return [
+            fn(phi(qs[:, None] ** (1 / alpha) * stable_samples)).mean(1).tolist()
+            for fn in fn_list
+        ]
 
 
-from tqdm.auto import tqdm
+# RMT functions
 
 
 def resolvent_pdf(g1, g2):
@@ -104,52 +217,6 @@ def cavity_svd_resolvent(
     return g1, g2
 
 
-def cavity_svd_pdf(*args, **kwargs):
-    return resolvent_pdf(*cavity_svd_resolvent(*args, **kwargs))
-
-
-def q_star_MC(
-    alpha,
-    sigma_W,
-    sigma_b=0,
-    phi=torch.tanh,
-    q_init=3.0,
-    tol=1e-9,
-    seed=None,
-    num_samples=1000000,
-):
-    """Monte-Carlo version of the fixed point pseudolength.
-
-    A MC approach was needed because evaluating pdfs is slow on scipy
-    and inaccurate on torchlevy, especially for alpha close to 1.
-    This issue does not exist for torchlevy when generating random samples.
-
-    Takes about 10 MB of memory and 0.2 seconds for 1 million samples on cpu,
-    with a numerical error of about 0.5%.
-
-    Returns a list of floats.
-    """
-    qs = [q_init]
-    if seed is not None:
-        torch.manual_seed(seed)
-    if alpha != 2:
-        stable_samples = stable_dist_sample(
-            alpha, scale=2 ** (-1 / alpha), size=num_samples
-        )
-    else:
-        stable_samples = torch.randn(num_samples)
-    converged = False
-    while not converged:
-        q = (sigma_W**alpha) * (
-            abs(phi(qs[-1] ** (1 / alpha) * stable_samples)) ** alpha
-        ).mean() + sigma_b**alpha
-        qs.append(q.item())
-        converged = abs(qs[-1] - qs[-2]) < tol
-    if seed is not None:
-        torch.seed()
-    return qs
-
-
 def jac_cavity_svd_log_pdf(
     sing_vals: np.ndarray,
     alpha: float,
@@ -190,19 +257,6 @@ def jac_cavity_svd_log_pdf(
             progress=progress,
         )
     return resolvent_pdf(g1, g2).abs().log().cpu().numpy()
-
-
-from functools import partial
-
-
-def starstar(mapfn, f, kwargs_list) -> list:
-    """Maps `f` to `kwargs_list` using `mapfn`."""
-    return mapfn(partial(apply_kwargs, f), kwargs_list)
-
-
-def apply_kwargs(f, kwargs):
-    """Applies `f` to `kwargs`."""
-    return f(**kwargs)
 
 
 if __name__ == "__main__":
