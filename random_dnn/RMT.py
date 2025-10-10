@@ -24,20 +24,25 @@ def stable_dist_sample(*args, **kwargs):
     return out
 
 
-def savetxt(fname, data):
-    """Save `data` to `fname` with `np.savetxt`.
+def savetxt(path, func, *args, **kwargs):
+    """Save a function's output to `path`.
 
-    If `data` is a dictionary, save its values to separate files suffixed by the keys.
+    If the output is a dictionary, save its values to separate files with keys added to the stems.
     """
     tic = time()
-    Path(fname).parent.mkdir(parents=True, exist_ok=True)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = func(*args, **kwargs)
     if isinstance(data, dict):
         for key, value in data.items():
-            np.savetxt(f"{fname}_{key}.txt", value)
+            fname = path.with_stem(f"{path.stem};{key}")
+            np.savetxt(fname, value)
+            print(fname)
     else:
-        np.savetxt(fname, data)
-    print(f"Computed in {time()-tic:.2f} sec and saved to {fname}")
-    return fname
+        np.savetxt(path, data)
+        print(path)
+    toc = time()
+    print(f"Computed {func.__name__} in {toc - tic:.2f} sec")
 
 
 # Empirical MLP functions with randomly drawn weights
@@ -57,7 +62,15 @@ def MLP_log_svdvals(
 ):
     """Get the logarithm of the Jacobian singular values of a random MLP.
 
-    Can optionally return the postactivations too.
+    The goal of this function is to look at the steady state statistics of the MLP.
+    Computes the sing vals at each layer
+
+    TODO: For the signal propagation through each layer write another function that
+    vectorises over the inputs for the same weights (can get the jacobians for that as a 3D array).
+    - for that one can aggregate over the sing vals (mean, CV, skew, kurtosis)
+      and the sing vecs (
+
+    Can optionally return the postactivations and final layer Jacobian singular vectors.
     """
     if device is not None:
         torch.set_default_device(device)
@@ -271,6 +284,7 @@ if __name__ == "__main__":
     args = [sys.argv[i : i + 3] for i in range(2, len(sys.argv), 3)]
     arg_dict = {arg[0]: eval(arg[2])(arg[1]) for arg in args}
     result = func(**arg_dict)
-    print(result)
+    if result is not None:
+        print(result)
     toc = time()
-    print(f"Time: {toc - tic:.2f} sec")
+    print(f"Script time: {toc - tic:.2f} sec")

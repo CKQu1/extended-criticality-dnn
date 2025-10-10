@@ -1,14 +1,13 @@
 """Submit the RMT code to the cluster."""
 
+import platform
 import sys
 import subprocess
 import random
 import concurrent.futures as cf
 from datetime import datetime
 from pathlib import Path
-
-
-scriptpath = "~/wolfram/13.3/Executables/wolframscript"
+from typing import Union
 
 
 def updatez(file, *args, **kwds):
@@ -92,160 +91,161 @@ def consolidate_arrays(path: Path, pattern="*.txt", file_delay_minutes=0):
 def submit_jac_cavity_svd_log_pdf(
     num_doublings="6",
     logspace_params="-3,3,1000",
-    walltime="0:59:00",
-    mem="1GB",
-    dry=False,
+    alpha100_step=5,
+    sigmaW100_step=5,
+    **submit_python_kwargs,
 ):
-    num_func_calls_per_subjob = 1
-    path = (
+    dir = (
         Path("fig")
         / "jac_cavity_svd_log_pdf"
-        / f"doublings{num_doublings}_logspace_{logspace_params}"
+        / f"num_doublings={num_doublings};logspace_params={logspace_params}"
     )
     func_calls_dict = {
-        fname: f"savetxt('{path/fname}', "
-        "jac_cavity_svd_log_pdf, "
-        f"np.logspace({logspace_params}), "
-        f"{alpha100/100}, {sigma_W/100}, "
-        f"num_doublings={num_doublings})"
-        for alpha100 in range(100, 201, 5)
-        for sigma_W in range(1, 301, 5)
-        if not (path / (fname := f"alpha{alpha100}_sigmaW{sigma_W}.txt")).exists()
+        (
+            fname := f"alpha100={alpha100};sigmaW100={sigmaW100}.txt"
+        ): f"savetxt('{dir/fname}', jac_cavity_svd_log_pdf, np.logspace({logspace_params}), {alpha100/100}, {sigmaW100/100}, num_doublings={num_doublings})"
+        for alpha100 in range(100, 201, alpha100_step)
+        for sigmaW100 in range(1, 301, sigmaW100_step)
     }
-    if path.with_suffix(".npz").exists():
+    submit_python_funcs(func_calls_dict, dir=dir, **submit_python_kwargs)
+
+
+def submit_MLP_log_svdvals(
+    width=1000,
+    depth=50,
+    alpha100_step=5,
+    sigmaW100_step=5,
+    num_seeds=50,
+    **submit_python_kwargs,
+):
+    """at width 1000, depth 50: about 5 seconds on a CPU core"""
+    submit_python_kwargs = {
+        "num_func_calls_per_job": 210,
+        **submit_python_kwargs,
+    }
+    dir = Path("fig") / "MLP_log_svdvals" / f"width={width};depth={depth}"
+    func_calls_dict = {
+        (fname := Path(f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"))
+        .with_stem(fname.stem + f";log_svdvals")
+        .name: f"savetxt('{dir/fname}', MLP_log_svdvals, {alpha100/100}, {sigmaW100/100}, 0, torch.tanh, {width}, {depth}, seed={seed}, device='cpu', return_full=True)"
+        for alpha100 in range(100, 201, alpha100_step)
+        for sigmaW100 in range(1, 301, sigmaW100_step)
+        for seed in range(num_seeds)
+    }
+    submit_python_funcs(func_calls_dict, dir=dir, **submit_python_kwargs)
+
+
+# General submission functions
+
+
+def submit_python_funcs(
+    func_calls_dict: dict[str, str],
+    dir: Path,
+    num_func_calls_per_job=1,
+    init: str = None,  # modules and venvs
+    pythonpath: str = "python3",
+    init_call: str = "from RMT import *",
+    dry=False,
+    qsub_func=None,
+    **qsub_kwargs,
+):
+    """A cluster workflow for Python function calls.
+
+    Chains python function calls in a single instance to save on the library loading time.
+    Useful for libraries like pytorch which load slowly.
+
+    Each func call is associated with a file to be checked in either the directory or the corresponding npz archives.
+    File paths are relative and correspond to the file name in the folder or npz archive.
+    If the file name exists, the corresponding function call is not run.
+
+    Note: this can be generalised for function calls in other languages, and to arbitrary archive formats.
+
+    Defaults for USYD Physics and NCI Gadi clusters are provided.
+    """
+    if platform.node().endswith("physics.usyd.edu.au"):
+        if init is None:
+            init = "source /import/silo3/wardak/.venv/bin/activate"
+        if qsub_func is None:
+            qsub_func = qsub
+        default_qsub_kwargs = dict(
+            path="/taiji1/wardak/job",
+            q="defaultQ",  # see email for rules
+        )
+    elif platform.node().endswith("gadi.nci.org.au"):
+        if init is None:
+            init = "\n".join(
+                ["module load python3 cuda", "source /g/data/au05/venv/bin/activate"]
+            )
+        if qsub_func is None:
+            qsub_func = qsub_single
+        default_qsub_kwargs = dict(
+            path="/scratch/au05/aw9402/job",
+            q=[
+                "normal",
+                "normalsr",
+                "normalbw",
+                "normalsl",
+            ],  # max walltime 48 hours, 300 jobs per queue
+            # gpu queues require 12 cpus per gpu
+            storage="gdata/au05+scratch/au05",
+            P="au05",
+        )
+    else:
+        if init is None:
+            init = ""
+        if qsub_func is None:
+            qsub_func = qsub
+        default_qsub_kwargs = dict()
+    qsub_kwargs = {
+        "mem": "4GB",
+        "walltime": "0:59:00",
+        **default_qsub_kwargs,
+        **qsub_kwargs,
+    }
+    # === End of defaults ===
+    remaining_func_calls_dict = {
+        fname: fcall
+        for fname, fcall in func_calls_dict.items()
+        if not (dir / fname).exists()
+    }
+    if dir.with_suffix(".npz").exists():
         import zipfile
 
-        with zipfile.ZipFile(path.with_suffix(".npz"), "r") as zipf:
-            remaining_keys = func_calls_dict.keys() - set(
+        with zipfile.ZipFile(dir.with_suffix(".npz"), "r") as zipf:
+            remaining_keys = remaining_func_calls_dict.keys() - set(
                 name.removesuffix(".npy") for name in zipf.namelist()
             )
-            func_calls_dict = {k: func_calls_dict[k] for k in remaining_keys}
-    func_calls = list(func_calls_dict.values())
+            remaining_func_calls_dict = {
+                k: remaining_func_calls_dict[k] for k in remaining_keys
+            }
+    func_calls = list(remaining_func_calls_dict.values())
+    print(f"{len(func_calls)}/{len(func_calls_dict)} function calls to run.")
     if not func_calls:
-        print("No new files.")
         return
-    init = "\n".join(
-        ["module load python3 cuda", "source /g/data/au05/venv/bin/activate"]
+    newline = (
+        "\n"  # avoids SyntaxError: f-string expression part cannot include a backslash
     )
-    pythonpath = "python3"
-    subjobs = [
-        "\n".join(
-            [init, f'{pythonpath} -c "from RMT import *']
-            + func_calls[i : i + num_func_calls_per_subjob]
-            + ['"']
-        )
-        for i in range(0, len(func_calls), num_func_calls_per_subjob)
+    cmd_list = [
+        rf"""
+{init}
+{pythonpath} - <<'HEREEND'
+{init_call}
+{newline.join(func_calls[i : i + num_func_calls_per_job])}
+HEREEND"""
+        for i in range(0, len(func_calls), num_func_calls_per_job)
     ]
     if dry:
-        print(f"Would submit {len(subjobs)} jobs.")
+        print(f"Would submit {len(cmd_list)} jobs.")
         return
-    queue_rotation = (  # max walltime 48 hours
-        ["normal" for _ in range(300)]
-        + ["normalsr" for _ in range(300)]
-        + ["normalbw" for _ in range(300)]
-        + ["normalsl" for _ in range(300)]
-    )
-    qsub_single(
-        subjobs,
-        "/scratch/au05/aw9402/job",
-        q=queue_rotation[: len(subjobs)],
-        storage="gdata/au05+scratch/au05",
-        P="au05",
-        ncpus=1,
-        mem=mem,
-        # ngpus=1,
-        # ncpus=12,
-        walltime=walltime,
-    )
-
-
-def submit_MLP_log_svdvals(host, q):
-    """We are chaining function calls to save on the pytorch loading time
-
-    at width 1000, depth 50: about 5 seconds on a CPU core
-
-    TODO: 
-    - combine this and the other submit function into a generalised python function call submission
-        - and provide two wrapper functions for the MLP and RMT evaluations
-    """
-    width = 1000
-    depth = 50
-    num_func_calls_per_subjob = 210
-    func_calls = [
-        f"savetxt('{fname}', MLP_log_svdvals, {alpha100/100}, {g100/100}, 0, torch.tanh, {width}, {depth}, seed={seed}, device='cpu')"
-        for alpha100 in range(100, 201, 5)
-        for g100 in range(1, 301, 5)
-        for seed in range(50)
-        if not Path(
-            fname := f"fig/MLP_log_svdvals/width{width}_depth{depth}/alpha{alpha100}_g{g100}_seed{seed}.txt"
-        ).exists()
-    ]
-    if host == "headnode":
-        init = "source /import/silo3/wardak/.venv/bin/activate"
-        pythonpath = "python"
-    elif host == "gadi":
-        init = "\n".join(
-            ["module load python3 cuda", "source /g/data/au05/venv/bin/activate"]
-        )
-        pythonpath = "python3"
-    subjobs = [
-        "\n".join(
-            [init, f'{pythonpath} -c "from RMT import *']
-            + func_calls[i : i + num_func_calls_per_subjob]
-            + ['"']
-        )
-        for i in range(0, len(func_calls), num_func_calls_per_subjob)
-    ]
-    # print(subjobs[0])
-    # return
-    qsub_single(
-        subjobs,
-        "/scratch/au05/aw9402/job" if host == "gadi" else Path(".") / "fig",
-        q=q,
-        storage="gdata/au05+scratch/au05" if host == "gadi" else None,
-        P="au05",
-        ncpus=1,
-        # ngpus=1,
-        # ncpus=12,
-        walltime="0:59:00",
-    )
-
-
-def submit_qmap():
-    cmd_list = [
-        f"""
-            {scriptpath} -f theory.wl "PutLogQMap[{alpha100}, {g100}, 0]"
-        """
-        for alpha100 in range(100, 201, 5)
-        for g100 in range(0, 301, 5)[1:]
-    ]
-    random.shuffle(cmd_list)
-    jobids = qsub(cmd_list, Path(".") / "fig")
-    # submit_reducer(jobids[-1])
-
-
-def submit_reducer(depend_after=False):
-    cmd_list = [
-        rf"""{scriptpath} -f theory.wl "SavePuts[\"empiricalMLP\", None]" """,
-        # rf"""{scriptpath} -f theory.wl "SavePuts[\"loginvCDF_1000\", \"Table\", ToExpression]" """,
-        # rf"""{scriptpath} -f theory.wl SavePuts[\"empiricalLogSingVals_1000_50\"]""",
-        # rf"""{scriptpath} -f theory.wl SavePuts[\"empiricalLogAbsEigs_1000_50\"]""",
-    ]
-    qsub(
-        cmd_list,
-        Path(".") / "fig",
-        "consolidator",
-        mem="16GB",
-        depend_after=depend_after,
-    )
+    qsub_func(cmd_list, **qsub_kwargs)
 
 
 def qsub(
     cmd_list: list[str],
-    path: Path = Path("."),
+    path: Path = Path("."),  # where to save the job info
     N=sys.argv[0] or "job",
     P="''",
-    q="defaultQ",
+    q: Union[str, list[str]] = "defaultQ",
     select=1,
     ncpus=1,
     mem="1GB",
@@ -256,6 +256,8 @@ def qsub(
     depend_after=False,  # False, True or the name of a job
     print_script=False,
 ):
+    if "/" in N:
+        N = N.split("/")[-1]
     lastjobid = None if depend_after in [False, True] else depend_after
     if max_run_subjobs is None:
         max_run_subjobs = max_array_size
@@ -283,7 +285,7 @@ def qsub(
 #PBS -k oed
 #PBS -N {N}
 #PBS -P {P}
-#PBS -q {q}
+#PBS -q {q if isinstance(q, str) else q[chunk_idx % len(q)]}
 #PBS -V
 #PBS -m n
 #PBS -o {jobpath}/ -e {jobpath}/
@@ -309,7 +311,7 @@ def qsub_single(
     path: Path = Path("."),
     N=sys.argv[0] or "job",
     P="''",
-    q: str | list[str] = "defaultQ",
+    q: Union[str, list[str]] = "defaultQ",
     ncpus=1,
     mem="1GB",
     ngpus: int = None,
@@ -374,6 +376,7 @@ if __name__ == "__main__":
     args = [sys.argv[i : i + 3] for i in range(2, len(sys.argv), 3)]
     arg_dict = {arg[0]: eval(arg[2])(arg[1]) for arg in args}
     result = func(**arg_dict)
-    print(result)
+    if result is not None:
+        print(result)
     toc = time()
-    print(f"Time: {toc - tic:.2f} sec")
+    print(f"Script time: {toc - tic:.2f} sec")
