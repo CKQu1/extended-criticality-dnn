@@ -2,7 +2,9 @@ import numpy as np
 from tqdm.auto import tqdm
 
 import torch
-from torch.autograd.functional import jacobian
+
+# from torch.autograd.functional import jacobian
+from torch.func import vmap, jacrev
 from torchlevy import stable_dist
 
 from functools import partial
@@ -48,61 +50,168 @@ def savetxt(path, func, *args, **kwargs):
 # Empirical MLP functions with randomly drawn weights
 
 
-def MLP_log_svdvals(
+def MLP(
+    x0,  # shape: (num_inputs, width)
+    depth,
     alpha,
     sigma_W,
-    sigma_b,
-    phi,
-    width,
-    depth,
-    x_init=None,
+    sigma_b=0,
+    phi=torch.tanh,
     seed=None,
     device=None,
-    return_full=False,
+    compute_uv=False,  # whether to compute singular vectors as well as values
 ):
-    """Get the logarithm of the Jacobian singular values of a random MLP.
+    """full stats of an MLP over depth and inputs (single realisation)
 
-    The goal of this function is to look at the steady state statistics of the MLP.
-    Computes the sing vals at each layer
-
-    TODO: For the signal propagation through each layer write another function that
-    vectorises over the inputs for the same weights (can get the jacobians for that as a 3D array).
-    - for that one can aggregate over the sing vals (mean, CV, skew, kurtosis)
-      and the sing vecs (
-
-    Can optionally return the postactivations and final layer Jacobian singular vectors.
+    Returns a dict of arrays with shapes:
+    - postact: (depth, num_inputs, width)
+    - log_svdvals: (depth, num_inputs, width)
+    - svd_left, svd_right: (depth, num_inputs, width, width) if compute_uv
     """
+    x = torch.as_tensor(x0)
+    num_inputs, width = x.shape
+    h = torch.zeros_like(x)
     if device is not None:
         torch.set_default_device(device)
     if seed is not None:
         torch.manual_seed(seed)
-    x = torch.randn(width) if x_init is None else torch.as_tensor(x_init)
-    postact_arr = torch.zeros((depth, width))
-    log_svdvals_arr = torch.zeros((depth, width))
+    diag_phi_prime = vmap(jacrev(phi))
+    postacts = torch.zeros(depth, num_inputs, width)
+    log_svdvals = torch.zeros(depth, num_inputs, width)
+    if compute_uv:
+        # the first sing vec is left_svdvecs[0, 0, :]
+        left_svdvecs = torch.zeros(depth, num_inputs, width, width)
+        right_svdvecs = torch.zeros(depth, num_inputs, width, width)
     for layer in range(depth):
-        M = stable_dist_sample(
-            alpha, 0, scale=sigma_W * (2 * width) ** (-1 / alpha), size=(width, width)
-        )
+        W = stable_dist_sample(
+            alpha,
+            0,
+            scale=sigma_W * (2 * width) ** (-1 / alpha),
+            size=(width, width),
+        )  # transposed to make the matrix multiplication faster
         b = (
-            stable_dist_sample(alpha, 0, scale=sigma_b * 2 ** (-1 / alpha), size=width)
+            stable_dist_sample(
+                alpha,
+                0,
+                scale=sigma_b * 2 ** (-1 / alpha),
+                size=width,
+            )
             if sigma_b > 0
             else 0
         )
-        h = M @ x + b
+        h = torch.einsum("ij, bj -> bi", W, x) + b
         x = phi(h)
-        postact_arr[layer] = x
-        log_svdvals_arr[layer] = torch.linalg.svdvals(jacobian(phi, h) @ M).log()
-    if return_full:
+        postacts[layer] = x
+        # compute $$ D^l W^l $$ where $$ D^l := \diag\phi'(h^l) $$ (Eq. 2 of Pennington et al. 2018 AISTATS)
+        layerwise_jac = torch.einsum("bii, ij -> bij", diag_phi_prime(h), W)
+        if compute_uv:
+            svd = torch.linalg.svd(layerwise_jac)  # automatically broadcasts
+            log_svdvals[layer] = svd.S.log()
+            # rows of Vh are the right sing vecs of the argument to torch.linalg.svd
+            right_svdvecs[layer] = svd.Vh
+            left_svdvecs[layer] = svd.U.transpose(-1, -2)
+        else:
+            log_svdvals[layer] = torch.linalg.svdvals(layerwise_jac).log()
+    if compute_uv:
         return {
-            "postact": postact_arr.cpu().numpy(),
-            "log_svdvals": log_svdvals_arr.cpu().numpy(),
-            "svd_U": (svd := torch.linalg.svd(jacobian(phi, h) @ M))
-            .U.cpu()
-            .numpy(),  # cols are left sing vecs
-            "svd_Vh": svd.Vh.cpu().numpy(),  # rows are right sing vecs
+            "postact": postacts.cpu().numpy(),
+            "log_svdvals": log_svdvals.cpu().numpy(),
+            "svd_left": left_svdvecs.cpu().numpy(),
+            "svd_right": right_svdvecs.cpu().numpy(),
         }
     else:
-        return log_svdvals_arr.cpu().numpy()
+        return {
+            "postact": postacts.cpu().numpy(),
+            "log_svdvals": log_svdvals.cpu().numpy(),
+        }
+
+
+# this func is helpful because otherwise you need to aggregate over a lot of data
+# so you can agg on the fly (per layer) and save the aggs over realisations
+
+
+def MLP_agg(
+    x0,  # shape: (width,)
+    depth,
+    num_realisations,
+    alpha,
+    sigma_W,
+    sigma_b=0,
+    phi=torch.tanh,
+    seed=None,
+    device=None,
+    agg_postact=lambda x: (x**2).mean(-1),
+    agg_log_svdvals=lambda log_svdvals: torch.stack(
+        (
+            mean_over_neurons := log_svdvals.mean(-1),
+            (
+                (central_log_svdvals := (log_svdvals - mean_over_neurons[..., None]))
+                ** 2
+            ).mean(-1),
+            (central_log_svdvals**3).mean(-1),
+            (central_log_svdvals**4).mean(-1),
+        )
+    ),
+    agg_uv=None,
+):
+    """Returns a dict of arrays with shapes (depth, ...)"""
+    x = torch.tensor(x0)
+    (width,) = x.shape
+    x = x.broadcast_to((num_realisations, width))
+    h = torch.zeros((num_realisations, width))
+    if device is not None:
+        torch.set_default_device(device)
+    if seed is not None:
+        torch.manual_seed(seed)
+    diag_phi_prime = vmap(jacrev(phi))
+
+    postacts_list = []
+    log_svdvals_list = []
+    if agg_uv is not None:
+        left_svdvecs_list = []
+        right_svdvecs_list = []
+    for layer in range(depth):
+        W = stable_dist_sample(
+            alpha,
+            0,
+            scale=sigma_W * (2 * width) ** (-1 / alpha),
+            size=(num_realisations, width, width),
+        )
+        b = (
+            stable_dist_sample(
+                alpha,
+                0,
+                scale=sigma_b * 2 ** (-1 / alpha),
+                size=(num_realisations, width),
+            )
+            if sigma_b > 0
+            else 0
+        )
+        h = torch.einsum("bij, bj -> bi", W, x) + b
+        x = phi(h)
+        postacts_list.append(agg_postact(x))
+        layerwise_jac = torch.einsum("bii, bij -> bij", diag_phi_prime(h), W)
+        if agg_uv is not None:
+            svd = torch.linalg.svd(layerwise_jac)
+            log_svdvals_list.append(agg_log_svdvals(svd.S.log()))
+            right_svdvecs_list.append(agg_uv(svd.Vh))
+            left_svdvecs_list.append(agg_uv(svd.U.transpose(-1, -2)))
+        else:
+            log_svdvals_list.append(
+                agg_log_svdvals(torch.linalg.svdvals(layerwise_jac).log())
+            )
+    if agg_uv is not None:
+        return {
+            "postact": torch.stack(postacts_list).cpu().numpy(),
+            "log_svdvals": torch.stack(log_svdvals_list).cpu().numpy(),
+            "svd_left": torch.stack(left_svdvecs_list).cpu().numpy(),
+            "svd_right": torch.stack(right_svdvecs_list).cpu().numpy(),
+        }
+    else:
+        return {
+            "postact": torch.stack(postacts_list).cpu().numpy(),
+            "log_svdvals": torch.stack(log_svdvals_list).cpu().numpy(),
+        }
 
 
 # MFT functions
