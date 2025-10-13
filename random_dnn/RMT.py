@@ -26,15 +26,20 @@ def stable_dist_sample(*args, **kwargs):
     return out
 
 
-def savetxt(path, func, *args, **kwargs):
-    """Save a function's output to `path`.
+def call_save(path, func, *args, **kwargs):
+    """Call `func` with `args` and `kwargs`, saving the output to `path`."""
+    tic = time()
+    savetxt(path, func(*args, **kwargs))
+    print(f"Function {func.__name__} took {time() - tic:.2f} sec")
+
+
+def savetxt(path, data):
+    """Save `data` to `path`.
 
     If the output is a dictionary, save its values to separate files with keys added to the stems.
     """
-    tic = time()
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = func(*args, **kwargs)
     if isinstance(data, dict):
         for key, value in data.items():
             fname = path.with_stem(f"{path.stem};{key}")
@@ -43,8 +48,6 @@ def savetxt(path, func, *args, **kwargs):
     else:
         np.savetxt(path, data)
         print(path)
-    toc = time()
-    print(f"Computed {func.__name__} in {toc - tic:.2f} sec")
 
 
 # Empirical MLP functions with randomly drawn weights
@@ -67,8 +70,13 @@ def MLP(
     - postact: (depth, num_inputs, width)
     - log_svdvals: (depth, num_inputs, width)
     - svd_left, svd_right: (depth, num_inputs, width, width) if compute_uv
+
+    If a single input is passed the num_inputs dimension is squeezed out.
     """
     x = torch.as_tensor(x0)
+    squeezed = x.ndim == 1
+    if squeezed:
+        x = x.unsqueeze(0)
     num_inputs, width = x.shape
     h = torch.zeros_like(x)
     if device is not None:
@@ -112,6 +120,12 @@ def MLP(
             left_svdvecs[layer] = svd.U.transpose(-1, -2)
         else:
             log_svdvals[layer] = torch.linalg.svdvals(layerwise_jac).log()
+    if squeezed:
+        postacts = postacts.squeeze(1)
+        log_svdvals = log_svdvals.squeeze(1)
+        if compute_uv:
+            left_svdvecs = left_svdvecs.squeeze(1)
+            right_svdvecs = right_svdvecs.squeeze(1)
     if compute_uv:
         return {
             "postact": postacts.cpu().numpy(),
@@ -126,8 +140,10 @@ def MLP(
         }
 
 
-# this func is helpful because otherwise you need to aggregate over a lot of data
-# so you can agg on the fly (per layer) and save the aggs over realisations
+def multifractal_dim(v, q, dim=-1):
+    return torch.log((torch.as_tensor(v).abs() ** (2 * q)).sum(dim)) / (
+        np.log(v.shape[dim]) * (1 - q)
+    )
 
 
 def MLP_agg(
@@ -140,21 +156,28 @@ def MLP_agg(
     phi=torch.tanh,
     seed=None,
     device=None,
-    agg_postact=lambda x: (x**2).mean(-1),
-    agg_log_svdvals=lambda log_svdvals: torch.stack(
-        (
-            mean_over_neurons := log_svdvals.mean(-1),
-            (
-                (central_log_svdvals := (log_svdvals - mean_over_neurons[..., None]))
-                ** 2
-            ).mean(-1),
-            (central_log_svdvals**3).mean(-1),
-            (central_log_svdvals**4).mean(-1),
-        )
-    ),
-    agg_uv=None,
+    agg_postact=lambda x: {"sq_mean": (x**2).mean(-1)},
+    agg_log_svdvals=lambda log_svdvals: {
+        "mean": (mean := log_svdvals.mean(-1)),
+        "std": (
+            std := ((central_log_svdvals := (log_svdvals - mean[..., None])) ** 2)
+            .mean(-1)
+            .sqrt()
+        ),
+        "skew": (central_log_svdvals**3).mean(-1) / std**3,
+        "kurt": (central_log_svdvals**4).mean(-1) / std**4,
+    },
+    agg_uv=lambda arr: {
+        "D2_mean": (D2 := multifractal_dim(arr, 2)).mean(-1),
+        "D2_std": D2.std(-1),
+    },
 ):
-    """Returns a dict of arrays with shapes (depth, ...)"""
+    """Aggregated stats of random MLP realisations.
+
+    Works with torch tensors internally but returns numpy arrays.
+
+    Returns a dict of arrays with shapes (depth, ...)
+    """
     x = torch.tensor(x0)
     (width,) = x.shape
     x = x.broadcast_to((num_realisations, width))
@@ -170,7 +193,7 @@ def MLP_agg(
     if agg_uv is not None:
         left_svdvecs_list = []
         right_svdvecs_list = []
-    for layer in range(depth):
+    for layer in tqdm(range(depth)):
         W = stable_dist_sample(
             alpha,
             0,
@@ -200,18 +223,23 @@ def MLP_agg(
             log_svdvals_list.append(
                 agg_log_svdvals(torch.linalg.svdvals(layerwise_jac).log())
             )
-    if agg_uv is not None:
-        return {
-            "postact": torch.stack(postacts_list).cpu().numpy(),
-            "log_svdvals": torch.stack(log_svdvals_list).cpu().numpy(),
-            "svd_left": torch.stack(left_svdvecs_list).cpu().numpy(),
-            "svd_right": torch.stack(right_svdvecs_list).cpu().numpy(),
-        }
-    else:
-        return {
-            "postact": torch.stack(postacts_list).cpu().numpy(),
-            "log_svdvals": torch.stack(log_svdvals_list).cpu().numpy(),
-        }
+    out = {}
+    for agg_fn, agg_list, agg_name in [
+        (agg_postact, postacts_list, "postact"),
+        (agg_log_svdvals, log_svdvals_list, "log_svdvals"),
+        (agg_uv, left_svdvecs_list, "svd_left"),
+        (agg_uv, right_svdvecs_list, "svd_right"),
+    ]:
+        if agg_fn is not None:
+            out.update(
+                {
+                    f"{agg_name}_{key}": torch.stack([agg[key] for agg in agg_list])
+                    .cpu()
+                    .numpy()
+                    for key in agg_list[0]
+                }
+            )
+    return out
 
 
 # MFT functions

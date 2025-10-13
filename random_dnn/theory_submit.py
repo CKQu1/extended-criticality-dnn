@@ -110,27 +110,33 @@ def submit_jac_cavity_svd_log_pdf(
     submit_python_funcs(func_calls_dict, dir=dir, **submit_python_kwargs)
 
 
-def submit_MLP_log_svdvals(
+def submit_MLP_agg(
     width=1000,
     depth=50,
     alpha100_step=5,
     sigmaW100_step=5,
-    num_seeds=50,
+    num_realisations=50,
+    seeds=range(1),
     **submit_python_kwargs,
 ):
-    """at width 1000, depth 50: about 5 seconds on a CPU core"""
     submit_python_kwargs = {
-        "num_func_calls_per_job": 210,
+        # "num_func_calls_per_job": 210,
+        "mem": "8GB",
+        "walltime": "5:59:00",
         **submit_python_kwargs,
     }
-    dir = Path("fig") / "MLP_log_svdvals" / f"width={width};depth={depth}"
+    dir = (
+        Path("fig")
+        / "MLP_agg"
+        / f"width={width};depth={depth};num_realisations={num_realisations}"
+    )
     func_calls_dict = {
         (fname := Path(f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"))
         .with_stem(fname.stem + f";log_svdvals")
-        .name: f"savetxt('{dir/fname}', MLP_log_svdvals, {alpha100/100}, {sigmaW100/100}, 0, torch.tanh, {width}, {depth}, seed={seed}, device='cpu', return_full=True)"
+        .name: f"call_save('{dir/fname}', MLP_agg, torch.linspace(-1, 1, {width}), {depth}, {num_realisations}, {alpha100/100}, {sigmaW100/100}, seed={seed}, device='cpu')"
         for alpha100 in range(100, 201, alpha100_step)
         for sigmaW100 in range(1, 301, sigmaW100_step)
-        for seed in range(num_seeds)
+        for seed in seeds
     }
     submit_python_funcs(func_calls_dict, dir=dir, **submit_python_kwargs)
 
@@ -180,12 +186,17 @@ def submit_python_funcs(
             qsub_func = qsub_single
         default_qsub_kwargs = dict(
             path="/scratch/au05/aw9402/job",
+            # normal queues: max walltime 48 hours, 300 jobs per queue
             q=[
-                "normal",
-                "normalsr",
-                "normalbw",
-                "normalsl",
-            ],  # max walltime 48 hours, 300 jobs per queue
+                q
+                for q in [
+                    "normal",
+                    "normalsr",
+                    "normalbw",
+                    "normalsl",
+                ]
+                for _ in range(300)
+            ],
             # gpu queues require 12 cpus per gpu
             storage="gdata/au05+scratch/au05",
             P="au05",
