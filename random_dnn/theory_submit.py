@@ -89,12 +89,18 @@ def consolidate_arrays(path: Path, pattern="*.txt", file_delay_minutes=0):
 
 
 def submit_jac_cavity_svd_log_pdf(
-    num_doublings="6",
-    logspace_params="-3,3,1000",
+    num_doublings="8",
+    logspace_params="-10,10,1000",
     alpha100_step=5,
     sigmaW100_step=5,
     **submit_python_kwargs,
 ):
+    # 8 GB for 10 doublings
+    submit_python_kwargs = {
+        "mem": "8GB",
+        "walltime": "0:59:00",
+        **submit_python_kwargs,
+    }
     dir = (
         Path("fig")
         / "jac_cavity_svd_log_pdf"
@@ -103,7 +109,7 @@ def submit_jac_cavity_svd_log_pdf(
     func_calls_dict = {
         (
             fname := f"alpha100={alpha100};sigmaW100={sigmaW100}.txt"
-        ): f"savetxt('{dir/fname}', jac_cavity_svd_log_pdf, np.logspace({logspace_params}), {alpha100/100}, {sigmaW100/100}, num_doublings={num_doublings})"
+        ): f"call_save('{dir/fname}', jac_cavity_svd_log_pdf, np.logspace({logspace_params}), {alpha100/100}, {sigmaW100/100}, num_doublings={num_doublings})"
         for alpha100 in range(100, 201, alpha100_step)
         for sigmaW100 in range(1, 301, sigmaW100_step)
     }
@@ -132,7 +138,7 @@ def submit_MLP_agg(
     )
     func_calls_dict = {
         (fname := Path(f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"))
-        .with_stem(fname.stem + f";log_svdvals")
+        .with_stem(fname.stem + f";log_svdvals_mean")
         .name: f"call_save('{dir/fname}', MLP_agg, torch.linspace(-1, 1, {width}), {depth}, {num_realisations}, {alpha100/100}, {sigmaW100/100}, seed={seed}, device='cpu')"
         for alpha100 in range(100, 201, alpha100_step)
         for sigmaW100 in range(1, 301, sigmaW100_step)

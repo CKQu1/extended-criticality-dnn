@@ -193,7 +193,7 @@ def MLP_agg(
     if agg_uv is not None:
         left_svdvecs_list = []
         right_svdvecs_list = []
-    for layer in tqdm(range(depth)):
+    for layer in range(depth):
         W = stable_dist_sample(
             alpha,
             0,
@@ -384,8 +384,10 @@ def jac_cavity_svd_log_pdf(
 
     Accepts and returns a numpy array, but runs on the default torch device.
     """
+    sing_vals_tensor = torch.tensor(sing_vals)
     q_star = q_star_MC(alpha, sigma_W, sigma_b, phi)[-1]
     pop_size = 1
+    phi_prime = torch.vmap(torch.func.grad(phi))
     for i in range(num_doublings):
         pop_size *= 2
         if alpha != 2:
@@ -394,11 +396,9 @@ def jac_cavity_svd_log_pdf(
             )
         else:
             stable_samples = torch.randn(pop_size)
-        chi_samples = sigma_W * torch.vmap(torch.func.grad(phi))(
-            q_star ** (1 / alpha) * stable_samples
-        )
+        chi_samples = sigma_W * phi_prime(q_star ** (1 / alpha) * stable_samples)
         g1, g2 = cavity_svd_resolvent(
-            torch.tensor(sing_vals),
+            sing_vals_tensor,
             alpha,
             chi_samples,
             num_steps_fn(pop_size),
