@@ -1,5 +1,10 @@
 """Submit the RMT code to the cluster."""
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = lambda iterable, *args, **kwargs: iterable
+
 import platform
 import sys
 import subprocess
@@ -47,7 +52,6 @@ def updatez(file, *args, **kwds):
 
 def consolidate_arrays(path: Path, pattern="*.txt", file_delay_minutes=0):
     import numpy as np
-    from tqdm import tqdm
 
     # Find all files matching the pattern that are older than file_delay_minutes
     current_time_sec = int(datetime.now().timestamp())
@@ -139,7 +143,7 @@ def submit_MLP_agg(
     func_calls_dict = {
         (fname := Path(f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"))
         .with_stem(fname.stem + f";log_svdvals_mean")
-        .name: f"call_save('{dir/fname}', MLP_agg, torch.linspace(-1, 1, {width}), {depth}, {num_realisations}, {alpha100/100}, {sigmaW100/100}, seed={seed}, device='cpu')"
+        .name: f"call_save('{dir/fname}', MLP_agg, torch.linspace(-1,1,{width}), {depth}, {num_realisations}, {alpha100/100}, {sigmaW100/100}, seed={seed})"
         for alpha100 in range(100, 201, alpha100_step)
         for sigmaW100 in range(1, 301, sigmaW100_step)
         for seed in seeds
@@ -254,7 +258,7 @@ HEREEND"""
     if dry:
         print(f"Would submit {len(cmd_list)} jobs.")
         return
-    qsub_func(cmd_list, **qsub_kwargs)
+    return qsub_func(cmd_list, **qsub_kwargs)
 
 
 def qsub(
@@ -353,7 +357,7 @@ def qsub_single(
         with open(jobpath / f"cmd_{cmd_idx}.sh", "w") as f:
             f.write(cmd)
     jobids = []
-    for cmd_idx, cmd in enumerate(cmd_list):
+    for cmd_idx, cmd in tqdm(enumerate(cmd_list)):
         PBS_SCRIPT = f"""<<'END'
 #!/bin/bash
 #PBS -k oed

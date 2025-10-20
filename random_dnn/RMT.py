@@ -4,9 +4,10 @@ from tqdm.auto import tqdm
 import torch
 
 # from torch.autograd.functional import jacobian
-from torch.func import vmap, jacrev
+from torch.func import vmap, grad
 from torchlevy import stable_dist
 
+from collections import defaultdict
 from functools import partial
 from pathlib import Path
 from time import time
@@ -19,10 +20,14 @@ def stable_dist_sample(*args, **kwargs):
 
     torchlevy has an issue with occasional nans, while scipy is slow at generating stable samples.
     """
-    nanflag = True
-    while nanflag:
-        out = stable_dist.sample(*args, **kwargs)
-        nanflag = out.sum().isnan()
+    out = stable_dist.sample(*args, **kwargs)
+    nan_mask = out.isnan()
+    nan_count = nan_mask.sum().item()
+    while nan_count > 0:
+        kwargs["size"] = nan_count
+        out[nan_mask] = stable_dist.sample(*args, **kwargs)
+        nan_mask = out.isnan()
+        nan_count = nan_mask.sum().item()
     return out
 
 
@@ -73,71 +78,60 @@ def MLP(
 
     If a single input is passed the num_inputs dimension is squeezed out.
     """
+    if device is not None:
+        torch.set_default_device(device)
+    if seed is not None:
+        torch.manual_seed(seed)
     x = torch.as_tensor(x0)
     squeezed = x.ndim == 1
     if squeezed:
         x = x.unsqueeze(0)
     num_inputs, width = x.shape
     h = torch.zeros_like(x)
-    if device is not None:
-        torch.set_default_device(device)
-    if seed is not None:
-        torch.manual_seed(seed)
-    diag_phi_prime = vmap(jacrev(phi))
-    postacts = torch.zeros(depth, num_inputs, width)
-    log_svdvals = torch.zeros(depth, num_inputs, width)
+    diag_phi_prime = vmap(vmap(grad(phi)))
+    stats = {
+        k: torch.zeros(depth, num_inputs, width)
+        for k in ["postacts", "prejac_log_svdvals", "postjac_log_svdvals"]
+    }
     if compute_uv:
-        # the first sing vec is left_svdvecs[0, 0, :]
-        left_svdvecs = torch.zeros(depth, num_inputs, width, width)
-        right_svdvecs = torch.zeros(depth, num_inputs, width, width)
-    for layer in range(depth):
-        W = stable_dist_sample(
-            alpha,
-            0,
-            scale=sigma_W * (2 * width) ** (-1 / alpha),
-            size=(width, width),
-        )  # transposed to make the matrix multiplication faster
+        # sing vecs are in the last axis, i.e. the first sing vec is [0, 0, :]
+        for jac_name in ["prejac", "postjac"]:
+            for direction in ["left", "right"]:
+                stats[f"{jac_name}_svd_{direction}"] = torch.zeros(
+                    depth, num_inputs, width, width
+                )
+    for layer in tqdm(range(depth)):
+        W = (
+            sigma_W
+            * (2 * width) ** (-1 / alpha)
+            * stable_dist_sample(alpha, size=(width, width))
+        )
+        prejac = torch.einsum("ij, bj -> bij", W, diag_phi_prime(h))
         b = (
-            stable_dist_sample(
-                alpha,
-                0,
-                scale=sigma_b * 2 ** (-1 / alpha),
-                size=width,
-            )
+            sigma_b * 2 ** (-1 / alpha) * stable_dist_sample(alpha, size=width)
             if sigma_b > 0
             else 0
         )
         h = torch.einsum("ij, bj -> bi", W, x) + b
         x = phi(h)
-        postacts[layer] = x
+        stats["postacts"][layer] = x
         # compute $$ D^l W^l $$ where $$ D^l := \diag\phi'(h^l) $$ (Eq. 2 of Pennington et al. 2018 AISTATS)
-        layerwise_jac = torch.einsum("bii, ij -> bij", diag_phi_prime(h), W)
-        if compute_uv:
-            svd = torch.linalg.svd(layerwise_jac)  # automatically broadcasts
-            log_svdvals[layer] = svd.S.log()
-            # rows of Vh are the right sing vecs of the argument to torch.linalg.svd
-            right_svdvecs[layer] = svd.Vh
-            left_svdvecs[layer] = svd.U.transpose(-1, -2)
-        else:
-            log_svdvals[layer] = torch.linalg.svdvals(layerwise_jac).log()
+        postjac = torch.einsum("bi, ij -> bij", diag_phi_prime(h), W)
+        for jac_name, jac in [("prejac", prejac), ("postjac", postjac)]:
+            if compute_uv:
+                svd = torch.linalg.svd(jac)  # automatically broadcasts
+                stats[f"{jac_name}_log_svdvals"][layer] = svd.S.log()
+                # rows of Vh are the right sing vecs of the argument to torch.linalg.svd
+                stats[f"{jac_name}_svd_right"][layer] = svd.Vh
+                stats[f"{jac_name}_svd_left"][layer] = svd.U.transpose(-1, -2)
+            else:
+                stats[f"{jac_name}_log_svdvals"][layer] = torch.linalg.svdvals(
+                    jac
+                ).log()
     if squeezed:
-        postacts = postacts.squeeze(1)
-        log_svdvals = log_svdvals.squeeze(1)
-        if compute_uv:
-            left_svdvecs = left_svdvecs.squeeze(1)
-            right_svdvecs = right_svdvecs.squeeze(1)
-    if compute_uv:
-        return {
-            "postact": postacts.cpu().numpy(),
-            "log_svdvals": log_svdvals.cpu().numpy(),
-            "svd_left": left_svdvecs.cpu().numpy(),
-            "svd_right": right_svdvecs.cpu().numpy(),
-        }
-    else:
-        return {
-            "postact": postacts.cpu().numpy(),
-            "log_svdvals": log_svdvals.cpu().numpy(),
-        }
+        for stat_name in stats:
+            stats[stat_name] = stats[stat_name].squeeze(1)
+    return {stat_name: stat.cpu().numpy() for stat_name, stat in stats.items()}
 
 
 def multifractal_dim(v, q, dim=-1):
@@ -178,68 +172,63 @@ def MLP_agg(
 
     Returns a dict of arrays with shapes (depth, ...)
     """
-    x = torch.tensor(x0)
-    (width,) = x.shape
-    x = x.broadcast_to((num_realisations, width))
-    h = torch.zeros((num_realisations, width))
     if device is not None:
         torch.set_default_device(device)
     if seed is not None:
         torch.manual_seed(seed)
-    diag_phi_prime = vmap(jacrev(phi))
-
-    postacts_list = []
-    log_svdvals_list = []
-    if agg_uv is not None:
-        left_svdvecs_list = []
-        right_svdvecs_list = []
-    for layer in range(depth):
-        W = stable_dist_sample(
-            alpha,
-            0,
-            scale=sigma_W * (2 * width) ** (-1 / alpha),
-            size=(num_realisations, width, width),
+    x = torch.tensor(x0)
+    (width,) = x.shape
+    x = x.broadcast_to((num_realisations, width))
+    h = torch.zeros((num_realisations, width))
+    diag_phi_prime = vmap(vmap(grad(phi)))
+    observables = defaultdict(list)
+    for layer in tqdm(range(depth)):
+        W = (
+            sigma_W
+            * (2 * width) ** (-1 / alpha)
+            * stable_dist_sample(alpha, 0, size=(num_realisations, width, width))
         )
+        # layerwise jacobian of the preactivations (appears in the error term)
+        prejac = torch.einsum("bij, bj -> bij", W, diag_phi_prime(h))
         b = (
-            stable_dist_sample(
-                alpha,
-                0,
-                scale=sigma_b * 2 ** (-1 / alpha),
-                size=(num_realisations, width),
-            )
+            sigma_b
+            * 2 ** (-1 / alpha)
+            * stable_dist_sample(alpha, size=(num_realisations, width))
             if sigma_b > 0
             else 0
         )
         h = torch.einsum("bij, bj -> bi", W, x) + b
         x = phi(h)
-        postacts_list.append(agg_postact(x))
-        layerwise_jac = torch.einsum("bii, bij -> bij", diag_phi_prime(h), W)
-        if agg_uv is not None:
-            svd = torch.linalg.svd(layerwise_jac)
-            log_svdvals_list.append(agg_log_svdvals(svd.S.log()))
-            right_svdvecs_list.append(agg_uv(svd.Vh))
-            left_svdvecs_list.append(agg_uv(svd.U.transpose(-1, -2)))
-        else:
-            log_svdvals_list.append(
-                agg_log_svdvals(torch.linalg.svdvals(layerwise_jac).log())
-            )
-    out = {}
-    for agg_fn, agg_list, agg_name in [
-        (agg_postact, postacts_list, "postact"),
-        (agg_log_svdvals, log_svdvals_list, "log_svdvals"),
-        (agg_uv, left_svdvecs_list, "svd_left"),
-        (agg_uv, right_svdvecs_list, "svd_right"),
-    ]:
-        if agg_fn is not None:
-            out.update(
-                {
-                    f"{agg_name}_{key}": torch.stack([agg[key] for agg in agg_list])
-                    .cpu()
-                    .numpy()
-                    for key in agg_list[0]
-                }
-            )
-    return out
+        observables["postact"].append(agg_postact(x))
+        # layerwise jacobian of the postactivations (output perturbations wrt input)
+        postjac = torch.einsum("bi, bij -> bij", diag_phi_prime(h), W)
+        for jac_name, jac in [("prejac", prejac), ("postjac", postjac)]:
+            if agg_uv is not None:
+                svd = torch.linalg.svd(jac)
+                observables[f"{jac_name}_log_svdvals"].append(
+                    agg_log_svdvals(svd.S.log())
+                )
+                observables[f"{jac_name}_svd_right"].append(agg_uv(svd.Vh))
+                observables[f"{jac_name}_svd_left"].append(
+                    agg_uv(svd.U.transpose(-1, -2))
+                )
+            else:
+                observables[f"{jac_name}_log_svdvals"].append(
+                    agg_log_svdvals(torch.linalg.svdvals(jac).log())
+                )
+    agg_stats = {}
+    for obs_name, agg_dict_list in observables.items():
+        agg_stats.update(
+            {
+                f"{obs_name}_{agg_name}": torch.stack(
+                    [agg_dict[agg_name] for agg_dict in agg_dict_list]
+                )
+                .cpu()
+                .numpy()
+                for agg_name in agg_dict_list[0]
+            }
+        )
+    return agg_stats
 
 
 # MFT functions
