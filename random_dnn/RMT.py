@@ -31,13 +31,6 @@ def stable_dist_sample(*args, **kwargs):
     return out
 
 
-def call_save(path, func, *args, **kwargs):
-    """Call `func` with `args` and `kwargs`, saving the output to `path`."""
-    tic = time()
-    savetxt(path, func(*args, **kwargs))
-    print(f"Function {func.__name__} took {time() - tic:.2f} sec")
-
-
 def savetxt(path, data):
     """Save `data` to `path`.
 
@@ -53,6 +46,13 @@ def savetxt(path, data):
     else:
         np.savetxt(path, data)
         print(path)
+
+
+def call_save(path, func, *args, **kwargs):
+    """Call `func` with `args` and `kwargs`, saving the output to `path`."""
+    tic = time()
+    savetxt(path, func(*args, **kwargs))
+    print(f"Function {func.__name__} took {time() - tic:.2f} sec")
 
 
 # Empirical MLP functions with randomly drawn weights
@@ -234,6 +234,56 @@ def MLP_agg(
 # MFT functions
 
 
+def MFT_map(
+    q0,  # shape: (num_inputs,)
+    alpha,
+    sigma_W,
+    sigma_b=0,
+    phi=torch.tanh,
+    num_layers=1,
+    agg_postact=lambda x: {
+        "sq_mean": (x**2).mean(-1),
+    },
+    num_samples=int(1e6),
+):
+    """Mean-field map of the pseudolength over layers.
+
+    Also returns aggregated statistics of the postactivations at each layer.
+
+    Conversion between the pseudolength q and the previous layer's alpha-th postact moment:
+    .. math:: q = sigma_W^alpha * E[|x|^alpha] + sigma_b^alpha
+    the next layer's postactivation samples are then generated
+    """
+    # single realisation of Monte Carlo noise
+    stable_samples = (
+        stable_dist_sample(alpha, scale=2 ** (-1 / alpha), size=num_samples)
+        if alpha != 2
+        else torch.randn(num_samples)
+    )
+    q = torch.tensor(q0)
+    observables = defaultdict(list)
+    for layer in tqdm(range(num_layers)):
+        # alpha-th moment of postact = (q - sigma_b**alpha) / sigma_W**alpha
+        postact_samples = phi(q[:, None] ** (1 / alpha) * stable_samples)
+        observables["postact"].append(agg_postact(postact_samples))
+        # Generate the pseudolength of the next layer (given by the current layer's alpha-th postact moment)
+        q = (sigma_W**alpha) * (abs(postact_samples) ** alpha).mean(1) + sigma_b**alpha
+        observables["q"].append({"val": q})
+    agg_stats = {}
+    for obs_name, agg_dict_list in observables.items():
+        agg_stats.update(
+            {
+                f"{obs_name}_{agg_name}": torch.stack(
+                    [agg_dict[agg_name] for agg_dict in agg_dict_list]
+                )
+                .cpu()
+                .numpy()
+                for agg_name in agg_dict_list[0]
+            }
+        )
+    return agg_stats
+
+
 def q_star_MC(
     alpha,
     sigma_W,
@@ -258,12 +308,11 @@ def q_star_MC(
     qs = [q_init]
     if seed is not None:
         torch.manual_seed(seed)
-    if alpha != 2:
-        stable_samples = stable_dist_sample(
-            alpha, scale=2 ** (-1 / alpha), size=num_samples
-        )
-    else:
-        stable_samples = torch.randn(num_samples)
+    stable_samples = (
+        stable_dist_sample(alpha, scale=2 ** (-1 / alpha), size=num_samples)
+        if alpha != 2
+        else torch.randn(num_samples)
+    )
     converged = False
     while not converged:
         q = (sigma_W**alpha) * (
@@ -276,49 +325,20 @@ def q_star_MC(
     return qs
 
 
-def MFT_average(
-    fn,
-    alpha,
-    sigma_W,
-    sigma_b=0,
-    phi=torch.tanh,
-    num_samples=int(1e6),
-    qs=None,
-):
-    """Return the mean-field average of `fn` over the post-activations."""
-    if alpha != 2:
-        stable_samples = stable_dist_sample(
-            alpha, scale=2 ** (-1 / alpha), size=num_samples
-        )
-    else:
-        stable_samples = torch.randn(num_samples)
-    if qs is None:
-        qs = torch.tensor(
-            q_star_MC(
-                alpha,
-                sigma_W,
-                sigma_b,
-                phi,
-                num_samples=num_samples,
-            ),
-            device=stable_samples.device,
-        )
-    try:
-        return fn(phi(qs[:, None] ** (1 / alpha) * stable_samples)).mean(1).tolist()
-    except TypeError:  # fn is a list of functions
-        fn_list = fn
-        return [
-            fn(phi(qs[:, None] ** (1 / alpha) * stable_samples)).mean(1).tolist()
-            for fn in fn_list
-        ]
-
-
 # RMT functions
 
 
-def resolvent_pdf(g1, g2):
+def resolvent_pdf(g1, g2):  # last dim
     """Return the singular value pdf from a bipartised resolvent."""
-    return (g1.imag.sum(1) + g2.imag.sum(1)) / (torch.pi * g2.shape[1])
+    return (g1.imag.sum(-1) + g2.imag.sum(-1)) / (torch.pi * g2.shape[-1])
+
+
+def moving_avg(arr):  # last dim
+    return (arr[..., 1:] + arr[..., :-1]) / 2
+
+
+def empirical_avg(fn, bins, pdfs):  # last dim
+    return torch.sum(moving_avg(fn(bins) * pdfs) * torch.diff(bins), dim=-1)
 
 
 def cavity_svd_resolvent(
@@ -352,7 +372,10 @@ def cavity_svd_resolvent(
             sing_vals + chi_samples_sq[i_g2] * (stable_sample_g1 * g1).sum(1)
         )
         if progress and num_steps > 100 and i % (num_steps // 100) == 0:
-            pbar.set_postfix_str(torch.std_mean(resolvent_pdf(g1, g2)))
+            # get the estimate of the norm (should be 1)
+            pbar.set_postfix_str(
+                empirical_avg(lambda x: 1, sing_vals, resolvent_pdf(g1, g2))
+            )
     return g1, g2
 
 
@@ -362,6 +385,7 @@ def jac_cavity_svd_log_pdf(
     sigma_W: float,
     sigma_b: float = 0,
     phi=torch.tanh,
+    q=None,
     num_doublings=4,
     num_steps_fn=lambda pop_size: pop_size**2,
     progress=False,
@@ -374,7 +398,8 @@ def jac_cavity_svd_log_pdf(
     Accepts and returns a numpy array, but runs on the default torch device.
     """
     sing_vals_tensor = torch.tensor(sing_vals)
-    q_star = q_star_MC(alpha, sigma_W, sigma_b, phi)[-1]
+    if q is None:
+        q = q_star_MC(alpha, sigma_W, sigma_b, phi)[-1]
     pop_size = 1
     phi_prime = torch.vmap(torch.func.grad(phi))
     for i in range(num_doublings):
@@ -385,7 +410,7 @@ def jac_cavity_svd_log_pdf(
             )
         else:
             stable_samples = torch.randn(pop_size)
-        chi_samples = sigma_W * phi_prime(q_star ** (1 / alpha) * stable_samples)
+        chi_samples = sigma_W * phi_prime(q ** (1 / alpha) * stable_samples)
         g1, g2 = cavity_svd_resolvent(
             sing_vals_tensor,
             alpha,

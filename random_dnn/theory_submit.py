@@ -99,9 +99,9 @@ def submit_jac_cavity_svd_log_pdf(
     sigmaW100_step=5,
     **submit_python_kwargs,
 ):
-    # 8 GB for 10 doublings
+    # 8 GB for 10 doublings; 9638 +- 3319 sec (min=2451s, max=16990s=4.7h)
     submit_python_kwargs = {
-        "mem": "8GB",
+        "mem": "4GB",
         "walltime": "0:59:00",
         **submit_python_kwargs,
     }
