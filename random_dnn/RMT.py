@@ -91,7 +91,7 @@ def MLP(
     diag_phi_prime = vmap(vmap(grad(phi)))
     stats = {
         k: torch.zeros(depth, num_inputs, width)
-        for k in ["postacts", "prejac_log_svdvals", "postjac_log_svdvals"]
+        for k in ["postact", "prejac_log_svdvals", "postjac_log_svdvals"]
     }
     if compute_uv:
         # sing vecs are in the last axis, i.e. the first sing vec is [0, 0, :]
@@ -114,7 +114,7 @@ def MLP(
         )
         h = torch.einsum("ij, bj -> bi", W, x) + b
         x = phi(h)
-        stats["postacts"][layer] = x
+        stats["postact"][layer] = x
         # compute $$ D^l W^l $$ where $$ D^l := \diag\phi'(h^l) $$ (Eq. 2 of Pennington et al. 2018 AISTATS)
         postjac = torch.einsum("bi, ij -> bij", diag_phi_prime(h), W)
         for jac_name, jac in [("prejac", prejac), ("postjac", postjac)]:
@@ -235,12 +235,13 @@ def MLP_agg(
 
 
 def MFT_map(
-    q0,  # shape: (num_inputs,)
+    q0,  # shape: scalar or (num_inputs,)
     alpha,
     sigma_W,
     sigma_b=0,
     phi=torch.tanh,
     num_layers=1,
+    num_realisations=1,
     agg_postact=lambda x: {
         "sq_mean": (x**2).mean(-1),
     },
@@ -256,18 +257,21 @@ def MFT_map(
     """
     # single realisation of Monte Carlo noise
     stable_samples = (
-        stable_dist_sample(alpha, scale=2 ** (-1 / alpha), size=num_samples)
+        stable_dist_sample(alpha, scale=2 ** (-1 / alpha), size=(num_realisations, num_samples))
         if alpha != 2
-        else torch.randn(num_samples)
+        else torch.randn(num_realisations, num_samples)
     )
-    q = torch.tensor(q0)
+    if isinstance(q0, (float, int)):
+        q0 = [q0]
+    q = torch.tensor(q0)[:, None]
     observables = defaultdict(list)
     for layer in tqdm(range(num_layers)):
         # alpha-th moment of postact = (q - sigma_b**alpha) / sigma_W**alpha
-        postact_samples = phi(q[:, None] ** (1 / alpha) * stable_samples)
+        # shape: (num_inputs, num_realisations, num_samples)
+        postact_samples = phi(q[..., None] ** (1 / alpha) * stable_samples)
         observables["postact"].append(agg_postact(postact_samples))
         # Generate the pseudolength of the next layer (given by the current layer's alpha-th postact moment)
-        q = (sigma_W**alpha) * (abs(postact_samples) ** alpha).mean(1) + sigma_b**alpha
+        q = (sigma_W**alpha) * (abs(postact_samples) ** alpha).mean(-1) + sigma_b**alpha
         observables["q"].append({"val": q})
     agg_stats = {}
     for obs_name, agg_dict_list in observables.items():
@@ -281,7 +285,7 @@ def MFT_map(
                 for agg_name in agg_dict_list[0]
             }
         )
-    return agg_stats
+    return agg_stats  # shape of arrs: (num_layers, num_inputs, num_realisations, ...)
 
 
 def q_star_MC(
