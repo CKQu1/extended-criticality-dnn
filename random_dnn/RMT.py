@@ -393,6 +393,7 @@ def jac_cavity_svd_log_pdf(
     num_doublings=4,
     num_steps_fn=lambda pop_size: pop_size**2,
     progress=False,
+    seed=None,
 ):
     """Compute the RMT singular value distribution for the fixed point Jacobian of random MLPs.
 
@@ -401,6 +402,8 @@ def jac_cavity_svd_log_pdf(
 
     Accepts and returns a numpy array, but runs on the default torch device.
     """
+    if seed is not None:
+        torch.manual_seed(seed)
     sing_vals_tensor = torch.tensor(sing_vals)
     if q is None:
         q = q_star_MC(alpha, sigma_W, sigma_b, phi)[-1]

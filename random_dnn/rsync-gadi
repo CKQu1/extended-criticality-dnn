@@ -1,0 +1,22 @@
+#!/bin/bash
+case $1 in
+    "push")
+        # Copy the DNN repository to Gadi
+        # Based on https://stackoverflow.com/a/63438492
+        rsync -vhra \
+            /import/silo3/wardak/extended-criticality-dnn/ \
+            aw9402@gadi-dm.nci.org.au:/scratch/au05/aw9402/extended-criticality-dnn/ \
+            --include='**.gitignore' --exclude='/.git' \
+            --filter=':- .gitignore' --delete-after
+        ;;
+    "pull")
+        # Copy DNN results from Gadi
+        rsync -vhraR --info=progress2 \
+            aw9402@gadi-dm.nci.org.au:"/scratch/au05/aw9402/extended-criticality-dnn/random_dnn/fig/./*/*.npz" \
+            /import/silo3/wardak/extended-criticality-dnn/random_dnn/fig/
+        ;;
+    *)
+        echo "Usage: $0 {push|pull}"
+        exit 1
+        ;;
+esac

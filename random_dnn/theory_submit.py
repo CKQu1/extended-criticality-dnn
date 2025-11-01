@@ -1,4 +1,13 @@
-"""Submit the RMT code to the cluster."""
+"""Submit the RMT code to the cluster.
+
+To check the job array status:
+    qstat | tr -s ' ' | cut -d' ' -f5 | sort | uniq -c
+
+To check the job array times:
+    tail -qn1 *OU | cut -d' ' -f4 | python -c "import numpy as np, sys; arr = np.loadtxt(sys.stdin)/60/60; print(np.mean(arr), np.std(arr), np.min(arr), np.max(arr), 'hours')"
+
+Check the NCI quota with: `nci_account`
+"""
 
 try:
     from tqdm import tqdm
@@ -97,6 +106,7 @@ def submit_jac_cavity_svd_log_pdf(
     logspace_params="-10,10,1000",
     alpha100_step=5,
     sigmaW100_step=5,
+    seeds=range(1),
     **submit_python_kwargs,
 ):
     # 8 GB for 10 doublings; 9638 +- 3319 sec (min=2451s, max=16990s=4.7h)
@@ -112,10 +122,11 @@ def submit_jac_cavity_svd_log_pdf(
     )
     func_calls_dict = {
         (
-            fname := f"alpha100={alpha100};sigmaW100={sigmaW100}.txt"
-        ): f"call_save('{dir/fname}', jac_cavity_svd_log_pdf, np.logspace({logspace_params}), {alpha100/100}, {sigmaW100/100}, num_doublings={num_doublings})"
+            fname := f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"
+        ): f"call_save('{dir/fname}', jac_cavity_svd_log_pdf, np.logspace({logspace_params}), {alpha100/100}, {sigmaW100/100}, num_doublings={num_doublings}, seed={seed})"
         for alpha100 in range(100, 201, alpha100_step)
         for sigmaW100 in range(1, 301, sigmaW100_step)
+        for seed in seeds
     }
     submit_python_funcs(func_calls_dict, dir=dir, **submit_python_kwargs)
 
@@ -130,7 +141,7 @@ def submit_MLP_agg(
     **submit_python_kwargs,
 ):
     submit_python_kwargs = {
-        # "num_func_calls_per_job": 210,
+        # "calls_per_job": 210,
         "mem": "8GB",
         "walltime": "5:59:00",
         **submit_python_kwargs,
@@ -155,9 +166,9 @@ def submit_MLP_agg(
 
 
 def submit_python_funcs(
-    func_calls_dict: dict[str, str],
+    func_calls_dict: dict[str, str],  # mapping from file names to function call strings
     dir: Path,
-    num_func_calls_per_job=1,
+    calls_per_job=1,
     init: str = None,  # modules and venvs
     pythonpath: str = "python3",
     init_call: str = "from RMT import *",
@@ -185,7 +196,7 @@ def submit_python_funcs(
             qsub_func = qsub
         default_qsub_kwargs = dict(
             path="/taiji1/wardak/job",
-            q="defaultQ",  # see email for rules
+            q="defaultQ",  # see email for queue limits
         )
     elif platform.node().endswith("gadi.nci.org.au"):
         if init is None:
@@ -251,9 +262,9 @@ def submit_python_funcs(
 {init}
 {pythonpath} - <<'HEREEND'
 {init_call}
-{newline.join(func_calls[i : i + num_func_calls_per_job])}
+{newline.join(func_calls[i : i + calls_per_job])}
 HEREEND"""
-        for i in range(0, len(func_calls), num_func_calls_per_job)
+        for i in range(0, len(func_calls), calls_per_job)
     ]
     if dry:
         print(f"Would submit {len(cmd_list)} jobs.")
@@ -357,7 +368,7 @@ def qsub_single(
         with open(jobpath / f"cmd_{cmd_idx}.sh", "w") as f:
             f.write(cmd)
     jobids = []
-    for cmd_idx, cmd in tqdm(enumerate(cmd_list)):
+    for cmd_idx, cmd in tqdm(enumerate(cmd_list), total=len(cmd_list)):
         PBS_SCRIPT = f"""<<'END'
 #!/bin/bash
 #PBS -k oed
