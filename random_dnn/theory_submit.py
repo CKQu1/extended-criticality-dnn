@@ -66,7 +66,7 @@ def consolidate_arrays(path: Path, pattern="*.txt", file_delay_minutes=0):
     current_time_sec = int(datetime.now().timestamp())
     files = set(
         f
-        for f in path.glob(pattern)
+        for f in tqdm(path.glob(pattern))
         if f.stat().st_mtime < current_time_sec - file_delay_minutes * 60
     )
     # If the npz file already exists, skip files that are already in it
@@ -81,7 +81,7 @@ def consolidate_arrays(path: Path, pattern="*.txt", file_delay_minutes=0):
             executor.submit(np.loadtxt, file): str(file.relative_to(path))
             for file in files
         }
-        for future in tqdm(cf.as_completed(future_to_file)):
+        for future in tqdm(cf.as_completed(future_to_file), total=len(future_to_file)):
             file = future_to_file[future]
             arrays_dict[file] = future.result()
     # for file in tqdm(files):
@@ -235,22 +235,15 @@ def submit_python_funcs(
         **qsub_kwargs,
     }
     # === End of defaults ===
-    remaining_func_calls_dict = {
-        fname: fcall
-        for fname, fcall in func_calls_dict.items()
-        if not (dir / fname).exists()
-    }
+    existing_files = {path.name for path in dir.iterdir()}
     if dir.with_suffix(".npz").exists():
         import zipfile
 
         with zipfile.ZipFile(dir.with_suffix(".npz"), "r") as zipf:
-            remaining_keys = remaining_func_calls_dict.keys() - set(
-                name.removesuffix(".npy") for name in zipf.namelist()
-            )
-            remaining_func_calls_dict = {
-                k: remaining_func_calls_dict[k] for k in remaining_keys
-            }
-    func_calls = list(remaining_func_calls_dict.values())
+            existing_files.update(name.removesuffix(".npy") for name in zipf.namelist())
+    func_calls = [
+        fcall for fname, fcall in func_calls_dict.items() if fname not in existing_files
+    ]
     print(f"{len(func_calls)}/{len(func_calls_dict)} function calls to run.")
     if not func_calls:
         return
@@ -400,6 +393,7 @@ if __name__ == "__main__":
     # Example usage:
     # python filename.py func_name arg1_name arg1 arg1_type arg2_name arg2 arg2_type ...
     # the arguments will be passed in as keyword args
+    # NOTE: do not use bool for bools (use eval instead)
     import sys
     from time import time
 
