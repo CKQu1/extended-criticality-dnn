@@ -107,9 +107,10 @@ def submit_jac_cavity_svd_log_pdf(
     alpha100_step=5,
     sigmaW100_step=5,
     seeds=range(1),
+    num_chis=1,
     **submit_python_kwargs,
 ):
-    # 8 GB for 10 doublings; 9638 +- 3319 sec (min=2451s, max=16990s=4.7h)
+    # 8 GB for 10 doublings (1 chi); 9638 +- 3319 sec (min=2451s, max=16990s=4.7h)
     submit_python_kwargs = {
         "mem": "4GB",
         "walltime": "0:59:00",
@@ -118,12 +119,12 @@ def submit_jac_cavity_svd_log_pdf(
     dir = (
         Path("fig")
         / "jac_cavity_svd_log_pdf"
-        / f"num_doublings={num_doublings};logspace_params={logspace_params}"
+        / f"num_doublings={num_doublings};logspace_params={logspace_params};num_chis={num_chis}"
     )
     func_calls_dict = {
         (
             fname := f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"
-        ): f"call_save('{dir/fname}', jac_cavity_svd_log_pdf, np.logspace({logspace_params}), {alpha100/100}, {sigmaW100/100}, num_doublings={num_doublings}, seed={seed})"
+        ): f"call_save('{dir/fname}', jac_cavity_svd_log_pdf, np.logspace({logspace_params}), {alpha100/100}, {sigmaW100/100}, num_doublings={num_doublings}, num_chis={num_chis}, seed={seed})"
         for alpha100 in range(100, 201, alpha100_step)
         for sigmaW100 in range(1, 301, sigmaW100_step)
         for seed in seeds
@@ -235,6 +236,7 @@ def submit_python_funcs(
         **qsub_kwargs,
     }
     # === End of defaults ===
+    dir.mkdir(parents=True, exist_ok=True)
     existing_files = {path.name for path in dir.iterdir()}
     if dir.with_suffix(".npz").exists():
         import zipfile
@@ -328,6 +330,8 @@ END"""
         jobids.append(lastjobid)
         if print_script:
             print(PBS_SCRIPT)
+    print(f"Submitted {len(cmd_list)} jobs in {len(cmd_list_chunks)} arrays: {','.join(jobids)}")
+    qsub_stats(jobids, jobpath, N=N, P=P, q=q)
     return jobids
 
 
@@ -386,8 +390,48 @@ END"""
         if print_script:
             print(PBS_SCRIPT)
     print(f"Submitted {len(cmd_list)} jobs: {jobids[0]} ... {jobids[-1]}")
+    qsub_stats(jobids, jobpath, N=N, P=P, q=q)
     return jobids
 
+
+def qsub_stats(
+    jobids: list[str],
+    jobpath: Path,
+    N='job',
+    P="''",
+    q: Union[str, list[str]] = "defaultQ",
+):
+    """Submit a job to collect statistics for the given job IDs."""
+    jobid = subprocess.check_output(
+        f"""qsub <<'END'
+#!/bin/bash
+#PBS -j oe
+#PBS -k oed
+#PBS -N {N}_stats
+#PBS -P {P}
+#PBS -q {q if isinstance(q, str) else q[0]}
+#PBS -V
+#PBS -m n
+#PBS -o {(jobpath / "job_stats.txt").resolve()}
+#PBS -l ncpus=1
+#PBS -l mem=1GB
+#PBS -l walltime=0:09:59
+#PBS -W depend=afterany:{':'.join(jobids)}
+cd $PBS_O_WORKDIR
+for jobid in {' '.join(jobids)}; do
+    # if $jobid has array index, get all subjobs
+    if [[ $jobid == *"["*"]"* ]]; then
+        qstat -fxt $jobid
+    else
+        qstat -fx $jobid
+    fi
+done
+END
+""",
+        shell=True,
+        text=True,
+    ).strip()
+    return jobid
 
 if __name__ == "__main__":
     # Example usage:
