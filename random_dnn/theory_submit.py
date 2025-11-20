@@ -2,11 +2,17 @@
 
 To check the job array status:
     qstat | tr -s ' ' | cut -d' ' -f5 | sort | uniq -c
+(on headnode):
+    qstat -tu wardak | tr -s ' ' | cut -d' ' -f10 | sort | uniq -c
 
 To check the job array times:
     tail -qn1 *OU | cut -d' ' -f4 | python -c "import numpy as np, sys; arr = np.loadtxt(sys.stdin)/60/60; print(np.mean(arr), np.std(arr), np.min(arr), np.max(arr), 'hours')"
 
 Check the NCI quota with: `nci_account`
+
+Init on gadi (added to .bashrc)
+    module load python3 cuda
+    source /g/data/au05/venv/bin/activate
 """
 
 try:
