@@ -138,6 +138,10 @@ def MLP(
             stats[stat_name] = stats[stat_name].squeeze(1)
     return {stat_name: stat.cpu().numpy() for stat_name, stat in stats.items()}
 
+# def MLP_circle(
+    
+# )
+
 
 def multifractal_dim(v, q, dim=-1):
     return torch.log((torch.as_tensor(v).abs() ** (2 * q)).sum(dim)) / (
