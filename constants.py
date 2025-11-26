@@ -1,21 +1,61 @@
 import os
 import pandas as pd
-from os.path import join, normpath, isdir, isfile
+from UTILS.mutils import njoin
+from matplotlib.cm import get_cmap
 
-#root_data = "/project/PDLAI/project2_data"
-root_data = "/project/phys_DL/extended-criticality-dnn/.droot"
-DROOT = "/project/phys_DL/extended-criticality-dnn/.droot"
+# ----- GENERAL -----
+RT = os.path.abspath(os.getcwd())
+DROOT = njoin(RT, '.droot')
+# root_data = "/project/PDLAI/project2_data"
+# root_data = "/project/phys_DL/extended-criticality-dnn/.droot"
+root_data = DROOT
+FIGS_DIR = njoin(DROOT, 'figs_dir')
+SCRIPT_DIR = njoin(DROOT, 'submitted_scripts')
 
-# singularity_path = "/project/phys_DL/built_containers/FaContainer_v3.sif"
-# bind_path = "/project"
-#SPATH = "/project/phys_DL/built_containers/FaContainer_v3.sif"
-SPATH = '/project/frac_attn/built_containers/pydl.img'
-BPATH = "/project"
+#CLUSTER = 'ARTEMIS' if 'project' in DROOT else 'PHYSICS' if 'taiji1' in DROOT else 'FUDAN_BRAIN'
+if 'uu69' in DROOT:
+    CLUSTER = 'GADI' 
+elif 'taiji1' in DROOT:
+    CLUSTER = 'PHYSICS'
+else:
+    CLUSTER = None
+# -------------------
+
+# ----- RESOURCES -----
+RESOURCE_CONFIGS = {
+    "GADI": {
+        True:  {"q": "gpuvolta", "ngpus": 1, "ncpus": 12},
+        False: {"q": "normal",   "ngpus": 0, "ncpus": 1},
+    },
+    "PHYSICS": {
+        True:  {"q": "l40s", "ngpus": 1, "ncpus": 1},
+        False: {"q": "taiji", "ngpus": 0, "ncpus": 1},
+    },
+}
+# -------------------
+
+# ----- GADI -----
+GADI_PROJECTS = ['uu69']
+GADI_SOURCE = '/scratch/uu69/cq5024/myenvs/fsa/bin/activate'
+# -------------------
+
+# ----- PHYSICS -----
+PHYSICS_SOURCE = '/usr/physics/python/Anaconda3-2022.10/etc/profile.d/conda.sh'
+PHYSICS_CONDA = 'frac_attn' if 'chqu7424' in RT else '~/conda'
+# -------------------
+
+# ----- FUDAN-BRAIN -----
+FUDAN_CONDA = 'frac_attn'
+# -------------------
+
+# ----- ARTEMIS -----
+ARTEMIS_PROJECTS = ['phys_DL','PDLAI','dnn_maths','dyson','vortex_dl','frac_attn', 'ddl']
+BPATH = njoin('/project')  # path for binding to singularity container
+#SPATH = njoin('/project/frac_attn/built_containers/FaContainer_v5.sif')  # singularity container path
+SPATH = njoin('/project/frac_attn/built_containers/pydl.img')
+# -------------------
 
 # ---------- create logs for networks during training ----------
-
-def njoin(*args):
-    return normpath(join(*args))
 
 # Record relevants attributes for trained neural networks -------------------------------------------------------
 
@@ -36,7 +76,7 @@ def log_model(log_path, model_path, file_name="net_log", local_log=True, **kwarg
     print('Log saved!')
 
 def read_log():    
-    fi = join(root_data, "net_log.csv")
+    fi = njoin(root_data, "net_log.csv")
     if os.path.isfile(fi):
         df_og = pd.read_csv(fi)
         print(df_og)
