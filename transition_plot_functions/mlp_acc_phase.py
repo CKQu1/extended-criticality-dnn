@@ -1,13 +1,12 @@
-import cmcrameri as cmc
+# import cmcrameri as cmc
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
-import scipy.io as sio
-import seaborn as sns
+# import scipy.io as sio
 import sys
 from ast import literal_eval
-from matplotlib.ticker import AutoMinorLocator
+# from matplotlib.ticker import AutoMinorLocator
 from tqdm import tqdm
 sys.path.append(os.getcwd())
 import constants
@@ -23,6 +22,7 @@ if cm_lib == "plt":
     for cm_type in ['Spectral', 'gist_stern', 'RdGy']:
         cmaps.append(plt.cm.get_cmap(cm_type))
 elif cm_lib == "sns":
+    import seaborn as sns
     for cm_type in ['Spectral', 'RdBu', 'rocket_r']:
     #for cm_type in ['plasma', 'vlag', 'icefire']:
     #for cm_type in ['batlow', 'cividis', 'thermal']:
@@ -346,6 +346,9 @@ def accloss_ensembles(acc_type, paths, acc_threshold=93, display=False):
 
         cbar = plt.colorbar(plot,ax=axs[pidx])
         cbar.ax.tick_params(labelsize=tick_size)
+        # Make border invisible
+        cbar.outline.set_visible(False)
+
         """
         if pidx == 2:
             if fcn == "fc10":
