@@ -68,6 +68,8 @@ def MLP(
     seed=None,
     device=None,
     compute_uv=False,  # whether to compute singular vectors as well as values
+    fast=False,  # if True, do not compute jacobians
+    usetqdm=True,
 ):
     """full stats of an MLP over depth and inputs (single realisation)
 
@@ -91,7 +93,8 @@ def MLP(
     diag_phi_prime = vmap(vmap(grad(phi)))
     stats = {
         k: torch.zeros(depth, num_inputs, width)
-        for k in ["postact", "prejac_log_svdvals", "postjac_log_svdvals"]
+        for k in ["postact"]
+        + ([] if fast else ["prejac_log_svdvals", "postjac_log_svdvals"])
     }
     if compute_uv:
         # sing vecs are in the last axis, i.e. the first sing vec is [0, 0, :]
@@ -100,13 +103,14 @@ def MLP(
                 stats[f"{jac_name}_svd_{direction}"] = torch.zeros(
                     depth, num_inputs, width, width
                 )
-    for layer in tqdm(range(depth)):
+    for layer in tqdm(range(depth), disable=not usetqdm):
         W = (
             sigma_W
             * (2 * width) ** (-1 / alpha)
             * stable_dist_sample(alpha, size=(width, width))
         )
-        prejac = torch.einsum("ij, bj -> bij", W, diag_phi_prime(h))
+        if not fast:
+            prejac = torch.einsum("ij, bj -> bij", W, diag_phi_prime(h))
         b = (
             sigma_b * 2 ** (-1 / alpha) * stable_dist_sample(alpha, size=width)
             if sigma_b > 0
@@ -115,23 +119,28 @@ def MLP(
         h = torch.einsum("ij, bj -> bi", W, x) + b
         x = phi(h)
         stats["postact"][layer] = x
-        # compute $$ D^l W^l $$ where $$ D^l := \diag\phi'(h^l) $$ (Eq. 2 of Pennington et al. 2018 AISTATS)
-        postjac = torch.einsum("bi, ij -> bij", diag_phi_prime(h), W)
-        for jac_name, jac in [("prejac", prejac), ("postjac", postjac)]:
-            if compute_uv:
-                svd = torch.linalg.svd(jac)  # automatically broadcasts
-                stats[f"{jac_name}_log_svdvals"][layer] = svd.S.log()
-                # rows of Vh are the right sing vecs of the argument to torch.linalg.svd
-                stats[f"{jac_name}_svd_right"][layer] = svd.Vh
-                stats[f"{jac_name}_svd_left"][layer] = svd.U.transpose(-1, -2)
-            else:
-                stats[f"{jac_name}_log_svdvals"][layer] = torch.linalg.svdvals(
-                    jac
-                ).log()
+        if not fast:
+            # compute $$ D^l W^l $$ where $$ D^l := \diag\phi'(h^l) $$ (Eq. 2 of Pennington et al. 2018 AISTATS)
+            postjac = torch.einsum("bi, ij -> bij", diag_phi_prime(h), W)
+            for jac_name, jac in [("prejac", prejac), ("postjac", postjac)]:
+                if compute_uv:
+                    svd = torch.linalg.svd(jac)  # automatically broadcasts
+                    stats[f"{jac_name}_log_svdvals"][layer] = svd.S.log()
+                    # rows of Vh are the right sing vecs of the argument to torch.linalg.svd
+                    stats[f"{jac_name}_svd_right"][layer] = svd.Vh
+                    stats[f"{jac_name}_svd_left"][layer] = svd.U.transpose(-1, -2)
+                else:
+                    stats[f"{jac_name}_log_svdvals"][layer] = torch.linalg.svdvals(
+                        jac
+                    ).log()
     if squeezed:
         for stat_name in stats:
             stats[stat_name] = stats[stat_name].squeeze(1)
     return {stat_name: stat.cpu().numpy() for stat_name, stat in stats.items()}
+
+# def MLP_circle(
+    
+# )
 
 
 def multifractal_dim(v, q, dim=-1):
@@ -246,6 +255,7 @@ def MFT_map(
         "sq_mean": (x**2).mean(-1),
     },
     num_samples=int(1e6),
+    usetqdm=True,
 ):
     """Mean-field map of the pseudolength over layers.
 
@@ -267,7 +277,7 @@ def MFT_map(
         q0 = [q0]
     q = torch.tensor(q0)[:, None]
     observables = defaultdict(list)
-    for layer in tqdm(range(num_layers)):
+    for layer in tqdm(range(num_layers), disable=not usetqdm):
         # alpha-th moment of postact = (q - sigma_b**alpha) / sigma_W**alpha
         # shape: (num_inputs, num_realisations, num_samples)
         postact_samples = phi(q[..., None] ** (1 / alpha) * stable_samples)

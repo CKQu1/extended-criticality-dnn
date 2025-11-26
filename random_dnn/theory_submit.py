@@ -2,11 +2,17 @@
 
 To check the job array status:
     qstat | tr -s ' ' | cut -d' ' -f5 | sort | uniq -c
+(on headnode):
+    qstat -tu wardak | tr -s ' ' | cut -d' ' -f10 | sort | uniq -c
 
 To check the job array times:
     tail -qn1 *OU | cut -d' ' -f4 | python -c "import numpy as np, sys; arr = np.loadtxt(sys.stdin)/60/60; print(np.mean(arr), np.std(arr), np.min(arr), np.max(arr), 'hours')"
 
 Check the NCI quota with: `nci_account`
+
+Init on gadi (added to .bashrc)
+    module load python3 cuda
+    source /g/data/au05/venv/bin/activate
 """
 
 try:
@@ -66,7 +72,7 @@ def consolidate_arrays(path: Path, pattern="*.txt", file_delay_minutes=0):
     current_time_sec = int(datetime.now().timestamp())
     files = set(
         f
-        for f in tqdm(path.glob(pattern))
+        for f in tqdm(path.glob(pattern), desc="Finding files")
         if f.stat().st_mtime < current_time_sec - file_delay_minutes * 60
     )
     # If the npz file already exists, skip files that are already in it
@@ -81,7 +87,11 @@ def consolidate_arrays(path: Path, pattern="*.txt", file_delay_minutes=0):
             executor.submit(np.loadtxt, file): str(file.relative_to(path))
             for file in files
         }
-        for future in tqdm(cf.as_completed(future_to_file), total=len(future_to_file)):
+        for future in tqdm(
+            cf.as_completed(future_to_file),
+            total=len(future_to_file),
+            desc="Loading files",
+        ):
             file = future_to_file[future]
             arrays_dict[file] = future.result()
     # for file in tqdm(files):
@@ -330,7 +340,9 @@ END"""
         jobids.append(lastjobid)
         if print_script:
             print(PBS_SCRIPT)
-    print(f"Submitted {len(cmd_list)} jobs in {len(cmd_list_chunks)} arrays: {','.join(jobids)}")
+    print(
+        f"Submitted {len(cmd_list)} jobs in {len(cmd_list_chunks)} arrays: {','.join(jobids)}"
+    )
     qsub_stats(jobids, jobpath, N=N, P=P, q=q)
     return jobids
 
@@ -397,7 +409,7 @@ END"""
 def qsub_stats(
     jobids: list[str],
     jobpath: Path,
-    N='job',
+    N="job",
     P="''",
     q: Union[str, list[str]] = "defaultQ",
 ):
@@ -432,6 +444,7 @@ END
         text=True,
     ).strip()
     return jobid
+
 
 if __name__ == "__main__":
     # Example usage:
