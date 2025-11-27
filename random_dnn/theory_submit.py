@@ -233,6 +233,22 @@ def submit_python_funcs(
             storage="gdata/au05+scratch/au05",
             P="au05",
         )
+    elif platform.node().startswith("setonix"):
+        if init is None:
+            init = "\n".join(
+                [
+                    "module load python/3.11.6 py-pip/23.1.2-py3.11.6",
+                    "source $MYSOFTWARE/venv/bin/activate",
+                ]
+            )
+        if qsub_func is None:
+            qsub_func = qsub_slurm
+        default_qsub_kwargs = dict(
+            path="/scratch/pawsey1267/awar9402/job",
+            # max walltime: 24 hours
+            q="work",
+            P="pawsey1267",
+        )
     else:
         if init is None:
             init = ""
@@ -444,6 +460,79 @@ END
         text=True,
     ).strip()
     return jobid
+
+
+def qsub_slurm(
+    cmd_list: list[str],
+    path: Path = Path("."),  # where to save the job info
+    N=sys.argv[0] or "job",
+    P="''",
+    q: Union[str, list[str]] = "defaultQ",
+    select=1,
+    ncpus=1,
+    mem="1GB",
+    ngpus: int = None,
+    walltime="23:59:00",
+    max_array_size=1000,
+    max_run_subjobs: int = None,
+    depend_after=False,  # False, True or the name of a job
+    print_script=False,
+):
+    """A qsub-compatible function on SLURM"""
+    if "/" in N:
+        N = N.split("/")[-1]
+    lastjobid = None if depend_after in [False, True] else depend_after
+    if max_run_subjobs is None:
+        max_run_subjobs = max_array_size
+    if len(cmd_list) == 1:
+        cmd_list.append("")
+    path = Path(path)
+    label = datetime.now().strftime(rf"{N}_%Y%m%d_%H%M%S_%f")
+    jobpath = (path / label).resolve()
+    jobpath.mkdir(parents=True, exist_ok=True)
+    # Create the input files.
+    for idx, cmd in enumerate(cmd_list):
+        with open(jobpath / f"cmd_{idx}.sh", "w") as f:
+            f.write(cmd)
+    cmd_list_chunks = [
+        cmd_list[i : i + max_array_size]
+        for i in range(0, len(cmd_list), max_array_size)
+    ]
+    # Make sure no array job has length 1.
+    if len(cmd_list_chunks[-1]) == 1:
+        cmd_list_chunks[-1].insert(0, cmd_list_chunks[-2].pop())
+    jobids = []
+    for chunk_idx, cmd_list_chunk in enumerate(cmd_list_chunks):
+        SLURM_SCRIPT = f"""<<'END'
+#!/bin/bash
+#SBATCH --job-name={N}
+#SBATCH --account={P}
+#SBATCH --partition={q if isinstance(q, str) else q[chunk_idx % len(q)]}
+#SBATCH --export=ALL
+#SBATCH --mail-type=NONE
+#SBATCH --output={jobpath}/slurm-%A_%a.out
+#SBATCH --error={jobpath}/slurm-%A_%a.err
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task={ncpus}
+#SBATCH --mem={mem}
+{f'#SBATCH --gres=gpu:{ngpus}' if ngpus else ''}
+#SBATCH --time={walltime}
+#SBATCH --array={max_array_size*chunk_idx}-{max_array_size*chunk_idx + len(cmd_list_chunk) - 1}{f'%{max_run_subjobs}' if max_run_subjobs else ''}
+{('#SBATCH --dependency=afterany:'+lastjobid) if depend_after and (lastjobid is not None) else ''}
+bash {jobpath}/cmd_$SLURM_ARRAY_TASK_ID.sh
+END"""
+        lastjobid = subprocess.check_output(
+            f"sbatch --parsable {SLURM_SCRIPT}", shell=True, text=True
+        ).strip()
+        print(lastjobid)
+        jobids.append(lastjobid)
+        if print_script:
+            print(SLURM_SCRIPT)
+    print(
+        f"Submitted {len(cmd_list)} jobs in {len(cmd_list_chunks)} arrays: {','.join(jobids)}"
+    )
+    # TODO: implement slurm stats
+    return jobids
 
 
 if __name__ == "__main__":

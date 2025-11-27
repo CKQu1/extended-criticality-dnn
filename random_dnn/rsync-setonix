@@ -1,0 +1,19 @@
+#!/bin/bash
+case $1 in
+    "push")
+        rsync -vhra \
+            /import/silo3/wardak/extended-criticality-dnn/ \
+            awar9402@data-mover.pawsey.org.au:/scratch/pawsey1267/awar9402/extended-criticality-dnn/ \
+            --include='**.gitignore' --exclude='/.git' \
+            --filter=':- .gitignore' --delete-after
+        ;;
+    "pull")
+        rsync -vhraR --info=progress2 \
+            awar9402@data-mover.pawsey.org.au:"/scratch/pawsey1267/awar9402/extended-criticality-dnn/random_dnn/fig/./*/*.npz" \
+            /import/silo3/wardak/extended-criticality-dnn/random_dnn/fig/
+        ;;
+    *)
+        echo "Usage: $0 {push|pull}"
+        exit 1
+        ;;
+esac

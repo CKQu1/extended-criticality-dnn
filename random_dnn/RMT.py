@@ -1,5 +1,9 @@
 import numpy as np
-from tqdm.auto import tqdm
+
+try:
+    from tqdm.auto import tqdm
+except ImportError:
+    tqdm = lambda iterable, *args, **kwargs: iterable
 
 import torch
 
