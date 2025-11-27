@@ -445,7 +445,7 @@ def jac_cavity_svd_log_pdf(
                 alpha, scale=2 ** (-1 / alpha), size=(num_chis, pop_size)
             )
         else:
-            stable_samples = torch.randn(num_chis, pop_size)  # TODO
+            stable_samples = torch.randn(num_chis, pop_size)
         chi_samples = sigma_W * phi_prime(q ** (1 / alpha) * stable_samples)
         g1, g2 = cavity_svd_resolvent(
             sing_vals_tensor,
