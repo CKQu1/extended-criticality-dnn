@@ -1,3 +1,4 @@
+import matplotlib as mpl
 import os
 import pandas as pd
 from UTILS.mutils import njoin
@@ -41,7 +42,8 @@ GADI_SOURCE = '/scratch/uu69/cq5024/myenvs/fsa/bin/activate'
 
 # ----- PHYSICS -----
 PHYSICS_SOURCE = '/usr/physics/python/Anaconda3-2022.10/etc/profile.d/conda.sh'
-PHYSICS_CONDA = 'frac_attn' if 'chqu7424' in RT else '~/conda'
+# PHYSICS_CONDA = 'frac_attn' if 'chqu7424' in RT else '~/conda'
+PHYSICS_CONDA = '/taiji1/chqu7424/myenvs/pydl'
 # -------------------
 
 # ----- FUDAN-BRAIN -----
@@ -54,6 +56,13 @@ BPATH = njoin('/project')  # path for binding to singularity container
 #SPATH = njoin('/project/frac_attn/built_containers/FaContainer_v5.sif')  # singularity container path
 SPATH = njoin('/project/frac_attn/built_containers/pydl.img')
 # -------------------
+
+
+# color for model hyperparameters
+#HYP_CM = 'gist_ncar'
+HYP_CM = 'turbo'
+HYP_CMAP = get_cmap(HYP_CM)
+HYP_CNORM = mpl.colors.Normalize(vmin=1, vmax=2)
 
 # ---------- create logs for networks during training ----------
 
