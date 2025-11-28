@@ -7,6 +7,7 @@ import pandas as pd
 import sys
 from ast import literal_eval
 # from matplotlib.ticker import AutoMinorLocator
+from string import ascii_lowercase
 from tqdm import tqdm
 sys.path.append(os.getcwd())
 import constants
@@ -14,6 +15,7 @@ from os.path import join, isdir
 from os import makedirs
 from constants import DROOT, id_to_path, model_log
 from utils_dnn import load_transition_lines
+from UTILS.mutils import njoin
 
 # colorbar setting
 cm_lib = "sns"
@@ -203,7 +205,7 @@ def get_accloss_phase(path, net_ls, epoch, epoch_last, acc_type, acc_threshold):
     return alpha_m_ls, acc_ls, loss_ls, early_ls, acc_mesh, loss_mesh, early_mesh, failed_jobs
 
 
-def accloss_ensembles(acc_type, paths, acc_threshold=93, display=False):
+def accloss_ensembles(acc_type, path, seeds='0,1,2,3,4', acc_threshold=93, display=False):
     '''
     Includes accuracy, loss and stopping epoch for MLP (main text plot)
         - acc_type (str): test or train
@@ -218,8 +220,11 @@ def accloss_ensembles(acc_type, paths, acc_threshold=93, display=False):
     acc_threshold = float(acc_threshold)
     display = literal_eval(display) if isinstance(display,str) else display
 
-    paths = paths.split(',')    
-    print(paths)
+    seeds = [int(seed) for seed in seeds.split(',')]
+    paths = []
+    for subdir in os.listdir(path):
+        if int(subdir.split('seed=')[-1]) in seeds:
+            paths.append(njoin(path, subdir))
     net_ls, activation, dataname, epoch_last, optimizer, fcn = get_net_ls(paths[0])
     net_lss = [net_ls]
     for path in paths[1:]:
@@ -257,9 +262,8 @@ def accloss_ensembles(acc_type, paths, acc_threshold=93, display=False):
             xtick_ls.append('')
 
 
-    #title_ls = ['Test accuracy', r'$\frac{{{}}}{{8}}$'.format("Test accuracy", "Train accuracy")]
-    title_ls = ['Test accuracy', 'Earliest epoch reaching' + '\n' + 'test acc. threshold ']
-    label_ls = ['(a)', '(b)', '(c)', '(d)']
+    # title_ls = ['Test accuracy', 'Earliest epoch reaching' + '\n' + 'test acc. threshold ']
+    title_ls = ['Top-1 acc.', 'Loss', 'Stopping epoch']
     for i in range(len(axs)):
         # network realizations
         #if i == 0:
@@ -274,11 +278,11 @@ def accloss_ensembles(acc_type, paths, acc_threshold=93, display=False):
 
         #if i == 2 or i == 3:
         #axs[i].set_xlabel(r'$\alpha$', fontsize=axis_size)
-        #axs[i].set_title(f"{title_ls[i]}", fontsize=axis_size)
+        axs[i].set_title(f"{title_ls[i]}", fontsize=axis_size)
 
         # adding labels
-        label = label_ls[i] 
-        #axs[i].text(-0.1, 1.2, '%s'%label, transform=axs[i].transAxes, fontsize=label_size, va='top', ha='right')   # fontweight='bold'
+        label = ascii_lowercase[i]
+        axs[i].text(-0.1, 1.2, '%s'%label, transform=axs[i].transAxes, fontsize=label_size, va='top', ha='right')   # fontweight='bold'
 
         # setting ticks
         axs[i].tick_params(bottom=True, top=False, left=True, right=False)
