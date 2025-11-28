@@ -1,11 +1,13 @@
 import numpy as np
 import os
+import random
 from os.path import join, isdir, isfile
 from os import makedirs
 
 #C_SIZE = 32 # channel size.
-C_SIZE = 100
-K_SIZE = 3 # kernel size
+# C_SIZE = 100
+# C_SIZE = 250
+# K_SIZE = 3 # kernel size
 #LEARNING_RATE = 2e-2
 #LEARNING_RATE = 3e-2
 #LEARNING_RATE = 1.5e-2
@@ -19,7 +21,7 @@ MOMENTUM = 0
 BATCH_SIZE = 1024 
 
 def run_model(alpha100, g100, seed,
-              depth, 
+              depth, c_size, k_size,
               epochs, root_path):
     #global df, accuracy_log, loss_log
 
@@ -30,15 +32,18 @@ def run_model(alpha100, g100, seed,
     from tensorflow.keras.utils import to_categorical    
     from tqdm import tqdm
 
-    from tf_models import ConvModel
+    # from tf_models import ConvModel
 
     print('Settings')
-    print(f'C_SIZE = {C_SIZE}, K_SIZE = {K_SIZE}, lr = {LEARNING_RATE}, mom = {MOMENTUM}, bs = {BATCH_SIZE} \n')
+    print(f'c_size = {c_size}, k_size = {k_size}, lr = {LEARNING_RATE}, mom = {MOMENTUM}, bs = {BATCH_SIZE} \n')
     print(f'alpha100 = {alpha100}, g100 = {g100}, seed = {seed}, depth = {depth}, epochs = {epochs} \n')
 
-    alpha100, g100, seed, depth, epochs = int(alpha100), int(g100), int(seed), int(depth), int(epochs)    
+    alpha100, g100, seed, depth, epochs = int(alpha100), int(g100), int(seed), int(depth), int(epochs)   
+    c_size, k_size = int(c_size), int(k_size) 
 
     # SET SEED
+    tf.config.experimental.enable_op_determinism()  # remove randomness from GPUs
+    random.seed(seed)
     tf.random.set_seed(seed)
     np.random.seed(seed)
 
@@ -52,9 +57,24 @@ def run_model(alpha100, g100, seed,
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(60000, seed=seed).batch(BATCH_SIZE)
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(BATCH_SIZE)
 
+    # Ensure the model is leveraging GPU
+    device = '/GPU:0' if tf.config.experimental.list_physical_devices('GPU') else '/CPU:0'
+    print("Running on GPU" if tf.config.experimental.list_physical_devices('GPU') else "Running on CPU")
+    print('\n')
+
     # Instantiate and train model
-    model = ConvModel(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
-                      c_size=C_SIZE, k_size=K_SIZE)
+    # model = ConvModel(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
+    #                   c_size=c_size, k_size=k_size)
+
+    # Instantiate and train model
+    if 'GPU' in device:
+        from tf_models import ConvModel_gpu
+        model = ConvModel_gpu(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
+                            c_size=c_size, k_size=k_size)
+    else:
+        from tf_models import ConvModel_cpu
+        model = ConvModel_cpu(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
+                            c_size=c_size, k_size=k_size)
 
     loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
     optimizer = tf.keras.optimizers.SGD(learning_rate=LEARNING_RATE)
@@ -82,11 +102,6 @@ def run_model(alpha100, g100, seed,
 
         return avg_loss.result().numpy(), accuracy_metric.result().numpy()
 
-    # Ensure the model is leveraging GPU
-    device = '/GPU:0' if tf.config.experimental.list_physical_devices('GPU') else '/CPU:0'
-    print("Running on GPU" if tf.config.experimental.list_physical_devices('GPU') else "Running on CPU")
-    print('\n')
-
     # Training loop with device placement
     metric_cols = ['train loss', 'train acc', 'test loss', 'test acc']
     metrics_ls = []
@@ -108,8 +123,8 @@ def run_model(alpha100, g100, seed,
         df.to_csv(join(save_dir, '_acc_loss'))            
 
         print(f"Epoch {epoch + 1}:")
-        print(f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}")
-        print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.4f}")
+        print(f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}\
+                Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.4f}")
 
     # save train acc/loss
 
@@ -149,7 +164,7 @@ def submit(*args):
 
     # save training settings
     df_settings = pd.DataFrame(columns=['c_size', 'k_size', 'lr', 'momentum', 'batch_size'])
-    df_settings.loc[0,:] = [C_SIZE, K_SIZE, LEARNING_RATE, MOMENTUM, BATCH_SIZE]
+    df_settings.loc[0,:] = [c_size, k_size, LEARNING_RATE, MOMENTUM, BATCH_SIZE]
     df_settings.to_csv(join(models_path, 'settings.csv'))
 
     ncpus, ngpus = 1, 0
@@ -246,7 +261,7 @@ def batch_submit(*args):
                    'depth', 'c_size', 'k_size', 'lr', 'momentum', 'batch_size']
         df_settings = pd.DataFrame(columns=df_cols)
         df_settings.loc[0,:] = [net_type, fc_init, dataset, optimizer,
-                                DEPTH, C_SIZE, K_SIZE, LEARNING_RATE, MOMENTUM, BATCH_SIZE]
+                                DEPTH, c_size, k_size, LEARNING_RATE, MOMENTUM, BATCH_SIZE]
         df_settings.to_csv(join(models_path, 'settings.csv'))
 
         #ncpus, ngpus = 1, 0
