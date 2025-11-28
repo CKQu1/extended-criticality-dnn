@@ -240,7 +240,9 @@ END"""
 
 def job_setup(script_name, kwargss, **kwargs):
 
-    assert isfile(script_name), f"{script_name} does not exist!"
+    is_args_parser = kwargs.get('is_args_parser')
+    if is_args_parser:
+        assert isfile(script_name), f"{script_name} does not exist!"
 
     # cluster
     cluster = kwargs.get('cluster')
