@@ -10,11 +10,12 @@ from constants import DROOT, CLUSTER, RESOURCE_CONFIGS
 from UTILS.mutils import njoin
 from qsub_parser import add_common_kwargs, str_to_time, time_to_str
 
+# train FCNs according to the phase transition diagram
 def train_mlps():
     pass
 
 
-# train vanilla cnns
+# train vanilla cnns according to the phase transition diagram
 def train_cnns():
 
     script_name = 'tf_train_v3.py'
@@ -77,6 +78,49 @@ def train_cnns():
                         'epochs': epochs, 'root_path': njoin(models_path,f'cnn{DEPTH}_seed={seed}')})
 
     kwargss = add_common_kwargs(kwargss, common_kwargs)
+    kwargss_all += kwargss
+
+    return kwargss_all, script_name, script_func, q, ncpus, ngpus, select, walltime, mem, job_path, nstack
+
+
+# multifractal analysis for Jacobian eigenvectors of pretrained MLPs
+def mlp_jac_analysis():
+    from UTILS.mutils import point_to_path
+
+    # script and function
+    script_name = 'pretrained_dq.py'
+    script_func = 'jac_dq'
+
+    # arguments
+    seeds_root = njoin(DROOT, 'fc10_sgd_mnist')
+    job_path = njoin(seeds_root, 'jac_jobs')
+
+    seeds = list(range(5))
+    # seeds = list(range(1))
+    alpha100s, g100s = [120, 200], [20, 100, 300]
+    navg = 10
+    post, reig = 0, 1
+    net_paths = [point_to_path(seeds_root, alpha100, g100, seed)\
+                  for alpha100, g100, seed in product(alpha100s, g100s, seeds)]
+    epochs = [0, 100]
+    
+    # resources
+    is_use_gpu = False
+    cfg = RESOURCE_CONFIGS[CLUSTER][is_use_gpu]
+    q, ngpus, ncpus = cfg["q"], cfg["ngpus"], cfg["ncpus"]   
+    nstack = 10                              
+    single_walltime = '00:15:59'  # gpu  50 epochs
+    walltime = time_to_str(str_to_time(single_walltime) * nstack)   
+    mem = '8GB'   
+    select = 1
+
+    kwargss_all = []                  
+    kwargss = []      
+    for net_path, epoch in product(net_paths, epochs):
+        kwargss.append({'net_path': net_path, 'navg': navg, 'epoch': epoch,
+                        'post': post, 'reig': reig})
+
+    # kwargss = add_common_kwargs(kwargss, common_kwargs)
     kwargss_all += kwargss
 
     return kwargss_all, script_name, script_func, q, ncpus, ngpus, select, walltime, mem, job_path, nstack
