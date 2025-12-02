@@ -70,6 +70,20 @@ def get_seed(dir, *args):  # for enumerating each seed of training
     else:
         return 0
 
+
+def point_to_path(seeds_root, alpha100, g100, seed):
+
+    alpha100, g100, seed = int(alpha100), int(g100), int(seed)
+    
+    for subdir in os.listdir(seeds_root):
+        if f'seed={seed}' in subdir:
+            seed_root = njoin(seeds_root, subdir)
+            for model_dir in os.listdir(seed_root):
+                if f'_{alpha100}_{g100}_{seed}_' in model_dir:
+                    return njoin(seed_root, model_dir)
+    return None
+
+
 # -------------------- Main utils --------------------  
 
 def convert_dict(dct):  # change elements of dict its value is a dict
