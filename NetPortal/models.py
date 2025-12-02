@@ -1,4 +1,3 @@
-import torch
 import inspect
 from NetPortal.architectures import Vanilla
 from NetPortal.architectures import FullyConnected, AlexNet, AlexNetold, ResNet14, ResNet14_ht, ResNet_ht, CONVNET_1D, CONVNET_simple, van2nobias, van10nobias, van5, van5nobias, van20nobias, van50nobias, van100nobias, van150nobias, van300nobias, van5_og, van32_og, van32, van50, van100, van200, van300
@@ -23,20 +22,6 @@ def filter_n_eval(func, **kwargs):
 def ModelFactory(**kwargs):
     classes = {'fc':           FullyConnected,
                'van':          Vanilla,
-            #    'van2nobias':   van2nobias,
-            #    'van5':         van5,
-            #    'van5nobias':   van5nobias,
-            #    'van10nobias':  van10nobias,
-            #    'van20nobias':  van20nobias,
-            #    'van32':        van32,
-            #    'van50':        van50,
-            #    'van100':       van100,
-            #    'van200':       van200,
-            #    'van300':       van300,
-            #    'van50nobias':  van50nobias,
-            #    'van100nobias': van100nobias,
-            #    'van150nobias': van150nobias,
-            #    'van300nobias': van300nobias,
                'van5_og':      van5_og,
                'van32_og':     van32_og,
                'convnet_1d':   CONVNET_1D,
@@ -56,5 +41,4 @@ def ModelFactory(**kwargs):
                }
     #model = filter_n_eval(classes[kwargs["architecture"].lower()], **kwargs)
     model = filter_n_eval(classes[kwargs["architecture"]], **kwargs)
-    #model.to(arch.device)
     return model
