@@ -10,7 +10,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='batch_submit_main.py args')   
     parser.add_argument('--is_qsub', type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument('--exp', default='exp1', type=str) 
+    parser.add_argument('--exp', default='', type=str) 
     args = parser.parse_args()
 
     IS_ARGS_PARSER = False
@@ -25,6 +25,9 @@ if __name__ == '__main__':
         EXPS_TO_RUN = train_cnns(); EXP_NAME = 'Training Vanilla CNNs on the phase transition diagram.'
         ARGS_ORDER = ['alpha100', 'g100', 'seed', 'depth', 'c_size', 'k_size',
                       'epochs', 'root_path']
+    elif exp_type == 'exp3':
+        EXPS_TO_RUN = mlp_jac_analysis(); EXP_NAME = 'Jacobian eigenvector analysis for MLPs' 
+        ARGS_ORDER = ['net_path', 'navg', 'epoch', 'post', 'reig']
 
     print('-----------------------')
     print(f'{exp_type}: {EXP_NAME}')
