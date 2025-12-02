@@ -1,4 +1,3 @@
-import copy
 import math
 import numpy as np
 import numpy.random as rand
@@ -22,7 +21,6 @@ from torch import nn
 from torch.nn.modules.utils import _pair
 
 class FullyConnected(nn.Module):
-
     def __init__(self, dims, alpha, g, init_path, init_epoch, with_bias, 
                  is_weight_share=False, init_type='ht', activation='tanh', **pretrained):
         super(FullyConnected, self).__init__()
@@ -52,8 +50,6 @@ class FullyConnected(nn.Module):
     
         # train from pretrained networks
         if init_path != None and init_epoch != None:
-        # load initial matrix from trained weights of MLPs (taken from eigs_diffusion.py)
-        #def init_mat_load(self, path, init_epoch):
             print(f"Loading pretrained weights from {init_path} at epoch {init_epoch}!")
             with torch.no_grad():
                 widx = 0
@@ -76,7 +72,6 @@ class FullyConnected(nn.Module):
                         start += dims[widx] * dims[widx+1]
                         widx += 1   
 
-    
         else:
             if alpha != None and g != None:
                 print("Heavy-tailed initialization applied!")                
@@ -127,19 +122,7 @@ class FullyConnected(nn.Module):
                                 if with_bias == True:
                                     pass
 
-                            """
-                            elif init_type == 'mfrac_orthogonal':
-                                multifractal_orthogonal_(l.weight, 1, alpha, g)
-
-                            elif init_type == 'mfrac':
-                                multifractal_(l.weight, 1, alpha, g)
-
-                            elif init_type == 'mfrac_sym':
-                                pass
-                            """
-
-        self.sequential = nn.Sequential(*modules)
-             
+        self.sequential = nn.Sequential(*modules)             
 
     """
     def forward(self, x):
@@ -243,51 +226,6 @@ class FullyConnected(nn.Module):
                 #print(weights[i].shape)  # delete
         return DW_ls
 
-# method 1
-def multifractal_orthogonal_(tensor, gain, alpha, g):
-    
-    """
-    reference: https://pytorch.org/docs/stable/_modules/torch/nn/init.html#orthogonal_
-    directly generate a levy matrix and to a QR decomposition
-    """
-    
-    if tensor.ndimension() < 2:
-        raise ValueError("Only tensors with 2 or more dimensions are supported")
-    if tensor.numel() == 0:
-        # no-op
-        return tensor
-
-    rows = tensor.size(0)
-    cols = tensor.numel() // rows
-    #a = torch.zeros((dim, dim)).normal_(0, 1)
-    a = torch.Tensor(levy_stable.rvs(alpha, 0, size=(rows,cols), scale=g))
-    if rows < cols:
-        a.t_()
-
-    q, r = torch.qr(a)
-    d = torch.diag(r, 0)
-    ph = d.sign()
-    q *= ph
-
-    if rows < cols:
-        q.t_()
-
-    with torch.no_grad():
-        tensor.view_as(q).copy_(q)
-        tensor.mul_(gain)
-
-
-# method 2
-def multifractal_(tensor, gain, alpha, g):
-    size = tensor.shape
-    a = levy_stable.rvs(alpha, 0, size=size, scale=g)
-    u, s, vh = np.linalg.svd(a, full_matrices=False)
-    a = torch.tensor(1/s*u @ np.diag(s) @ vh)
-
-    with torch.no_grad():
-        tensor.view_as(a).copy_(a)
-        tensor.mul_(gain)
-
 ####################################################################### ALL CNNS #######################################################################
 
 
@@ -354,7 +292,6 @@ class AlexNet(nn.Module):
 
 """
 
-
 class AlexNet(nn.Module):
 
     def __init__(self, alpha, g, dataset, activation, fc_init, dropout: float=0.5, num_classes=1000, with_bias=False):
@@ -398,7 +335,6 @@ class AlexNet(nn.Module):
             a_func,
             nn.MaxPool2d(kernel_size=3, stride=2, padding=0, dilation=1, ceil_mode=False),
             #nn.MaxPool2d(kernel_size=3, stride=2),
-
         )
 
         # for conv2d
@@ -758,7 +694,6 @@ class ResNet_ht(nn.Module):
         return out
 
 
-
 # CIFAR-10 models
 def ResNet14_ht(alpha, g, activation):
     depth = 14
@@ -767,7 +702,6 @@ def ResNet14_ht(alpha, g, activation):
 
 
 ################ CNN with circular padding ####################
-
 
 class Conv2dSamePadding(nn.Conv2d):
     def __init__(self, alpha, g, N_eff, *args, **kwargs):
@@ -791,7 +725,6 @@ class Conv2dSamePadding(nn.Conv2d):
 
     def forward(self, input):
         return  self._conv_forward(self.zero_pad_2d(input), self.weight, self.bias)
-
 
 
 def _ntuple(n):
@@ -884,7 +817,6 @@ class Conv2dSame(nn.Module):
         return self.conv(padded)
 
 
-
 # HT-initialization for nn.Conv2d structures
 def conv2d_ht_new(module: nn.Conv2d, alpha, g, N_eff):
     with torch.no_grad():
@@ -913,14 +845,6 @@ def get_weight(shape, alpha, g, N_eff):
 # need to manually pad
 def conv2d_new(x, w, strides=1):
     return nn.Conv2d(x, w, strides=[1, strides, strides, 1])
-
-
-"""
-def conv2d_same_pad(module: nn.Conv2d):
-
-    module.zero_pad_2d = nn.ZeroPad2d(reduce(__add__,
-            [(k // 2 + (k - 2 * (k // 2)) - 1, k // 2) for k in module.kernel_size[::-1]]))
-"""
 
 
 # taken from: https://github.com/yl-1993/ConvDeltaOrthogonal-Init/blob/master/_ext/nn/init.py
@@ -1104,369 +1028,6 @@ class CONVNET_1D(nn.Module):
 
         return out
 
-
-################ CNN vanilla modified ###############
-
-# taken from: https://github.com/yl-1993/ConvDeltaOrthogonal-Init/blob/master/models/vanilla.py
-"""
-class Vanilla(nn.Module):
-
-    def __init__(self, base, c, alpha, g, num_classes=10, conv_init='ht_initialization'):
-    #def __init__(self, base, c, num_classes=10, conv_init='conv_delta_orthogonal'):
-        super(Vanilla, self).__init__()
-        self.alpha = alpha
-        self.g = g
-
-        #self.init_supported = ['conv_delta_orthogonal', 'kaiming_normal']
-        self.init_supported = ['conv_delta_orthogonal', 'ht_initialization']
-        if conv_init in self.init_supported:
-            self.conv_init = conv_init
-        else:
-            print('{} is not supported'.format(conv_init))
-            self.conv_init = 'kaiming_normal'
-        print('initialize conv by {}'.format(conv_init))
-        self.base = base
-        self.fc = nn.Linear(c, num_classes)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                if self.conv_init == self.init_supported[0]:
-                    conv_delta_orthogonal_(m.weight)
-                elif self.conv_init == self.init_supported[1]:
-                    size = m.weight.shape
-                    N_eff = np.sqrt(m.kernel_size[0]**2 * m.in_channels)
-                    m.weight = nn.Parameter(torch.Tensor(levy_stable.rvs(alpha=alpha, beta=0, loc=0, scale=g*(0.5/N_eff)**(1./alpha),
-                                                size=size)))                     
-                else:
-                    raise NameError("This initialization method does not exist!")
-
-    def forward(self, x):
-        x = self.base(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
-"""
-
-# method 1
-# generate an orthogonal matrix with multifractal column/row vectors
-def multifractal_orthogonal(dim, alpha, g):
-    # method 1
-    """
-    directly generate a levy matrix and to a QR decomposition
-    """
-    #a = torch.zeros((dim, dim)).normal_(0, 1)
-    a = torch.Tensor(levy_stable.rvs(alpha, 0, size=(dim,dim), scale=g))
-    q, r = torch.qr(a)
-    d = torch.diag(r, 0).sign()
-    diag_size = d.size(0)
-    d_exp = d.view(1, diag_size).expand(diag_size, diag_size)
-    q.mul_(d_exp)
-    return q
-
-
-def makeMultifractalOrthogonal(weights, gain, alpha, g):
-    rows = weights.size(0)
-    cols = weights.size(1)
-    if rows > cols:
-        print("In_filters should not be greater than out_filters.")
-    weights.data.fill_(0)
-    dim = max(rows, cols)
-    #q = genOrthgonal(dim)
-    q = multifractal_orthogonal(dim,alpha,g)
-    mid1 = weights.size(2) // 2
-    mid2 = weights.size(3) // 2
-    weights[:, :, mid1, mid2] = q[:weights.size(0), :weights.size(1)]
-    weights.mul_(gain)
-
-
-# method 2
-# generate matrix with eigenvalues on the complex unity circle
-def multifractal(dim, alpha, g):
-    a = levy_stable.rvs(alpha, 0, size=(dim,dim), scale=g)
-    eigvals, eigvecs = LA.eig(a)
-    return torch.Tensor(np.real(eigvecs @ np.diag(eigvals/np.abs(eigvals)) @  LA.inv(eigvecs)))
-
-
-def makeMultifractal(weights, gain, alpha, g):
-    rows = weights.size(0)
-    cols = weights.size(1)
-    if rows > cols:
-        print("In_filters should not be greater than out_filters.")
-    weights.data.fill_(0)
-    dim = max(rows, cols)
-    #q = genOrthgonal(dim)
-    q = multifractal(dim,alpha,g)
-    mid1 = weights.size(2) // 2
-    mid2 = weights.size(3) // 2
-    weights[:, :, mid1, mid2] = q[:weights.size(0), :weights.size(1)]
-    weights.mul_(gain)
-
-
-# method 3
-def multifractal_sym(dim, alpha, g):
-    a = levy_stable.rvs(alpha, 0, size=(int(dim/2),dim), scale=g) + levy_stable.rvs(alpha, 0, size=(int(dim/2),dim), scale=g) * 1j
-    for row in range(a.shape[0]):
-        a[row,:] = a[row,:]/LA.norm(a[row,:])
-    P = np.vstack((a,np.conjugate(a))).T
-    b = np.exp(rand.uniform(0,2*np.pi,int(dim/2)) * 1j)
-    D = np.hstack((b,np.conjugate(b)))
-    return torch.Tensor(np.real(P @ np.diag(D) @ LA.inv(P)))
-
-
-def makeMultifractalSym(weights, gain, alpha, g):
-    rows = weights.size(0)
-    cols = weights.size(1)
-    if rows > cols:
-        print("In_filters should not be greater than out_filters.")
-    weights.data.fill_(0)
-    dim = max(rows, cols)
-    #q = genOrthgonal(dim)
-    q = multifractal_sym(dim,alpha,g)
-    mid1 = weights.size(2) // 2
-    mid2 = weights.size(3) // 2
-    weights[:, :, mid1, mid2] = q[:weights.size(0), :weights.size(1)]
-    weights.mul_(gain)
-
-
-class Vanilla(nn.Module):
-
-    def __init__(self, depth, dataset, alpha, g, fc_init, conv2d_init='ht', with_bias=False, num_classes=10):
-        super(Vanilla, self).__init__()
-        self.depth = depth
-        self.dataset = dataset
-        self.alpha = alpha
-        self.g = g
-        self.fc_init = fc_init
-
-        #self.init_supported = ['conv_delta_orthogonal', 'kaiming_normal']
-        #self.init_supported = ['conv_delta_orthogonal', 'ht_initialization']
-        self.init_supported = ['mfrac_orthogonal', 'mfrac', 'mfrac_sym', 'ht']
-        self.fc_init_supported = ['fc_ht', 'fc_orthogonal', 'fc_default']
-
-        self.conv2d_init = conv2d_init
-        self.with_bias = with_bias        
-
-        assert conv2d_init in self.init_supported, "Initialization type for conv2d not supported!"
-        assert fc_init in self.fc_init_supported, "Initialization type for fc not supported!"
-
-        modules, c = make_layers(depth, dataset, with_bias=with_bias)
-        #modules.append(nn.Linear(c, num_classes, bias=with_bias))
-        self.c = c  # number of channels for the FC below
-        self.fc = nn.Linear(c, num_classes, bias=with_bias)
-
-        # initialize fc layer
-
-            # set bias with variance 2e-5 as in paper (only for Gaussian)
-            #bias_shape = self.fc.bias.shape
-            #self.fc.bias = nn.Parameter(torch.Tensor( normal(0,np.sqrt(2e-5),bias_shape) ))
-
-
-        # ---------- Linear layers ----------
-        if fc_init == "fc_ht":
-            if alpha != None and g != None:
-                with torch.no_grad():
-                    size = fc.weight.shape
-                    # old fc
-                    N_eff = (size[0]*size[1])**0.5
-                    # new fc
-                    #N_eff = c**0.5      # size[1] is c
-                    # fc type 3
-                    #N_eff = c
-                    self.fc.weight = nn.Parameter(torch.Tensor(levy_stable.rvs(alpha, 0, size=size,
-                                                scale=g*(0.5/N_eff)**(1./alpha))))
-                    
-        elif fc_init == "fc_orthogonal":
-            with torch.no_grad():
-                nn.init.orthogonal_(self.fc.weight, gain=1)
-
-        # ---------- Conv2d layers ----------                        
-        idx = 0
-        for m in modules:
-            with torch.no_grad():
-                if isinstance(m, nn.Conv2d):
-                    if conv2d_init == 'mfrac_orthogonal':
-                        makeMultifractalOrthogonal(m.weight, 1, alpha, g)
-        
-                    elif conv2d_init == 'mfrac':
-                        makeMultifractal(m.weight, 1, alpha, g)
-
-                    elif conv2d_init == 'mfrac_sym':
-                        makeMultifractalSym(m.weight, 1, alpha, g)                    
-
-                    elif conv2d_init == 'ht':
-                        """
-                        if idx > 2:
-                            conv_delta_orthogonal_(m.weight)
-                        else:
-                            size = m.weight.shape
-                            N_eff = np.sqrt(m.kernel_size[0]**2 * m.in_channels)
-                            m.weight = nn.Parameter(torch.Tensor(levy_stable.rvs(alpha=alpha, beta=0, loc=0, scale=g*(0.5/N_eff)**(1./alpha),
-                                                        size=size)))  
-                        """
-                        size = m.weight.shape
-                        # type 1
-                        N_eff = int(np.prod(m.kernel_size)) * m.in_channels     # most correct
-                        # type 2
-                        #N_eff = np.sqrt(int(np.prod(m.kernel_size)) * m.in_channels)
-                        # type 3
-                        #N_eff = np.sqrt(int(np.prod(m.kernel_size)) * m.in_channels * m.out_channels)
-                        m.weight = nn.Parameter(torch.Tensor(levy_stable.rvs(alpha=alpha, beta=0, loc=0, scale=g*(0.5/N_eff)**(1./alpha),
-                                                    size=size)))  
-                        
-                        #m.weight = nn.Parameter(torch.Tensor( normal(0, g*(1/N_eff)**(1./2),size) ))      # Gaussian init
-                        # set bias with variance 2e-5 as in paper (only for Gaussian)
-                        #bias_shape = m.bias.shape
-                        #m.bias = nn.Parameter(torch.Tensor( normal(0,np.sqrt(2e-5),bias_shape) ))
-  
-                    idx += 1      
-
-        self.sequential = nn.Sequential(*modules) 
-
-    def forward(self, x):
-        #x = self.base(x)
-        x = self.sequential(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-        return x
-
-
-def make_layers(depth, dataset, with_bias=False):
-    assert isinstance(depth, int)
-    c = 256 if depth <= 256 else 128
-    layers = []
-    assert dataset in ['cifar10', 'mnist'], f'{dataset} does not exist for training'
-    if dataset == "cifar10":
-        in_channels = 3  
-    elif dataset == "mnist":
-        in_channels = 1
-    for stride in [1, 2, 2]:
-        conv2d = nn.Conv2d(in_channels, c, kernel_size=3, padding=1, stride=stride, bias=with_bias)
-        layers += [conv2d, nn.Tanh()]
-        in_channels = c
-    for _ in range(depth):
-        conv2d = nn.Conv2d(c, c, kernel_size=3, padding=1, bias=with_bias)
-        layers += [conv2d, nn.Tanh()]
-    if dataset == "cifar10":
-        layers += [nn.AvgPool2d(8)] # For mnist is 7
-    elif dataset == "mnist":
-        layers += [nn.AvgPool2d(7)]
-    #return nn.Sequential(*layers), c
-    return layers, c
-
-
-def van5(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(5, dataset, with_bias=True), alpha, g, with_bias=True, **kwargs)
-    return model
-
-
-def van20(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(5, dataset, with_bias=True), alpha, g, fc_init="fc_default", with_bias=True, **kwargs)
-    return model
-
-
-def van32(alpha, g, dataset, **kwargs):
-    """Constructs a 32 layers vanilla model.
-    """
-    model = Vanilla(*make_layers(32,dataset,with_bias=True), alpha, g, with_bias=True, **kwargs)
-    return model
-
-
-def van50(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(50,dataset,with_bias=True), alpha, g, with_bias=True, **kwargs)
-    return model
-
-
-def van100(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(100,dataset,with_bias=True), alpha, g, with_bias=True, **kwargs)
-    return model
-
-
-def van200(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(200,dataset,with_bias=True), alpha, g, with_bias=True, **kwargs)
-    return model
-
-
-def van300(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(300,dataset,with_bias=True), alpha, g, with_bias=True, **kwargs)
-    return model
-
-# --- no bias ----
-
-def van2nobias(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(2,dataset), alpha, g, **kwargs)
-    return model
-
-def van5nobias(**kwargs):
-    model = Vanilla(*make_layers(5,kwargs.get("dataset")), **kwargs)
-    return model
-
-def van10nobias(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(10,dataset), alpha, g, **kwargs)
-    return model
-
-def van20nobias(alpha, g, fc_init, dataset, **kwargs):
-    model = Vanilla(*make_layers(20,dataset), alpha, g, fc_init, **kwargs)
-    return model
-
-def van50nobias(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(50,dataset), alpha, g, **kwargs)
-    return model
-
-def van100nobias(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(100,dataset), alpha, g, **kwargs)
-    return model
-
-def van150nobias(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(150,dataset), alpha, g, **kwargs)
-    return model
-
-def van300nobias(alpha, g, dataset, **kwargs):
-    model = Vanilla(*make_layers(300,dataset), alpha, g, **kwargs)
-    return model
-
-################ CNN vanilla original ###############
-
-class Vanilla_og(nn.Module):
-
-    def __init__(self, base, c, num_classes=10, conv_init='conv_delta_orthogonal'):
-        super(Vanilla_og, self).__init__()
-        self.init_supported = ['conv_delta_orthogonal', 'kaiming_normal']
-        if conv_init in self.init_supported:
-            self.conv_init = conv_init
-        else:
-            print('{} is not supported'.format(conv_init))
-            self.conv_init = 'kaiming_normal'
-        print('initialize conv by {}'.format(conv_init))
-        self.base = base
-        self.fc = nn.Linear(c, num_classes)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                if self.conv_init == self.init_supported[0]:
-                    conv_delta_orthogonal_(m.weight)
-                else:
-                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-
-    def forward(self, x):
-        x = self.base(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
-
-def van5_og(**kwargs):
-    model = Vanilla_og(*make_layers(5), **kwargs)
-    return model
-
-
-def van32_og(**kwargs):
-    """Constructs a 32 layers vanilla model.
-    """
-    model = Vanilla_og(*make_layers(32), **kwargs)
-    return model
-
-
 ################ CNN simple ###############
 
 # directly taken from the torch tute: https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
@@ -1511,7 +1072,6 @@ class CONVNET_simple(nn.Module):
         else:
             raise NameError("activation does not exist in NetPortal.architectures")
 
-
         x = self.pool(a_func(self.conv1(x)))
         x = self.pool(a_func(self.conv2(x)))
         x = torch.flatten(x, 1) # flatten all dimensions except batch
@@ -1519,6 +1079,3 @@ class CONVNET_simple(nn.Module):
         x = a_func(self.fc2(x))
         x = self.fc3(x)
         return x
-
-
-
