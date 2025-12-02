@@ -21,12 +21,6 @@ lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
 
 from path_names import root_data
- 
-#import net_load as nl
-#from net_load.get_layer import get_hidden_layers, load_weights, get_epoch_weights, layer_struct
-
-#import train_DNN_code.model_loader as model_loader
-#from train_DNN_code.dataloader import get_data_loaders, get_synthetic_gaussian_data_loaders
 
 global main_path, project_ls
 #main_path = "/project/dnn_maths/project2_data/pretrained_workflow"
