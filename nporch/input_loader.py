@@ -49,23 +49,23 @@ def get_data_normalized(dataset,bs):
 
     #bs = len(trainset)
 
-    normalize = transforms.Normalize(mean=[x/255.0 for x in [125.3, 123.0, 113.9]],
-                                     std=[x/255.0 for x in [63.0, 62.1, 66.7]])
-
-    # no data agumentation
-    transform_train = transforms.Compose([
-        transforms.ToTensor(),
-        normalize,
-    ])
-
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        normalize,
-    ])
-
     #kwargs = {'num_workers': 1, 'pin_memory': True} if args.ngpu else {}
     kwargs = {'num_workers': 1, 'pin_memory': True}
     if dataset == 'cifar10':
+        normalize = transforms.Normalize(mean=[x/255.0 for x in [125.3, 123.0, 113.9]],
+                                        std=[x/255.0 for x in [63.0, 62.1, 66.7]])
+
+        # no data agumentation
+        transform_train = transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ])
+
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ])
+
         trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True,
                                                 transform=transform_train)
         testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True,
