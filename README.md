@@ -126,9 +126,6 @@ Finally, plot the phase transition figure for the CV for $L = 15,25,35$ as in th
 
 The following includes the updated and old scripts for network-training where all the necessary quantities associated in the manuscript are saved accordingly.
 
-
-### New version
-
 This updated training script is more concise and keeps log of all previously trained networks. To train heavy-tailed/Gaussian initialized multilayer perceptrons (MLPs), i.e. FC10 a MLP with 10 hidden layers, on the MNIST dataset and $(\alpha, \sigma_w) = (1,1)$; standard SGD algorithm with 1024 batch size and learning rate of 0.001 for 650 epochs.
 
 `python train_supervised.py train_ht_dnn mnist 100 100 sgd 1024 None None {root_path} 0.001 650`
@@ -136,13 +133,6 @@ This updated training script is more concise and keeps log of all previously tra
 Similary, to train heavy-tailed/Gaussian initialized convolution neural networks (CNNs):
 
 `python train_supervised.py train_ht_cnn cifar10 100 100 sgd alexnet fc_default`
-
-
-### Old version 
-
-The original main focus of theory is revolved around fully-connected neural networks/MLPs, the following are examples of training, please see `main.py` for training options. For network types, please see `train_DNN_code/model_loader.py` for loading method and the module `train_DNN_code/models` for model options.
-
-`python main.py  --model=fc5_mnist_tanh  --init_dict=stable  --init_alpha=1.5  --init_scale_multiplier=2  --save_epoch=50  --epochs=650  --lr=0.1  --batch_size=256  --dataset=mnist`
 
 
 
@@ -235,75 +225,6 @@ Finally, plotting the results:
 <img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/fc10_mnist_epoch=0_650_g100=25_100_300_ED_D2_eigvals-vs-depth.jpg" width="750">
 </p>
 
-
-
-## 6. Pretrained CNNs
-
-### SNR metrics
-
-First, download the pretrained networks from PyTorch
-
-`python pretrained_workflow/pretrained_download.py pretrained_store_dnn`
-
-- `n_model`: index of the model from the library
-
-and TensorFlow
-
-`python pretrained_workflow/pretrained_download.py pretrained_store_dnn_tf`
-
-Then get the signal-to-noise ratio (SNR) and its related geometrical metrics Github Ref. [2]:
-
-`python fewshot-learning/pretrained_macaque_stimuli.py snr_components {model_name} {pretrained}`
-
-- `model_name`: must match the file name, equivalent to the string name for importing the network
-- `pretrained`: `True` or `False`, if True then pretrained on ImageNet1K
-
-OR
-
-modify `snr_submit()` function:
-
-`python fewshot-learning/pretrained_macaque_stimuli.py snr_submit snr_components`
-
-Afterwards, compute the CNN's NPC $D_2$ (can be executed simulatenously with the above): 
-
-`python fewshot-learning/pretrained_macaque_stimuli.py snr_d2_mbatch {model_name} {pretrained}`
-
-modify `snr_submit()` function:
-
-`python fewshot-learning/pretrained_macaque_stimuli.py snr_submit snr_d2_mbatch`
-
-Finally plot the results:
-
-`python fewshot-learning/pretrained_macaque_stimuli.py snr_metric_plot`
-
-<p align="center">
-<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/pretrained_m=5_metric_alexnet_resnet101.jpg" width="750">
-</p>
-
-`python fewshot-learning/pretrained_macaque_stimuli.py extra_metric_plot`
-
-<p align="center">
-<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/pretrained_m=5_extra_metrics_alexnet_resnet101.jpg" width="750">
-</p>
-
-### PBS scripts
-
-Use the following scripts if any of the computations related to SNR and $D_2$ timed out (with certains changes):
-
-- `PBS_script/ macaque_stimuli_remainder.sh` (first)
-- `PBS_script/ macaque_stimuli_d2.sh` (second)
-
-### Resource guide for simulations
-
-- SNR (fewshot-learning/pretrained_macaque_stimuli.py snr_components)
-    - level 1: "alexnet" (12GB)
-    - level 2: "resnet18", "resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_1", "wide_resnet50_2" (24GB)
-    - level 3: "squeezenet1_0", "resnet101", "resnet152",  "resnext101_32x8d",  "wide_resnet101_2" (32GB)
-
-- d2 (fewshot-learning/pretrained_macaque_stimuli.py snr_d2_mbatch)
-    - level 1: "alexnet", "resnet18" (8GB)
-    - level 2: "resnet34", "resnet50",  "resnext50_32x4d", "squeezenet1_0", "squeezenet1_1", "wide_resnet50_2" (16GB)
-    - level 3: "resnet101", "resnet152",  "resnext101_32x8d",  "wide_resnet101_2" (32GB)
 
 ## Citation
 
