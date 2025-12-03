@@ -1,20 +1,16 @@
 # import cmcrameri as cmc
 import matplotlib.pyplot as plt
 import numpy as np
-import os
+import os, sys
 import pandas as pd
-# import scipy.io as sio
-import sys
 from ast import literal_eval
-# from matplotlib.ticker import AutoMinorLocator
 from string import ascii_lowercase
 from tqdm import tqdm
 sys.path.append(os.getcwd())
-import constants
 from os.path import join, isdir
 from os import makedirs
 from constants import DROOT, id_to_path, model_log
-from utils_dnn import load_transition_lines
+from UTILS.utils_dnn import load_transition_lines
 from UTILS.mutils import njoin
 
 # colorbar setting
