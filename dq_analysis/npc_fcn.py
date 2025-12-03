@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 sys.path.append(os.getcwd())
 from constants import root_data
-from utils_dnn import IPR, compute_dq, effective_dimension, setting_from_path
+from UTILS.utils_dnn import IPR, compute_dq, effective_dimension, setting_from_path, D_q_all
 from train_supervised import get_data, set_data
 
 dev = torch.device(f"cuda:{torch.cuda.device_count()-1}"
@@ -226,14 +226,11 @@ def hidden_layerwise_d2(data_path, post, alpha100, g100, epochs):
     """
     global C_ls, C_dims, dqs, hidden_layer, net, trainloader, C, dqs_hidden
 
-    import scipy.io as sio
-    import sys
     import torch
     from torch.utils.data import TensorDataset
 
     from NetPortal.models import ModelFactory
-    from train_supervised import get_data, set_data
-    from utils_dnn import D_q_all    
+    from train_supervised import get_data, set_data    
 
     post = int(post)
     alpha100, g100 = int(alpha100), int(g100)
