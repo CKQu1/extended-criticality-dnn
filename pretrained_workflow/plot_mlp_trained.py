@@ -1,7 +1,4 @@
-import argparse
-import scipy.io as sio
 import seaborn as sns
-import math
 import matplotlib as mpl
 import matplotlib.colors as mcl
 import numpy as np
@@ -24,7 +21,7 @@ from matplotlib.ticker import AutoMinorLocator
 from pretrained_wfit import replace_name, get_int_power, convert_sigfig
 lib_path = os.getcwd()
 sys.path.append(f'{lib_path}')
-from path_names import root_data
+from constants import root_data
 
 pub_font = {'family' : 'sans-serif'}
 plt.rc('font', **pub_font)
@@ -300,7 +297,7 @@ from NetPortal.models import ModelFactory
 from train_supervised import get_data, set_data
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from utils_dnn import compute_dq
+from UTILS.utils_dnn import compute_dq
 
 #title_ls = [r"$\vert\vert \Delta \Theta \vert\vert$", rf"$\alpha$ = 1", rf"$\alpha$ = 2"]
 title_ls = ['Input', rf"$\alpha$ = 1", rf"$\alpha$ = 2"]
