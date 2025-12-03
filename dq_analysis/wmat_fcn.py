@@ -1,8 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import os
-import re
-import sys
+import os, sys
 from ast import literal_eval
 from os.path import join
 from tqdm import tqdm
@@ -10,8 +8,8 @@ from tqdm import tqdm
 #plt.switch_backend('agg')
 
 sys.path.append(os.getcwd())
-from path_names import root_data
-from utils_dnn import IPR
+from constants import root_data
+from UTILS.utils_dnn import IPR
 
 """
 
@@ -61,11 +59,7 @@ def wmat_dq(alpha100, g100, epoch, reig, is_eig=True, save_fig=False, *args):
     global wmats, eigvals, eigvecs, qs, D_qs, D_qss, nan_count, wmat
     global dq_means, dq_stds
 
-    import numpy as np    
-    import random
-    import torch
     from numpy import linalg as la
-    from tqdm import tqdm
 
     # reig: right or left eigenvectors
     reig = int(reig)
