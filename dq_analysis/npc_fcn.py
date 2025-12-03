@@ -44,7 +44,7 @@ def get_dataset(image_type, batch_size,  **kwargs):
         testloader = DataLoader(testloader, batch_size=batch_size, shuffle=True)
         return trainloader, testloader
     elif image_type.lower() == "gaussian":
-        from generate_gaussian_data import delayed_mixed_gaussian
+        from UTILS.generate_gaussian_data import delayed_mixed_gaussian
         """
         num_train, num_test = kwargs.get("num_train"), kwargs.get("num_test")
         X_dim = kwargs.get("X_dim")
