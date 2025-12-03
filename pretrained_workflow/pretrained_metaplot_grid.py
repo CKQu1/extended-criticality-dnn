@@ -462,7 +462,7 @@ from NetPortal.models import ModelFactory
 from train_supervised import get_data, set_data
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from utils_dnn import compute_dq
+from UTILS.utils_dnn import compute_dq
 
 axs_3 = [ax6, ax7, ax8]
 #axs_colbar = [ax2_cbar, ax3_cbar, ax4_cbar]
