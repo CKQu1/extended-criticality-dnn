@@ -35,7 +35,7 @@ def set_data(name, rshape: bool, **kwargs):
             train_ds = datasets.MNIST(root=data_path, download=True, transform=transform)
             valid_ds = datasets.MNIST(root=data_path, download=True, transform=transform, train=False)
         elif name.lower() == "gaussian":
-            from generate_gaussian_data import delayed_mixed_gaussian
+            from UTILS.generate_gaussian_data import delayed_mixed_gaussian
             
             # same setting as MNIST
             num_train, num_test = kwargs.get("num_train"), kwargs.get("num_test")
@@ -407,9 +407,7 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
     if name != "gaussian":
         C = len(train_ds.classes)
     else:
-        C = len(np.unique(cluster_class_label))
-
-    torch.manual_seed(train_seed) 
+        C = len(np.unique(cluster_class_label)) 
 
     model_id = str(train_seed)
     train_date = datetime.now().strftime("%Y/%m/%d %H:%M:%S")  
@@ -440,6 +438,9 @@ def train_ht_dnn(name, Y_classes, X_clusters, cluster_seed, assignment_and_noise
         if not os.path.isfile(join(root_path, f"cluster_class_label.npy")):
             np.save(join(root_path, "cluster_class_label"), cluster_class_label)
         """
+
+    # set seed
+    torch.manual_seed(train_seed)
 
     # move entire dataset to GPU
     if name.lower() != "gaussian":
