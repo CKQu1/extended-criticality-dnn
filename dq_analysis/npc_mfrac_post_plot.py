@@ -2,11 +2,8 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
-import os
+import os, sys
 import pandas as pd
-#import seaborn as sns
-import scipy.io as sio
-import sys
 import torch
 from ast import literal_eval
 from os.path import join
@@ -16,7 +13,7 @@ sys.path.append(os.getcwd())
 
 from npc_fcn import get_dataset
 from constants import root_data, model_log, id_to_path, get_model_id, get_alpha_g
-from utils_dnn import setting_from_path
+from UTILS.utils_dnn import setting_from_path
 
 # plot settings
 plt.rcParams["font.family"] = "sans-serif"     # set plot font globally
