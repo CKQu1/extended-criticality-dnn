@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 sys.path.append(os.getcwd())
 from path_names import root_data
-from utils_dnn import load_transition_lines
+from UTILS.utils_dnn import load_transition_lines
 
 def SEM(N, L, N_thetas, alpha100, g100):
 # get the SEM of the manifold distances propagated through the DNN layers
