@@ -1,21 +1,14 @@
-import json
-import matplotlib.pyplot as plt
+import json, os, random, sys
 import numpy as np
-import os
 import pandas as pd
-import random
-import re
-import sys
 from ast import literal_eval
 from numpy import linalg as la
 from os.path import join
 from tqdm import tqdm
 
-#plt.switch_backend('agg')
-
 sys.path.append(os.getcwd())
 from constants import DROOT
-from utils_dnn import IPR
+from UTILS.utils_dnn import IPR
 from UTILS.mutils import njoin
 
 """
