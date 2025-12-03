@@ -34,10 +34,6 @@ def jac_layerwise(post, alpha100, g100, input_idx, epoch, *args):
 
     global utils, train_loader
 
-    import scipy.io as sio
-    import sys
-    import torch
-    import train_DNN_code.model_loader as model_loader
     from nporch.input_loader import get_data_normalized    
     from NetPortal.models import ModelFactory
 
