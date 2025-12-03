@@ -25,26 +25,6 @@ singularity shell -B ${bpath} --home ${PBS_O_WORKDIR} ${cpath}
 
 We extract pretrained networks from Pytorch and iteratively fit the entries of each weight matrix (not including biases or batch-normalization layers) independently as a Levy alpha-stable and Gaussian distribution respetively via maximum likelihood.
 
----------- Old version ----------
-
-1. Download the weight matrices into the `weights_all` directory:
-
-`python pretrained_workflow/pretrained_download.py`
-
-2. Fit the distributions
-
-`python pretrained_workflow/pretrained_wfit.py`
-
-3. Plot the results
-
-`python pretrained_workflow/pretrained_metaplot_grid.py`
-
-<p align="center">
-<img src="https://github.com/CKQu1/anderson-criticality-dnn/blob/master/readme_figs/pretrained_stablefit_grid.jpg" width="750">
-</p>
-
----------- New version ----------
-
 1. Download pretrained image classification DNN performance (can use ChatGPT) from https://pytorch.org/vision/stable/models.html, this is saved in this repo as `tables/torch_pretrained_performance.csv`, need to move this to the appropripate dir as it is used in `pretrained_workflow/pretrained_download.py`.
 
 2. Download weights (same as old version above)
