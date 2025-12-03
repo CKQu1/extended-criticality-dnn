@@ -347,7 +347,7 @@ fcn_add1 = ax4.twinx()
 init_epochs = [0,5,10]
 selected_epochs = list(range(0,11))
 # network path
-from path_names import root_data
+from constants import root_data
 fc_net_path = join(root_data,"trained_mlps/debug/fc4_None_None_b14f28b8-b6a0-11ed-a119-b083feccfbe3_mnist_sgd_lr=0.5_bs=256_epochs=200")
 print(f"Fig third part path: {fc_net_path}")
 net_log = pd.read_csv(join(fc_net_path, "net_log.csv"))
@@ -478,7 +478,7 @@ from path_names import root_data
 from NetPortal.models import ModelFactory
 from train_supervised import get_data, set_data
 from sklearn.decomposition import PCA
-from utils_dnn import compute_dq
+from UTILS.utils_dnn import compute_dq
 
 axs_3 = [ax6, ax7, ax8]
 #axs_colbar = [ax2_cbar, ax3_cbar, ax4_cbar]
