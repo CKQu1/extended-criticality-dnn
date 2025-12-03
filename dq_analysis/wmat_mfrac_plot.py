@@ -1,23 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import os
-import re
-import sys
-import scipy.io as sio
-import torch
-
-import pandas as pd
-import seaborn as sns
+import os, sys
 from ast import literal_eval
-from matplotlib.pyplot import figure
 from matplotlib.ticker import AutoMinorLocator
-from mpl_toolkits.axes_grid.inset_locator import inset_axes
 from numpy import linalg as la
 from os.path import join
 
 sys.path.append(os.getcwd())
-from path_names import root_data
-from pubplot import set_size
+from constants import root_data
+from UTILS.fig_utils import set_size
 from utils_dnn import IPR, D_q
 
 plt.rcParams["font.family"] = "sans-serif"     # set plot font globally
