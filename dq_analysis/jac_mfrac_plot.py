@@ -11,7 +11,7 @@ from os.path import join
 sys.path.append(os.getcwd())
 from constants import DROOT
 from UTILS.fig_utils import set_size
-from utils_dnn import IPR, D_q
+from UTILS.utils_dnn import IPR, D_q
 
 plt.rcParams["font.family"] = "sans-serif"     # set plot font globally
 #plt.switch_backend('agg')
