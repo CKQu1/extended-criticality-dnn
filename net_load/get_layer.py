@@ -1,12 +1,5 @@
 import torch
-import os
-import numpy as np
 import scipy.io as sio
-import torch.nn as nn
-#import model_loader2 as ml
-
-import train_DNN_code.model_loader as model_loader
-from train_DNN_code.dataloader import get_data_loaders, get_synthetic_gaussian_data_loaders
 
 # get network type from folder name, only works for fcN_tanh_mnist
 def get_nettype(folder_name):
@@ -70,16 +63,3 @@ def get_hidden_layers(net, weights, x):
                 layer_outputs.append(x)
 
     return layer_outputs
-
-# example
-"""
-folder_name = "fc10_mnist_tanh_id_stable1.2_1.0_epoch650_algosgd_lr=0.001_bs=256_data_mnist_fgsm_ngpu=2"
-# needs to be changed accordingly
-path += "/trained_nets"
-w = get_epoch_weights(path, folder_name, 650)
-net = model_loader.load('fc10_mnist_tanh')
-x = torch.ones(1,784)
-hidden = get_hidden_layers(net, w, x)
-"""
-
-
