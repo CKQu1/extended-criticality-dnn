@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 sys.path.append(os.getcwd())
 from constants import DROOT
-from utils_dnn import IPR
+from UTILS.utils_dnn import IPR
 
 """
 
