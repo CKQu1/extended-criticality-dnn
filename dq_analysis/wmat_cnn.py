@@ -1,9 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import os
+import os, sys
 import pandas as pd
-import re
-import sys
 from ast import literal_eval
 from os.path import join
 from tqdm import tqdm
@@ -11,8 +9,8 @@ from tqdm import tqdm
 #plt.switch_backend('agg')
 
 sys.path.append(os.getcwd())
-from path_names import root_data
-from utils_dnn import IPR
+from constants import root_data
+from UTILS.utils_dnn import IPR
 from pretrained_workflow.pretrained_wfit import load_single_wmat
 
 """
@@ -30,11 +28,7 @@ reig_dict = {0:'l', 1:'r'}
 def pretrained_wmat_d2(weight_path, n_weight, pytorch=True, reig=1, if_torch_weights=True):
     global wmat, df, main_path, param_shape, D_qss, D_qs, eigvals, eigvecs
 
-    import numpy as np    
-    import random
-    import torch
     from numpy import linalg as la
-    from tqdm import tqdm    
 
     n_weight = int(n_weight)
     main_path = join(root_data,"pretrained_workflow")
@@ -258,8 +252,6 @@ def wmat_dq(alpha100, g100, epoch, reig, is_eig=True, save_fig=False, *args):
     global dq_means, dq_stds
 
     import numpy as np    
-    import random
-    import torch
     from numpy import linalg as la
     from tqdm import tqdm
 
