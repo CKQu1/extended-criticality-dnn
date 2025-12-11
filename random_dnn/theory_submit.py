@@ -25,6 +25,7 @@ import sys
 import subprocess
 import random
 import concurrent.futures as cf
+import itertools
 from datetime import datetime
 from pathlib import Path
 from typing import Union
@@ -65,50 +66,101 @@ def updatez(file, *args, **kwds):
     return new_keys
 
 
-def consolidate_arrays(path: Path, pattern="*.txt", file_delay_minutes=0):
+def consolidate_arrays(
+    path: Path,
+    pattern="*.txt",
+    file_delay_minutes=0,
+    max_num_files=None,
+):
     import numpy as np
 
-    # Find all files matching the pattern that are older than file_delay_minutes
-    current_time_sec = int(datetime.now().timestamp())
-    files = set(
-        f
-        for f in tqdm(path.glob(pattern), desc="Finding files")
-        if f.stat().st_mtime < current_time_sec - file_delay_minutes * 60
-    )
     # If the npz file already exists, skip files that are already in it
     npz_path = path.with_suffix(".npz")
     if npz_path.exists():
         with np.load(npz_path) as npz:
-            files = files - npz.keys()
-    # Load the files in parallel
-    arrays_dict = {}
-    with cf.ThreadPoolExecutor() as executor:
-        future_to_file = {
-            executor.submit(np.loadtxt, file): str(file.relative_to(path))
-            for file in files
-        }
-        for future in tqdm(
-            cf.as_completed(future_to_file),
-            total=len(future_to_file),
-            desc="Loading files",
-        ):
-            file = future_to_file[future]
-            arrays_dict[file] = future.result()
-    # for file in tqdm(files):
-    #     arrays_dict[file.stem] = np.loadtxt(file)
-    if arrays_dict:
-        # Save to npz, appending if it already exists
-        if npz_path.exists():
-            saved_files = updatez(npz_path, **arrays_dict)
-            print(f"Appended {len(saved_files)} files to {npz_path}")
+            existing_keys = set(npz.keys())
+    else:
+        existing_keys = set()
+
+    no_more_files = False
+    while not no_more_files:
+        # Find all files matching the pattern that are older than file_delay_minutes
+        current_time_sec = int(datetime.now().timestamp())
+        files = set(
+            itertools.islice(
+                (
+                    f
+                    for f in tqdm(
+                        path.glob(pattern),
+                        desc="Finding files",
+                    )
+                    if f.stat().st_mtime < current_time_sec - file_delay_minutes * 60
+                    and f.stem not in existing_keys
+                ),
+                max_num_files,
+            )
+        )
+        # npz_path = path.with_suffix(".npz")
+        # if npz_path.exists():
+        #     with np.load(npz_path) as npz:
+        #         files = files - npz.keys()
+        # Load the files in parallel
+        arrays_dict = {}
+        with cf.ThreadPoolExecutor() as executor:
+            future_to_file = {
+                executor.submit(np.loadtxt, file): str(file.relative_to(path))
+                for file in files
+            }
+            for future in tqdm(
+                cf.as_completed(future_to_file),
+                total=len(future_to_file),
+                desc="Loading files",
+            ):
+                file = future_to_file[future]
+                arrays_dict[file] = future.result()
+        # for file in tqdm(files):
+        #     arrays_dict[file.stem] = np.loadtxt(file)
+        if arrays_dict:
+            # Save to npz, appending if it already exists
+            if npz_path.exists():
+                saved_files = updatez(npz_path, **arrays_dict)
+                print(f"Appended {len(saved_files)} files to {npz_path}")
+            else:
+                np.savez(npz_path, **arrays_dict)
+                saved_files = arrays_dict.keys()
+                print(f"Saved {len(saved_files)} files to {npz_path}")
+            # Delete the saved files
+            for file in saved_files:
+                (path / file).unlink()
         else:
-            np.savez(npz_path, **arrays_dict)
-            saved_files = arrays_dict.keys()
-            print(f"Saved {len(saved_files)} files to {npz_path}")
-        # Delete the saved files
-        for file in saved_files:
-            (path / file).unlink()
+            no_more_files = True
     del arrays_dict
+
+
+def savetxt(path, data):
+    """Save `data` to `path`.
+
+    If the output is a dictionary, save its values to separate files with keys added to the stems.
+    """
+    import numpy as np
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(data, dict):
+        for key, value in data.items():
+            fname = path.with_stem(f"{path.stem};{key}")
+            np.savetxt(fname, value)
+            print(fname)
+    else:
+        np.savetxt(path, data)
+        print(path)
+
+
+def call_save(path, func, *args, **kwargs):
+    """Call `func` with `args` and `kwargs`, saving the output to `path`."""
+    tic = time()
+    savetxt(path, func(*args, **kwargs))
+    print(f"Function {func.__name__} took {time() - tic:.2f} sec")
 
 
 def submit_jac_cavity_svd_log_pdf(
@@ -124,6 +176,12 @@ def submit_jac_cavity_svd_log_pdf(
     submit_python_kwargs = {
         "mem": "4GB",
         "walltime": "0:59:00",
+        "init_call": "\n".join(
+            [
+                "from theory_submit import *",
+                "import RMT",
+            ]
+        ),
         **submit_python_kwargs,
     }
     dir = (
@@ -134,7 +192,7 @@ def submit_jac_cavity_svd_log_pdf(
     func_calls_dict = {
         (
             fname := f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"
-        ): f"call_save('{dir/fname}', jac_cavity_svd_log_pdf, np.logspace({logspace_params}), {alpha100/100}, {sigmaW100/100}, num_doublings={num_doublings}, num_chis={num_chis}, seed={seed})"
+        ): f"call_save('{dir/fname}', RMT.jac_cavity_svd_log_pdf, np.logspace({logspace_params}), {alpha100/100}, {sigmaW100/100}, num_doublings={num_doublings}, num_chis={num_chis}, seed={seed})"
         for alpha100 in range(100, 201, alpha100_step)
         for sigmaW100 in range(1, 301, sigmaW100_step)
         for seed in seeds
@@ -155,6 +213,12 @@ def submit_MLP_agg(
         # "calls_per_job": 210,
         "mem": "8GB",
         "walltime": "5:59:00",
+        "init_call": "\n".join(
+            [
+                "from theory_submit import *",
+                "import RMT",
+            ]
+        ),
         **submit_python_kwargs,
     }
     dir = (
@@ -165,7 +229,7 @@ def submit_MLP_agg(
     func_calls_dict = {
         (fname := Path(f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"))
         .with_stem(fname.stem + f";log_svdvals_mean")
-        .name: f"call_save('{dir/fname}', MLP_agg, torch.linspace(-1,1,{width}), {depth}, {num_realisations}, {alpha100/100}, {sigmaW100/100}, seed={seed})"
+        .name: f"call_save('{dir/fname}', RMT.MLP_agg, torch.linspace(-1,1,{width}), {depth}, {num_realisations}, {alpha100/100}, {sigmaW100/100}, seed={seed})"
         for alpha100 in range(100, 201, alpha100_step)
         for sigmaW100 in range(1, 301, sigmaW100_step)
         for seed in seeds
@@ -246,6 +310,7 @@ def submit_python_funcs(
         default_qsub_kwargs = dict(
             path="/scratch/pawsey1267/awar9402/job",
             # max walltime: 24 hours
+            # max 256 running / 1024 submitted jobs
             q="work",
             P="pawsey1267",
         )
@@ -513,8 +578,10 @@ def qsub_slurm(
 #SBATCH --output={jobpath}/slurm-%A_%a.out
 #SBATCH --error={jobpath}/slurm-%A_%a.err
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task={ncpus}
-#SBATCH --mem={mem}
+## sbatch on setonix: cannot explicitly request CPU resources for GPU allocation; each allocated GPU allocates 8 cores
+{f'#SBATCH --cpus-per-task={ncpus}' if ngpus is None else ''}
+## sbatch on setonix: You cannot explicitly request memory for GPU allocations; Each allocated GPU allocates 29440 MB of memory by the system
+{f'#SBATCH --mem={mem}' if ngpus is None else ''}
 {f'#SBATCH --gres=gpu:{ngpus}' if ngpus else ''}
 #SBATCH --time={walltime}
 #SBATCH --array={max_array_size*chunk_idx}-{max_array_size*chunk_idx + len(cmd_list_chunk) - 1}{f'%{max_run_subjobs}' if max_run_subjobs else ''}

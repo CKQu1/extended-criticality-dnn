@@ -35,30 +35,6 @@ def stable_dist_sample(*args, **kwargs):
     return out
 
 
-def savetxt(path, data):
-    """Save `data` to `path`.
-
-    If the output is a dictionary, save its values to separate files with keys added to the stems.
-    """
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if isinstance(data, dict):
-        for key, value in data.items():
-            fname = path.with_stem(f"{path.stem};{key}")
-            np.savetxt(fname, value)
-            print(fname)
-    else:
-        np.savetxt(path, data)
-        print(path)
-
-
-def call_save(path, func, *args, **kwargs):
-    """Call `func` with `args` and `kwargs`, saving the output to `path`."""
-    tic = time()
-    savetxt(path, func(*args, **kwargs))
-    print(f"Function {func.__name__} took {time() - tic:.2f} sec")
-
-
 # Empirical MLP functions with randomly drawn weights
 
 
@@ -141,10 +117,6 @@ def MLP(
         for stat_name in stats:
             stats[stat_name] = stats[stat_name].squeeze(1)
     return {stat_name: stat.cpu().numpy() for stat_name, stat in stats.items()}
-
-# def MLP_circle(
-    
-# )
 
 
 def multifractal_dim(v, q, dim=-1):
