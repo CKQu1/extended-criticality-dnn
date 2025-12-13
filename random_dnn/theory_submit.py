@@ -237,6 +237,39 @@ def submit_MLP_agg(
     submit_python_funcs(func_calls_dict, dir=dir, **submit_python_kwargs)
 
 
+def submit_mixed_selectivity(
+    dataset_name="CIFAR10",
+    alpha100_step=5,
+    sigmaW100_step=5,
+    num_layers=50,
+    chunk_size=100,
+    seeds=range(1),
+    **submit_python_kwargs,
+):
+    # 100-size chunks, 10 layers: 1 hour, about 5 GB
+    submit_python_kwargs = {
+        "mem": "8GB",
+        "walltime": "11:59:00",
+        "init_call": "\n".join(
+            [
+                "from theory_submit import *",
+                "import mixed_selectivity",
+            ]
+        ),
+        **submit_python_kwargs,
+    }
+    dir = Path("fig") / "mixed_selectivity" / f"dataset_name={dataset_name};num_layers={num_layers}"
+    func_calls_dict = {
+        (fname := Path(f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"))
+        .with_stem(fname.stem + f";postact_sq_mean")
+        .name: f"call_save('{dir/fname}', mixed_selectivity.MFT_map, dataset_name='{dataset_name}', alpha={alpha100/100}, sigma_W={sigmaW100/100}, num_layers={num_layers}, chunk_size={chunk_size}, seed={seed})"
+        for alpha100 in range(100, 201, alpha100_step)
+        for sigmaW100 in range(1, 301, sigmaW100_step)
+        for seed in seeds
+    }
+    submit_python_funcs(func_calls_dict, dir=dir, **submit_python_kwargs)
+
+
 # General submission functions
 
 
@@ -256,13 +289,11 @@ def submit_python_funcs(
     Chains python function calls in a single instance to save on the library loading time.
     Useful for libraries like pytorch which load slowly.
 
-    Each func call is associated with a file to be checked in either the directory or the corresponding npz archives.
+    Each func call is associated with a file to be checked in either the directory or the corresponding npz archive.
     File paths are relative and correspond to the file name in the folder or npz archive.
     If the file name exists, the corresponding function call is not run.
 
     Note: this can be generalised for function calls in other languages, and to arbitrary archive formats.
-
-    Defaults for USYD Physics and NCI Gadi clusters are provided.
     """
     if platform.node().endswith("physics.usyd.edu.au"):
         if init is None:
