@@ -84,7 +84,8 @@ def train_cnns():
 
 
 # multifractal analysis for Jacobian eigenvectors of pretrained MLPs
-def mlp_jac_analysis():
+def jac_analysis():
+    global image
     from UTILS.mutils import point_to_path
 
     # script and function
@@ -119,6 +120,49 @@ def mlp_jac_analysis():
     for net_path, epoch in product(net_paths, epochs):
         kwargss.append({'net_path': net_path, 'navg': navg, 'epoch': epoch,
                         'post': post, 'reig': reig})
+
+    # kwargss = add_common_kwargs(kwargss, common_kwargs)
+    kwargss_all += kwargss
+
+    return kwargss_all, script_name, script_func, q, ncpus, ngpus, select, walltime, mem, job_path, nstack
+
+
+# multifractal analysis for neural representations of pretrained MLPs
+def npc_analysis():
+    from UTILS.mutils import point_to_path
+
+    # script and function
+    script_name = 'pretrained_dq.py'
+    script_func = 'npc_compute'
+
+    # arguments
+    seeds_root = njoin(DROOT, 'fc10_sgd_mnist')
+    job_path = njoin(seeds_root, 'npc_jobs')
+
+    seeds = list(range(5))
+    # seeds = list(range(1))
+    alpha100s, g100s = [120, 200], [20, 100, 300]
+    post = 1
+    batch_size = 1000
+    net_paths = [point_to_path(seeds_root, alpha100, g100, seed)\
+                  for alpha100, g100, seed in product(alpha100s, g100s, seeds)]
+    epochs = [0, 100]
+    
+    # resources
+    is_use_gpu = False
+    cfg = RESOURCE_CONFIGS[CLUSTER][is_use_gpu]
+    q, ngpus, ncpus = cfg["q"], cfg["ngpus"], cfg["ncpus"]   
+    nstack = 4                              
+    single_walltime = '00:4:59'  # gpu  50 epochs
+    walltime = time_to_str(str_to_time(single_walltime) * nstack)   
+    mem = '6GB'   
+    select = 1
+
+    kwargss_all = []                  
+    kwargss = []      
+    for net_path, epoch in product(net_paths, epochs):
+        kwargss.append({'net_path': net_path, 'epoch': epoch,
+                        'post': post, 'batch_size': batch_size})
 
     # kwargss = add_common_kwargs(kwargss, common_kwargs)
     kwargss_all += kwargss
