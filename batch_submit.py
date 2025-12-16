@@ -26,8 +26,11 @@ if __name__ == '__main__':
         ARGS_ORDER = ['alpha100', 'g100', 'seed', 'depth', 'c_size', 'k_size',
                       'epochs', 'root_path']
     elif exp_type == 'exp3':
-        EXPS_TO_RUN = mlp_jac_analysis(); EXP_NAME = 'Jacobian eigenvector analysis for MLPs' 
+        EXPS_TO_RUN = jac_analysis(); EXP_NAME = 'Jacobian eigenvector analysis for MLPs' 
         ARGS_ORDER = ['net_path', 'navg', 'epoch', 'post', 'reig']
+    elif exp_type == 'exp4':
+        EXPS_TO_RUN = npc_analysis(); EXP_NAME = 'Jacobian eigenvector analysis for MLPs' 
+        ARGS_ORDER = ['net_path', 'epoch', 'post', 'batch_size']
 
     print('-----------------------')
     print(f'{exp_type}: {EXP_NAME}')
