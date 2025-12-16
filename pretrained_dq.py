@@ -1,6 +1,7 @@
 import json, os, random, sys
 import numpy as np
 import pandas as pd
+import torch
 from ast import literal_eval
 from numpy import linalg as la
 from os.path import join
@@ -8,8 +9,9 @@ from tqdm import tqdm
 
 sys.path.append(os.getcwd())
 from constants import DROOT
-from UTILS.utils_dnn import IPR
+from UTILS.utils_dnn import IPR, compute_dq
 from UTILS.mutils import njoin
+from nporch.input_loader import get_data_normalized
 
 """
 
@@ -20,13 +22,16 @@ This is for computing and saving the multifractal data of the (layerwise) Jacobi
 global POST_DICT, REIG_DICT
 POST_DICT = {0:'pre', 1:'post'}
 REIG_DICT = {0:'l', 1:'r'}
+DEVICE = torch.device(f"cuda:{torch.cuda.device_count()-1}"
+                   if torch.cuda.is_available() else "cpu")
 
-
-def get_net(net_path, post, epoch, *args):
+def get_net(net_path, post, epoch):
     """    
     computes and saves all the D^l W^l's matrix multiplication, i.e. pre- or post-activation jacobians
     - post = 1: post-activation jacobian
            = 0: pre-activation jacobian
+    - reig = 1: right eigenvectors
+           = 0: left eigenvectors
 
     - input_idx: the index of the image
     """    
@@ -45,25 +50,21 @@ def get_net(net_path, post, epoch, *args):
               "architecture": 'fc'}
     return ModelFactory(**kwargs)
 
-# ---------- Jacobian-related computations ----------
+# -------------------- Jacobian-related computations --------------------
 
-def jac_dq(net_path, navg, epoch, post, reig, *args):
+def jac_dq(net_path, navg, epoch, post, reig):
     """
-
-    Computing the eigenvectors of the associated jacobians from jac_layerwise() (without saving), 
-    and then saving the Dq's averaged across different inputs
-
+    Computing the eigenvectors of the associated jacobians from jac_layerwise(), 
+    saving one set of eigenvectors for a randomly selected (image) input (without saving the rest)   
+    and then saving the Dq's averaged across different inputs.
     """
-    from nporch.input_loader import get_data_normalized
 
     global DW_all, eigvals, eigvecs, qs, D_qs, DW, dq_means, dq_stds, L, model, image, trainloader, net_log
 
     # number of images to take average over
     navg = int(navg)
-    # post: pre/post activation for Jacobians, reig: right or left eigenvectors
     post, reig = int(post), int(reig)
-    assert post in [0,1], "No such option!"
-    assert reig in [0,1], "No such option!"
+    assert post in [0,1], "No such option!"; assert reig in [0,1], "No such option!"
 
     # load model config
     f = open(njoin(net_path,'model_config.json'))
@@ -146,7 +147,131 @@ def jac_dq(net_path, navg, epoch, post, reig, *args):
     print(f"Conversion to Dq complete for {net_path} at epoch {epoch}!")
 
 
-# ---------- Neural representations-related computations ----------
+# -------------------- Neural representations-related computations --------------------
+
+def npc_analysis(net_path, navg, epoch, post, reig):
+    from sklearn.decomposition import PCA
+
+    # number of images to take average over
+    navg = int(navg)
+    post, reig = int(post), int(reig)
+    assert post in [0,1], "No such option!"; assert reig in [0,1], "No such option!"
+
+    # load model config
+    f = open(njoin(net_path,'model_config.json'))
+    model_config = json.load(f)
+    f.close()
+    net_log = pd.read_csv(njoin(net_path,'log'))  # , index_col=0
+     
+    # load dataset
+    image_type = net_log.loc[0,'name']
+    trainloader , _, _ = get_data_normalized(image_type,1)  # batch size 1 
+
+    # sub-sample dataset
+    seed = net_log.loc[0,'model_id']
+    random.seed(int(seed))
+    input_idxs = random.sample(range(len(trainloader)), navg)
+
+    # load model
+    model = get_net(net_path, post, epoch)
+    model.eval()
+
+    model_depth = len(model.sequential)
+    C_dims = np.zeros([model_depth])   # record dimension of correlation matrix
+    if post == 0 or post == 1:
+        l_remainder = post
+    else:
+        l_remainder = None
+    l_start = l_remainder
+    if post == 0 or post == 1:
+        depth_idxs = list(range(l_start,model_depth,2))
+        L = len(depth_idxs)
+    else:
+        L = model_depth
+
+    # ---------- Part I: Effective dimension ----------
+    ED_means = np.zeros([1,L]); ED_stds = np.zeros([1,L])
+    # create batches and compute and mean/std over the batches
+    for batch_idx, (hidden_layer, yb) in tqdm(enumerate(trainloader)):
+        l = 0
+        for lidx in range(model_depth):
+            hidden_layer = model.sequential[lidx](hidden_layer)
+            hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
+            if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
+                # covariance matrix (without cirectly using PCA form sklearn)
+                C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer)\
+                      - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
+                ED = torch.trace(C)**2/torch.trace(C@C)
+                ED = ED.item()
+
+                ED_means[0,l] += ED
+                ED_stds[0,l] += ED**2
+                if batch_idx == 0:
+                    C_dims[lidx] = hidden_layer.shape[1]
+
+                l += 1
+
+    print(f"Batches: {batch_idx}")
+    batches = batch_idx + 1
+    for l in range(ED_means.shape[1]):
+        ED_means[0,l] /= batches
+        ED_stds[0,l] = np.sqrt( ED_stds[0,l]/batches - ED_means[0,l]**2 )
+
+    # ---------- Part II: Neural representations ----------
+    batch_size = 60_000
+    trainloader , _, _ = get_data_normalized(image_type, batch_size)  # full batch
+    n_components = 3
+
+    targets = trainloader[1].unique()
+    targets_indices = []
+    # group in classes
+    for cl_idx, cls in enumerate(targets):
+        targets_indices.append(list(trainloader[1] == cls))
+
+    npc_data = {}
+    # compute the associated D2 quantities over the full batch
+    hidden_layer = torch.squeeze(torch.stack([e[0] for e in trainloader]).to(DEVICE))        
+    for lidx in range(len(model.sequential)):
+        hidden_layer = model.sequential[lidx](hidden_layer)
+        #hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
+        if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
+            # directly use PCA
+            hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
+            if "cpu" in DEVICE:
+                hidden_layer_centered = hidden_layer_centered.detach().numpy()
+            else:
+                hidden_layer_centered = hidden_layer_centered.cpu().detach().numpy()
+            #hidden_layer_centered = StandardScaler().fit_transform(hidden_layer.detach().numpy())
+            pca = PCA()
+            #pca.fit(hidden_layer_centered)
+            PCs = pca.fit_transform(hidden_layer_centered)
+            eigvals = pca.explained_variance_
+            eigvecs = pca.components_
+            #ED = np.sum(eigvals)**2/np.sum(eigvals**2)
+
+            dqs_npc = np.zeros(PCs.shape[0])
+            dqs_npd = np.zeros(len(eigvals))
+            for pcidx in range(PCs.shape[0]):
+                dqs_npc[pcidx] = compute_dq(PCs[pcidx,:],2)
+            for eidx in range(len(eigvals)):
+                dqs_npd[eidx] = compute_dq(eigvecs[eidx,:],2)
+
+            # pass in data to npc_data
+            npc_data[f'D2_npc_{l}'] = dqs_npc
+            npc_data[f'D2_npd_{l}'] = dqs_npd
+
+            npc_data[f'npc_{l}'] = PCs[:, n_components]
+            npc_data[f'npc_eigvals_{l}'] = eigvals
+
+            l += 1
+
+    # save all data
+    np.savez(njoin(net_path, f"npc_epoch={epoch}_post={post}_reig={reig}.npz"), 
+             ED_means=ED_means, ED_stds=ED_stds, **npc_data)
+
+    print(f"ED via method batches is saved for epochs {epoch}!")
+
+
 
 
 if __name__ == '__main__':
