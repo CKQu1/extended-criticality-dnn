@@ -6,9 +6,11 @@ from ast import literal_eval
 from numpy import linalg as la
 from os.path import join
 from tqdm import tqdm
+from torch.utils.data import DataLoader, TensorDataset 
 
 sys.path.append(os.getcwd())
 from constants import DROOT
+from UTILS.data_utils import set_data
 from UTILS.utils_dnn import IPR, compute_dq
 from UTILS.mutils import njoin
 from nporch.input_loader import get_data_normalized
@@ -24,6 +26,16 @@ POST_DICT = {0:'pre', 1:'post'}
 REIG_DICT = {0:'l', 1:'r'}
 DEVICE = torch.device(f"cuda:{torch.cuda.device_count()-1}"
                    if torch.cuda.is_available() else "cpu")
+
+def seed_everything(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 def get_net(net_path, post, epoch):
     """    
@@ -71,14 +83,20 @@ def jac_dq(net_path, navg, epoch, post, reig):
     model_config = json.load(f)
     f.close()
     net_log = pd.read_csv(njoin(net_path,'log'))  # , index_col=0
-     
+
+    # set seed
+    seed = int(net_log.loc[0,'model_id'])
+    seed_everything(seed)
+
     # load dataset
     image_type = net_log.loc[0,'name']
-    trainloader , _, _ = get_data_normalized(image_type,1)  # batch size 1 
+    # trainloader , _, _ = get_data_normalized(image_type,1)  # batch size 1 
+    train_ds, _ = set_data('mnist', True)
+    train_ds = TensorDataset(torch.stack([e[0] for e in train_ds]).to(DEVICE),
+                                torch.tensor(train_ds.targets).to(DEVICE))
+    trainloader = DataLoader(train_ds, batch_size=1, shuffle=True)
 
     # sub-sample dataset
-    seed = net_log.loc[0,'model_id']
-    random.seed(int(seed))
     input_idxs = random.sample(range(len(trainloader)), navg)
 
     # load model
@@ -91,7 +109,7 @@ def jac_dq(net_path, navg, epoch, post, reig):
 
         # compute DW's
         image = trainloader.dataset[input_idx][0]
-        DW_all = model.layerwise_jacob_ls(image, post)
+        DW_all = model.layerwise_jacob_ls(image[None], post)
 
         if idx == 0:
             # ----- initialize first time only -----
@@ -149,28 +167,35 @@ def jac_dq(net_path, navg, epoch, post, reig):
 
 # -------------------- Neural representations-related computations --------------------
 
-def npc_analysis(net_path, navg, epoch, post, reig):
+def npc_compute(net_path, epoch, post, batch_size):
+    """
+    - batch_size (int): only used for computing effective dimension (ED)
+    """
+
     from sklearn.decomposition import PCA
 
-    # number of images to take average over
-    navg = int(navg)
-    post, reig = int(post), int(reig)
-    assert post in [0,1], "No such option!"; assert reig in [0,1], "No such option!"
+    epoch = int(epoch); post = int(post); batch_size = int(batch_size)
+    assert post in [0,1], "No such option!"
 
     # load model config
     f = open(njoin(net_path,'model_config.json'))
     model_config = json.load(f)
     f.close()
     net_log = pd.read_csv(njoin(net_path,'log'))  # , index_col=0
-     
+
+    # set seed
+    seed = int(net_log.loc[0,'model_id'])
+    seed_everything(seed)
+
     # load dataset
     image_type = net_log.loc[0,'name']
-    trainloader , _, _ = get_data_normalized(image_type,1)  # batch size 1 
+    # trainloader , _, _ = get_data_normalized(image_type,1)  # batch size 1 
+    train_ds, _ = set_data(image_type, True)
+    targets = train_ds.targets.unique()
 
-    # sub-sample dataset
-    seed = net_log.loc[0,'model_id']
-    random.seed(int(seed))
-    input_idxs = random.sample(range(len(trainloader)), navg)
+    train_dataset = TensorDataset(torch.stack([e[0] for e in train_ds]).to(DEVICE),
+                                  torch.tensor(train_ds.targets).to(DEVICE))
+    trainloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
     # load model
     model = get_net(net_path, post, epoch)
@@ -211,33 +236,33 @@ def npc_analysis(net_path, navg, epoch, post, reig):
 
                 l += 1
 
-    print(f"Batches: {batch_idx}")
+    print(f"Batches: {batch_idx + 1}")
     batches = batch_idx + 1
     for l in range(ED_means.shape[1]):
         ED_means[0,l] /= batches
         ED_stds[0,l] = np.sqrt( ED_stds[0,l]/batches - ED_means[0,l]**2 )
 
     # ---------- Part II: Neural representations ----------
-    batch_size = 60_000
-    trainloader , _, _ = get_data_normalized(image_type, batch_size)  # full batch
+    # trainloader , _, _ = get_data_normalized(image_type, full_batch_size)  # full batch
+    trainloader = DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)  # full batch
     n_components = 3
 
-    targets = trainloader[1].unique()
-    targets_indices = []
+    target_indices = np.empty([len(targets), len(train_ds)])
     # group in classes
+    _, labels = next(iter(trainloader))
     for cl_idx, cls in enumerate(targets):
-        targets_indices.append(list(trainloader[1] == cls))
+        target_indices[cl_idx] = labels == cls
 
     npc_data = {}
     # compute the associated D2 quantities over the full batch
     hidden_layer = torch.squeeze(torch.stack([e[0] for e in trainloader]).to(DEVICE))        
-    for lidx in range(len(model.sequential)):
+    for lidx in tqdm(range(len(model.sequential))):
         hidden_layer = model.sequential[lidx](hidden_layer)
         #hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
         if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
             # directly use PCA
             hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
-            if "cpu" in DEVICE:
+            if "cpu" in DEVICE.type:
                 hidden_layer_centered = hidden_layer_centered.detach().numpy()
             else:
                 hidden_layer_centered = hidden_layer_centered.cpu().detach().numpy()
@@ -266,8 +291,9 @@ def npc_analysis(net_path, navg, epoch, post, reig):
             l += 1
 
     # save all data
-    np.savez(njoin(net_path, f"npc_epoch={epoch}_post={post}_reig={reig}.npz"), 
-             ED_means=ED_means, ED_stds=ED_stds, **npc_data)
+    np.savez(njoin(net_path, f"npc_epoch={epoch}_post={post}.npz"), 
+             batch_size=batch_size, ED_means=ED_means, ED_stds=ED_stds, 
+             targets=targets, target_indices=target_indices, **npc_data)
 
     print(f"ED via method batches is saved for epochs {epoch}!")
 
