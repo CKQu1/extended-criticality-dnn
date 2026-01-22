@@ -29,6 +29,7 @@ import itertools
 from datetime import datetime
 from pathlib import Path
 from typing import Union
+from time import time
 
 
 def updatez(file, *args, **kwds):
@@ -180,6 +181,7 @@ def submit_jac_cavity_svd_log_pdf(
             [
                 "from theory_submit import *",
                 "import RMT",
+                "import numpy as np",
             ]
         ),
         **submit_python_kwargs,
@@ -248,8 +250,8 @@ def submit_mixed_selectivity(
 ):
     # 100-size chunks, 10 layers: 1 hour, about 5 GB
     submit_python_kwargs = {
-        "mem": "8GB",
-        "walltime": "11:59:00",
+        "mem": "16GB",
+        "walltime": "23:59:00",
         "init_call": "\n".join(
             [
                 "from theory_submit import *",
@@ -258,7 +260,11 @@ def submit_mixed_selectivity(
         ),
         **submit_python_kwargs,
     }
-    dir = Path("fig") / "mixed_selectivity" / f"dataset_name={dataset_name};num_layers={num_layers}"
+    dir = (
+        Path("fig")
+        / "mixed_selectivity"
+        / f"dataset_name={dataset_name};num_layers={num_layers}"
+    )
     func_calls_dict = {
         (fname := Path(f"alpha100={alpha100};sigmaW100={sigmaW100};seed={seed}.txt"))
         .with_stem(fname.stem + f";postact_sq_mean")
