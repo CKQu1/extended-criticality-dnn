@@ -129,3 +129,4 @@ celeba*/
 # figure
 *svg
 *fig
+.droot/
