@@ -254,25 +254,28 @@ def multi_dw_mfrac(seeds_root, alpha100s=[120,200], g100s=[20, 100, 300], seeds=
     fig.tight_layout()
     fig_path = njoin(DROOT, 'figure_ms', 'pretrained_analysis')
     os.makedirs(fig_path, exist_ok=True)
-    plt.savefig(njoin(fig_path, f'multi_jacobian_seeds={seeds}.pdf'), bbox_inches="tight")
+    joined_seeds = ','.join(str(n) for n in seeds)
+    plt.savefig(njoin(fig_path, f'multi_jacobian_seeds={joined_seeds}.pdf'), bbox_inches="tight")
     print(f'Figure saved in {fig_path}')
 
 
 # -------------------- Neural representation quantities --------------------
 
 
-def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
+def npc_metric(seed_root, post=1, n_top=2, epochs=[0,100], 
+               selected_l=8, is_3d=False):
     """
     Plots the class separation for MLPs in the first two columns, plots the ED/localization properties of 
     the neural representation PCs:
         - seed_path (str)
         - post (int): is either 0 or 1, if 1 plots post activation 
+        - selected_l (int): corresponds to l = (selected_l + 1)th layer for the PCs
     """
 
     from sklearn.linear_model import LinearRegression
 
     global epoch_plot, metric_means, metric_data, D2_mean, D2_std, axs
-    global depth, X_pca, indices, target_indices, sample_indices
+    global depth, X_pca, indices, target_indices, sample_indices, seed
     global colors_all
 
     """
@@ -288,13 +291,15 @@ def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
     epochs = literal_eval(epochs) if isinstance(epochs, str) else epochs
     n_top = int(n_top) if n_top != None else None
     
-    alpha100_ls = [120,200]; g100_ls = [25,100,300]
-    metriC_LS = ["class_sep", "ED", "D2_hidden", "cum_var"]
+    alpha100_ls = [120,200]; g100_ls = [20,100,300]
+    # metric_ls = ["class_sep", "ED", "D2_hidden", "cum_var"]
+    metric_ls = ["class_sep", "ED", "D2_npd", "cum_var"]
     ALL_METRIC_LS = ["class_sep", "ED", "D2_npc", "D2_npd", "D2_hidden", "cum_var", "eigvals_ordered"]
-    for metric_name in metriC_LS:
+    for metric_name in metric_ls:
         assert metric_name in ALL_METRIC_LS
 
-    fcn, activation, total_epoch, net_folder = setting_from_path(seeds_root, alpha100_ls[0], g100_ls[0])
+    fcn, activation, total_epoch, net_folder = setting_from_path(seed_root, alpha100_ls[0], g100_ls[0])
+    seed = int(seed_root.split('/')[-2].split('seed=')[-1])
     L = int(fcn[2:])    
     if post == 0:
        depth = L
@@ -305,7 +310,7 @@ def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
     ED_all = np.zeros([len(alpha100_ls), len(g100_ls), depth])
 
     nrows = len(g100_ls)
-    ncols = len(metriC_LS) + 1 if "class_sep" in metriC_LS else len(metriC_LS)
+    ncols = len(metric_ls) + 1 if "class_sep" in metric_ls else len(metric_ls)
     fig, axs = plt.subplots(nrows, ncols, sharex=False,sharey=False,figsize=(12.5/3*ncols,3.1*nrows + 3),constrained_layout=True)   
 
     # class separation        
@@ -339,14 +344,17 @@ def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
     transparency = 1    
     msize = 10
     marker = 's'
-    if "class_sep" in metriC_LS:
+    if "class_sep" in metric_ls:
         for (gidx, g100), (aidx, alpha100) in product(enumerate(g100_ls), enumerate(alpha100_ls)):  
-            fcn, activation, total_epoch, net_folder = setting_from_path(seeds_root, alpha100, g100)   
-            # load PCA
-            #target_indices = np.load(join(seeds_root, net_folder, "target_indices.npy"), allow_pickle=True)                          
-            #X_pca = np.load(join(seeds_root, net_folder, f"npc-depth={depth_selected}.npy"), allow_pickle=True)
-            target_indices = np.load(njoin(seeds_root, net_folder, "X_pca_test", "target_indices.npy"), allow_pickle=True)                          
-            X_pca = np.load(njoin(seeds_root, net_folder, "X_pca_test", f"npc-depth={depth_selected}-epoch={pca_epoch}.npy"), allow_pickle=True)
+            # get network path
+            fcn, activation, total_epoch, net_folder = setting_from_path(seed_root, alpha100, g100)   
+            # all data
+            all_data = np.load(njoin(seed_root, net_folder, f'npc_epoch={pca_epoch}_post={post}.npz'))
+
+            # class PCA
+            target_indices = all_data['target_indices']        
+            X_pca = all_data[f'npc_{selected_l}']               
+            # X_pca = np.load(njoin(seed_root, net_folder, "X_pca_test", f"npc-depth={depth_selected}-epoch={pca_epoch}.npy"), allow_pickle=True)
             
             # group in classes
             colors_all = np.empty(X_pca.shape[0])
@@ -436,7 +444,7 @@ def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
                     axs[gidx,aidx].spines['bottom'].set_visible(True)
                     axs[gidx,aidx].set_xticks([-xax_limit,0,xax_limit]); axs[gidx,aidx].set_xticklabels([-xax_limit,0,xax_limit]) 
                         
-    for midx, metric_name in enumerate(metriC_LS[1:]):
+    for midx, metric_name in enumerate(metric_ls[1:]):
         for gidx, g100 in enumerate(g100_ls):  
             # remove spines
             #axs[gidx, midx+2].spines['top'].set_visible(False); axs[gidx,midx+2].spines['right'].set_visible(False) 
@@ -447,13 +455,15 @@ def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
                     # Extract numeric arguments.
                     alpha, g = int(alpha100)/100., int(g100)/100.
                     # load nets and weights
-                    #net_folder = f"{net_type}_id_stable{round(alpha,1)}_{round(g,2)}_epoch{total_epoch}_algosgd_lr=0.001_bs=1024_data_mnist"  
-                    fcn, activation, total_epoch, net_folder = setting_from_path(seeds_root, alpha100, g100)
+                    fcn, activation, total_epoch, net_folder = setting_from_path(seed_root, alpha100, g100)   
+                    # all data
+                    all_data = np.load(njoin(seed_root, net_folder, f'npc_epoch={pca_epoch}_post={post}.npz'))
 
                     lstyle = linestyle_ls[0] if epoch_plot == 0 else linestyle_ls[1]
                     if metric_name == "ED":
-                        metric_means = np.load(njoin(seeds_root, net_folder, f"ed-batches_{POST_DICT[post]}", f"ED_means_{epoch_plot}.npy"))
-                        metric_stds = np.load(njoin(seeds_root, net_folder, f"ed-batches_{POST_DICT[post]}", f"ED_stds_{epoch_plot}.npy"))
+                        # metric_means = np.load(njoin(seed_root, net_folder, f"ed-batches_{POST_DICT[post]}", f"ED_means_{epoch_plot}.npy"))
+                        # metric_stds = np.load(njoin(seed_root, net_folder, f"ed-batches_{POST_DICT[post]}", f"ED_stds_{epoch_plot}.npy"))
+                        metric_means = all_data['ED_means']; metric_stds = all_data['ED_stds']; 
                         # only includes preactivation    
                         depth = len(metric_means[0])
                         # save ED later
@@ -473,12 +483,15 @@ def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
                         D2_std = []
                         for l in range(depth):        
                             if metric_name == "D2_npc":                
-                                metric_data = np.load(njoin(seeds_root, net_folder, f"dq_npc-fullbatch_{POST_DICT[post]}", f"D2_{l}_{epoch_plot}.npy"))
+                                # metric_data = np.load(njoin(seed_root, net_folder, f"dq_npc-fullbatch_{POST_DICT[post]}", f"D2_{l}_{epoch_plot}.npy"))
+                                metric_data = all_data[f'D2_npc_{l}']
                             elif metric_name == "D2_npd":
-                                metric_data = np.load(njoin(seeds_root, net_folder, f"dq_npd-fullbatch_{POST_DICT[post]}", f"D2_{l}_{epoch_plot}.npy"))
+                                # metric_data = np.load(njoin(seed_root, net_folder, f"dq_npd-fullbatch_{POST_DICT[post]}", f"D2_{l}_{epoch_plot}.npy"))
+                                metric_data = all_data[f'D2_npd_{l}']
                             elif metric_name == 'D2_hidden':
-                                metric_data = np.load(njoin(seeds_root, net_folder, f"dq_hidden-fullbatch_{POST_DICT[post]}", f"D2_{l}_{epoch_plot}.npy"))
-                            #quit()  # delete
+                                ##### NOT DONE YET #####
+                                # metric_data = np.load(njoin(seed_root, net_folder, f"dq_hidden-fullbatch_{POST_DICT[post]}", f"D2_{l}_{epoch_plot}.npy"))
+                                metric_data = all_data[f'D2_hidden_{l}']
 
                             if metric_name in ["D2_npc", "D2_npd"]:                                  
                                 if n_top != None:                          
@@ -502,7 +515,8 @@ def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
                     elif metric_name == "cum_var":
                         var_ls = []
                         for l in range(depth):
-                            eigvals = np.load(njoin(seeds_root, net_folder, f"eigvals-fullbatch_{POST_DICT[post]}", f"npc-eigvals_{l}_{epoch_plot}.npy"))                            
+                            # eigvals = np.load(njoin(seed_root, net_folder, f"eigvals-fullbatch_{POST_DICT[post]}", f"npc-eigvals_{l}_{epoch_plot}.npy"))    
+                            eigvals = all_data[f'npc_eigvals_{l}']                        
                             if n_top != None: 
                                 var_ls.append(eigvals[:n_top].sum()/eigvals.sum())
                             else:
@@ -513,7 +527,7 @@ def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
 
                     elif metric_name == "eigvals_ordered" and epoch_plot == epochs[-1]: 
                         l_selected = depth
-                        eigvals = np.load(njoin(seeds_root, net_folder, f"eigvals-fullbatch_{POST_DICT[post]}", f"npc-eigvals_{l_selected - 1}_{epoch_plot}.npy"))                       
+                        eigvals = np.load(njoin(seed_root, net_folder, f"eigvals-fullbatch_{POST_DICT[post]}", f"npc-eigvals_{l_selected - 1}_{epoch_plot}.npy"))                       
                         reg = LinearRegression().fit(np.log(np.arange(1, len(eigvals)+1))[0:100].reshape(-1,1), np.log(eigvals)[0:100].reshape(-1,1))
                         # eye guide line
                         b = np.log(eigvals[0])
@@ -567,20 +581,20 @@ def npc_metric(seeds_root, post=0, n_top=2, epochs=[0,100], is_3d=False):
 
     fig.tight_layout(h_pad=2.5, w_pad=-5)
     #fig.tight_layout(h_pad=6)
-    plot_path = njoin(root_data, f"figure_ms/{fcn}_npc")
+    plot_path = njoin(DROOT, f"figure_ms/{fcn}_npc")
     if not os.path.isdir(plot_path): os.makedirs(plot_path)    
     epochs_str = [str(epoch) for epoch in epochs]
     epochs_str = "_".join(epochs_str)
     g100_str = [str(g100) for g100 in g100_ls]
     g100_str = "_".join(g100_str)
-    metric_str = "_".join(metriC_LS)
+    metric_str = "_".join(metric_ls)
 
     total_classes = 10
 
-    if "fcn_grid" in seeds_root or "gaussian_data" not in seeds_root:
-        file_full = f"{plot_path}/{fcn}_mnist_post={post}_epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf"
+    if "fcn_grid" in seed_root or "gaussian_data" not in seed_root:
+        file_full = f"{plot_path}/{fcn}-ds=mnist-seed={seed}-post={post}-epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf"
     else:
-        gaussian_data_setting = pd.read_csv(njoin(seeds_root,"gaussian_data_setting.csv"))
+        gaussian_data_setting = pd.read_csv(njoin(seed_root,"gaussian_data_setting.csv"))
         X_dim, Y_classes, cluster_seed, assignment_and_noise_seed = gaussian_data_setting.loc[0,["X_dim", "Y_classes, ,noise_sigma", "cluster_seed,assignment_and_noise_seed"]]
         file_full = f"{plot_path}/{fcn}_gaussian_post={post}"
         file_full += f"_{X_dim}_{Y_classes}_{cluster_seed}_{assignment_and_noise_seed}"
