@@ -24,8 +24,9 @@ This is for computing and saving the multifractal data of the (layerwise) Jacobi
 global POST_DICT, REIG_DICT
 POST_DICT = {0:'pre', 1:'post'}
 REIG_DICT = {0:'l', 1:'r'}
-DEVICE = torch.device(f"cuda:{torch.cuda.device_count()-1}"
-                   if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device(f"cuda:{torch.cuda.device_count()-1}"
+#                    if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu")
 
 def seed_everything(seed):
     random.seed(seed)
@@ -172,6 +173,9 @@ def npc_compute(net_path, epoch, post, batch_size):
     - batch_size (int): only used for computing effective dimension (ED)
     """
 
+    global labels, cls, targets, target_indices, cl_idx, model, trainloader, labels, full_loader,\
+    PCs, hidden_layer, Xc, eigvals, eigvecs
+
     from sklearn.decomposition import PCA
 
     epoch = int(epoch); post = int(post); batch_size = int(batch_size)
@@ -193,12 +197,13 @@ def npc_compute(net_path, epoch, post, batch_size):
     train_ds, _ = set_data(image_type, True)
     targets = train_ds.targets.unique()
 
-    train_dataset = TensorDataset(torch.stack([e[0] for e in train_ds]).to(DEVICE),
-                                  torch.tensor(train_ds.targets).to(DEVICE))
-    trainloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    train_dataset = TensorDataset(torch.stack([e[0] for e in train_ds]),
+                                  torch.tensor(train_ds.targets))
+    trainloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, 
+                             pin_memory=(DEVICE.type == "cuda"))
 
     # load model
-    model = get_net(net_path, post, epoch)
+    model = get_net(net_path, post, epoch).to(DEVICE)
     model.eval()
 
     model_depth = len(model.sequential)
@@ -216,25 +221,34 @@ def npc_compute(net_path, epoch, post, batch_size):
 
     # ---------- Part I: Effective dimension ----------
     ED_means = np.zeros([1,L]); ED_stds = np.zeros([1,L])
-    # create batches and compute and mean/std over the batches
-    for batch_idx, (hidden_layer, yb) in tqdm(enumerate(trainloader)):
-        l = 0
-        for lidx in range(model_depth):
-            hidden_layer = model.sequential[lidx](hidden_layer)
-            hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
-            if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
-                # covariance matrix (without cirectly using PCA form sklearn)
-                C = (1/hidden_layer.shape[0])*torch.matmul(hidden_layer.T,hidden_layer)\
-                      - (1/hidden_layer.shape[0]**2)*torch.matmul(hidden_layer_mean.T, hidden_layer_mean)
-                ED = torch.trace(C)**2/torch.trace(C@C)
-                ED = ED.item()
+    with torch.inference_mode():
+        # create batches and compute and mean/std over the batches
+        for batch_idx, (hidden_layer, yb) in tqdm(enumerate(trainloader), total=len(trainloader)):
+            hidden_layer = hidden_layer.to(DEVICE, non_blocking=True)
+            l = 0
+            for lidx in range(model_depth):
+                hidden_layer = model.sequential[lidx](hidden_layer)
+                # hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
+                if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
+                    # covariance matrix (without cirectly using PCA form sklearn)
+                    # Center first
+                    Xc = hidden_layer - hidden_layer.mean(dim=0, keepdim=True)
 
-                ED_means[0,l] += ED
-                ED_stds[0,l] += ED**2
-                if batch_idx == 0:
-                    C_dims[lidx] = hidden_layer.shape[1]
+                    # Covariance: [d, d]
+                    C = (Xc.T @ Xc) / Xc.shape[0]
 
-                l += 1
+                    trC = torch.trace(C)
+                    trC2 = torch.trace(C @ C)
+
+                    ED = (trC ** 2 / trC2).item()
+
+                    ED_means[0, l] += ED
+                    ED_stds[0, l] += ED ** 2
+
+                    if batch_idx == 0:
+                        C_dims[lidx] = hidden_layer.shape[1]
+
+                    l += 1
 
     print(f"Batches: {batch_idx + 1}")
     batches = batch_idx + 1
@@ -244,51 +258,99 @@ def npc_compute(net_path, epoch, post, batch_size):
 
     # ---------- Part II: Neural representations ----------
     # trainloader , _, _ = get_data_normalized(image_type, full_batch_size)  # full batch
-    trainloader = DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)  # full batch
-    n_components = 3
+    # full-batch 
+    full_loader = DataLoader(
+        train_dataset,
+        batch_size=len(train_dataset),
+        shuffle=False,
+        pin_memory=(DEVICE.type == "cuda")
+    )
 
-    target_indices = np.empty([len(targets), len(train_ds)])
-    # group in classes
-    _, labels = next(iter(trainloader))
+    # labels / class indices
+    xb_full, labels = next(iter(full_loader))
+    xb_full = xb_full.to(DEVICE, non_blocking=True)
+    labels = labels.to(DEVICE, non_blocking=True) 
+
+    target_indices = np.empty([len(targets), len(labels)], dtype=bool)
     for cl_idx, cls in enumerate(targets):
-        target_indices[cl_idx] = labels == cls
+        # target_indices[cl_idx] = (labels == cls).detach().cpu().numpy()
+        target_indices[cl_idx] = (labels == cls.to(DEVICE)).detach().cpu().numpy()
 
+    n_components = 3
     npc_data = {}
-    # compute the associated D2 quantities over the full batch
-    hidden_layer = torch.squeeze(torch.stack([e[0] for e in trainloader]).to(DEVICE))        
-    for lidx in tqdm(range(len(model.sequential))):
-        hidden_layer = model.sequential[lidx](hidden_layer)
-        #hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
-        if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
-            # directly use PCA
-            hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
-            if "cpu" in DEVICE.type:
+
+    with torch.inference_mode():
+        # compute the associated D2 quantities over the full batch
+        # hidden_layer = torch.squeeze(torch.stack([e[0] for e in trainloader]))    
+        hidden_layer = xb_full
+        l = 0    
+        for lidx in tqdm(range(len(model.sequential))):
+            hidden_layer = model.sequential[lidx](hidden_layer)
+            #hidden_layer_mean = torch.mean(hidden_layer,0)    # center the hidden representations
+            if lidx % 2 == l_remainder or l_remainder == None:     # pre or post activation
+
+                """
+                # directly use PCA
+                hidden_layer_centered = hidden_layer - hidden_layer.mean(0)
                 hidden_layer_centered = hidden_layer_centered.detach().numpy()
-            else:
-                hidden_layer_centered = hidden_layer_centered.cpu().detach().numpy()
-            #hidden_layer_centered = StandardScaler().fit_transform(hidden_layer.detach().numpy())
-            pca = PCA()
-            #pca.fit(hidden_layer_centered)
-            PCs = pca.fit_transform(hidden_layer_centered)
-            eigvals = pca.explained_variance_
-            eigvecs = pca.components_
-            #ED = np.sum(eigvals)**2/np.sum(eigvals**2)
+                #hidden_layer_centered = StandardScaler().fit_transform(hidden_layer.detach().numpy())
+                pca = PCA()
+                #pca.fit(hidden_layer_centered)
+                PCs = pca.fit_transform(hidden_layer_centered)
+                eigvals = pca.explained_variance_
+                eigvecs = pca.components_
+                #ED = np.sum(eigvals)**2/np.sum(eigvals**2)
 
-            dqs_npc = np.zeros(PCs.shape[0])
-            dqs_npd = np.zeros(len(eigvals))
-            for pcidx in range(PCs.shape[0]):
-                dqs_npc[pcidx] = compute_dq(PCs[pcidx,:],2)
-            for eidx in range(len(eigvals)):
-                dqs_npd[eidx] = compute_dq(eigvecs[eidx,:],2)
+                dqs_npc = np.zeros(PCs.shape[0])
+                dqs_npd = np.zeros(len(eigvals))
+                for pcidx in range(PCs.shape[0]):
+                    dqs_npc[pcidx] = compute_dq(PCs[pcidx,:],2)
+                for eidx in range(len(eigvals)):
+                    dqs_npd[eidx] = compute_dq(eigvecs[eidx,:],2)
 
-            # pass in data to npc_data
-            npc_data[f'D2_npc_{l}'] = dqs_npc
-            npc_data[f'D2_npd_{l}'] = dqs_npd
+                # pass in data to npc_data
+                npc_data[f'D2_npc_{l}'] = dqs_npc
+                npc_data[f'D2_npd_{l}'] = dqs_npd
 
-            npc_data[f'npc_{l}'] = PCs[:, n_components]
-            npc_data[f'npc_eigvals_{l}'] = eigvals
+                npc_data[f'npc_{l}'] = PCs[:, :n_components]
+                npc_data[f'npc_eigvals_{l}'] = eigvals
+                """
 
-            l += 1
+                Xc = hidden_layer - hidden_layer.mean(dim=0, keepdim=True)  # [N, D]
+
+                # GPU PCA via SVD
+                U, S, Vh = torch.linalg.svd(Xc, full_matrices=False)
+
+                # Principal component scores
+                PCs = U * S  # [N, r]
+
+                # Explained variances
+                eigvals = (S ** 2) / (Xc.shape[0] - 1)  # [r]
+
+                # Principal directions
+                eigvecs = Vh  # [r, D]
+
+                PCs_np = PCs.detach().cpu().numpy()
+                eigvals_np = eigvals.detach().cpu().numpy()
+                eigvecs_np = eigvecs.detach().cpu().numpy()
+
+                dqs_npc = np.zeros(PCs_np.shape[0])
+                dqs_npd = np.zeros(len(eigvals_np))
+
+                for data_idx in range(PCs_np.shape[0]):
+                    dqs_npc[data_idx] = compute_dq(PCs_np[data_idx, :], 2)
+
+                for eidx in range(len(eigvals_np)):
+                    dqs_npd[eidx] = compute_dq(eigvecs_np[eidx, :], 2)
+
+                npc_data[f'D2_npc_{l}'] = dqs_npc
+                npc_data[f'D2_npd_{l}'] = dqs_npd
+                npc_data[f'npc_{l}'] = PCs_np[:, :n_components]
+                npc_data[f'npc_eigvals_{l}'] = eigvals_np
+
+                l += 1
+
+                # quit()  # delete
 
     # save all data
     np.savez(njoin(net_path, f"npc_epoch={epoch}_post={post}.npz"), 
@@ -296,8 +358,6 @@ def npc_compute(net_path, epoch, post, batch_size):
              targets=targets, target_indices=target_indices, **npc_data)
 
     print(f"ED via method batches is saved for epochs {epoch}!")
-
-
 
 
 if __name__ == '__main__':
