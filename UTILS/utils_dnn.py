@@ -174,7 +174,7 @@ def setting_from_path(data_path, alpha100, g100):
         activation = "tanh"
     else:
         # find folder which matches alpha100 and g100
-        net_ls = [net for net in next(os.walk(data_path))[1] if fcn in net and "epochs=" and f"_{alpha100}_{g100}_" in net]
+        net_ls = [net for net in next(os.walk(data_path))[1] if fcn in net and "epochs=" in net and f"_{alpha100}_{g100}_" in net]
         assert len(net_ls) > 0
         net_folder = net_ls[0]
         net_setup = pd.read_csv(join(data_path,net_folder,"log"))
