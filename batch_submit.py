@@ -10,7 +10,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='batch_submit_main.py args')   
     parser.add_argument('--is_qsub', type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument('--exp', default='', type=str) 
+    parser.add_argument('--exp', default='', type=str)
+    parser.add_argument('--nstack', default=1, type=int) 
     args = parser.parse_args()
 
     IS_ARGS_PARSER = False
@@ -29,7 +30,7 @@ if __name__ == '__main__':
         EXPS_TO_RUN = jac_analysis(); EXP_NAME = 'Jacobian eigenvector analysis for MLPs' 
         ARGS_ORDER = ['net_path', 'navg', 'epoch', 'post', 'reig']
     elif exp_type == 'exp4':
-        EXPS_TO_RUN = npc_analysis(); EXP_NAME = 'Jacobian eigenvector analysis for MLPs' 
+        EXPS_TO_RUN = npc_analysis(args.nstack); EXP_NAME = 'Neural representation analysis for MLPs' 
         ARGS_ORDER = ['net_path', 'epoch', 'post', 'batch_size']
 
     print('-----------------------')
@@ -76,11 +77,3 @@ if __name__ == '__main__':
             else:
                 kwargs_qsubs[i]['conda'] = '/taiji1/chqu7424/myenvs/pydl'
             qsub(f'{commands[i]} {batch_script_names[i]}', pbs_array_trues[i], path=job_path, **kwargs_qsubs[i])  
-
-
-# if __name__ == '__main__':
-#     import sys
-#     if len(sys.argv) < 2:
-#         print('Usage: python %s FUNCTION_NAME ARG1 ... ARGN' % sys.argv[0])
-#         quit()
-#     result = globals()[sys.argv[1]](*sys.argv[2:])
