@@ -622,6 +622,412 @@ def npc_metric(seed_root, post=1, n_top=2, epochs=[0,100],
     plt.savefig(njoin(plot_path, f'pca_cbar_post={post}.pdf'), bbox_inches='tight')           
 
 
+def npc_metric_v2(seed_root, post=1, n_top=2, epochs=[0,100], 
+                  selected_l=8, is_3d=False):
+    """
+    Plots the class separation for MLPs in the first figure (first pdf), plots the ED/localization properties of 
+    the neural representation PCs (second pdf):
+        - seed_path (str)
+        - post (int): is either 0 or 1, if 1 plots post activation 
+        - selected_l (int): corresponds to l = (selected_l + 1)th layer for the PCs
+    """
+
+    from sklearn.linear_model import LinearRegression
+
+    global epoch_plot, metric_means, metric_data, D2_mean, D2_std, axs
+    global depth, X_pca, indices, target_indices, sample_indices, seed
+    global colors_all
+
+    """
+
+    Average ED (across minibatches) and 
+    D_2 of full batch image (averaged across top n_top PCs) vs depth
+
+    """
+    lwidth = 1.8
+
+    post = int(post)
+    assert post == 2 or post == 1 or post == 0, "No such option!"
+    epochs = literal_eval(epochs) if isinstance(epochs, str) else epochs
+    n_top = int(n_top) if n_top != None else None
+    
+    alpha100_ls = [120,200]; g100_ls = [20,100,300]
+    metric_ls = ["ED", "D2_npd", "cum_var"]
+    ALL_METRIC_LS = ["ED", "D2_npc", "D2_npd", "D2_hidden", "cum_var", "eigvals_ordered"]
+    ALL_METRIC_DICT = {"ED": "ED", "D2_npc": r'$D_2$', 
+                       "D2_npd": r'$D_2$', "D2_hidden": r'$D_2$', 
+                       "cum_var": 'Cumulative Var.', "eigvals_ordered": 'Eigvals ordered'}
+    for metric_name in metric_ls:
+        assert metric_name in ALL_METRIC_LS
+
+    fcn, activation, total_epoch, net_folder = setting_from_path(seed_root, alpha100_ls[0], g100_ls[0])
+    seed = int(seed_root.split('/')[-2].split('seed=')[-1])
+    L = int(fcn[2:])    
+    if post == 0:
+       depth = L
+    elif post == 1:
+        depth = L - 1
+    else:
+        depth = 2*L - 1
+    ED_all = np.zeros([len(alpha100_ls), len(g100_ls), depth])
+
+    # -------------------- Figure 1 (class separation) --------------------     
+     
+    nrows = len(epochs)
+    ncols = len(g100_ls)
+    fig, axs = plt.subplots(nrows, ncols, sharex=False,sharey=False,figsize=(7,4.6),
+                            constrained_layout=True)   
+      
+    if post == 0:
+        xax_limit = 300
+        yax_limit = 200  
+        zax_limit = 30  
+        # second final pre-activation
+        #depth_selected = 16         
+        depth_selected = 2*L - 4
+    elif post == 1:
+        xax_limit = 12
+        yax_limit = 12
+        zax_limit = 15
+        # final activation
+        #depth_selected = 17  
+        depth_selected = 2*L - 3      
+    else:
+        xax_limit = 50
+        yax_limit = 35
+        zax_limit = 30
+        # output
+        #depth_selected = 18
+        depth_selected = 2*L - 2
+    # schematic figure of PCA
+    selected_target_idxs = list(range(10))
+    #selected_target_idxs = [1,9]
+    # divide the axes
+    pca_epoch = epochs[-1]
+    N_data = 500
+    transparency = 1    
+    # msize = 10
+    msize = 8
+    markers = ['o', 'x']
+
+    for (gidx, g100), (aidx, alpha100) in product(enumerate(g100_ls), enumerate(alpha100_ls)):  
+        # get network path
+        fcn, activation, total_epoch, net_folder = setting_from_path(seed_root, alpha100, g100)   
+        # all data
+        all_data = np.load(njoin(seed_root, net_folder, f'npc_epoch={pca_epoch}_post={post}.npz'))
+
+        # class PCA
+        target_indices = all_data['target_indices']        
+        X_pca = all_data[f'npc_{selected_l}']               
+        # X_pca = np.load(njoin(seed_root, net_folder, "X_pca_test", f"npc-depth={depth_selected}-epoch={pca_epoch}.npy"), allow_pickle=True)
+        
+        # group in classes
+        colors_all = np.empty(X_pca.shape[0])
+        for iidx, cl_idx in enumerate(selected_target_idxs):
+            sample_indices = target_indices[cl_idx]
+            #colors_all[np.where(sample_indices==True)[0]] = iidx
+            colors_all[sample_indices] = iidx
+
+        if is_3d:
+            axs[aidx,gidx].remove()
+            axs[aidx,gidx] = fig.add_subplot(nrows, ncols, ncols*gidx+aidx+1, projection='3d')
+
+        ax = axs[aidx,gidx]
+
+        # sub figure setting
+        scatter_kwargs = dict(
+            c=colors_all[:N_data],
+            marker=markers[aidx],
+            s=msize,
+            alpha=transparency,
+            cmap=cmap,
+        )
+
+        if is_3d:
+            scatter_obj = ax.scatter(
+                X_pca[:N_data, 0],
+                X_pca[:N_data, 1],
+                X_pca[:N_data, 2],
+                **scatter_kwargs
+            )
+        else:
+            scatter_obj = ax.scatter(
+                X_pca[:N_data, 0],
+                X_pca[:N_data, 1],
+                vmin=0,
+                vmax=len(selected_target_idxs) - 1,
+                **scatter_kwargs
+            )
+
+        if gidx == 0 and aidx == 0:
+            im = scatter_obj
+
+        ax.set_xlim([-xax_limit,xax_limit]); ax.set_ylim([-yax_limit,yax_limit])
+        if is_3d:
+            ax.set_zlim([-zax_limit,zax_limit])
+        else:
+            ax.spines['top'].set_visible(False); ax.spines['bottom'].set_visible(False)
+            ax.spines['right'].set_visible(False) ;ax.spines['left'].set_visible(False)   
+        ax.set_xticks([]); ax.set_xticklabels([])
+        ax.set_yticks([]); ax.set_yticklabels([])
+        if is_3d:
+            ax.set_zticks([]); ax.set_zticklabels([])
+
+        if is_3d:
+            ax.set_xticks([-xax_limit,0,xax_limit])
+            ax.set_yticks([-yax_limit,0,yax_limit])
+            ax.set_zticks([-zax_limit,0,zax_limit])
+
+            if gidx == 0:
+                ax.spines['left'].set_visible(True)
+                ax.set_yticklabels([-yax_limit,0,yax_limit])
+            if aidx == nrows - 1:                    
+                ax.spines['bottom'].set_visible(True)
+                ax.set_xticklabels([-xax_limit,0,xax_limit]) 
+                if aidx == 0 and is_3d:
+                    ax.set_zticklabels([-zax_limit,0,zax_limit]) 
+        else:
+            if gidx == 0:
+                ax.spines['left'].set_visible(True)
+                ax.set_yticks([-yax_limit,0,yax_limit]); ax.set_yticklabels([-yax_limit,0,yax_limit])
+            if aidx == nrows - 1:                    
+                ax.spines['bottom'].set_visible(True)
+                ax.set_xticks([-xax_limit,0,xax_limit]); ax.set_xticklabels([-xax_limit,0,xax_limit]) 
+
+        # subfigure labels
+        if aidx == 0:
+            ax.set_title(rf'$\sigma_w$ = {g100/100}')
+
+        # legend
+        if gidx == 0:
+            axs[0,0].scatter([],[], marker=markers[aidx], c='k', label=rf'$\alpha$ = {alpha100_ls[aidx]/100}')
+    axs[0,0].legend(frameon=False)
+
+    ##### SUBFIGURE LABELS #####
+    for ii, ax in enumerate(axs.flatten()):
+        ax.text(-0.1, 1.15, rf"$\mathbf{{{ascii_lowercase[ii]}}}$",
+            transform=ax.transAxes, ha='left',  va='top',
+            usetex=False)
+
+    ##### COLORBAR #####
+    total_classes = 10
+    cbar_ticks = [(total_classes - 1) / total_classes * (0.5 + i)
+                for i in range(total_classes)]
+    cbar_tick_labels = list(range(total_classes))
+
+    cbar = fig.colorbar(im, ax=axs, location="right", ticks=cbar_ticks, 
+                        shrink=0.85,     # controls height
+                        fraction=0.05,   # controls width
+                        pad=0.02,        # spacing from plots
+                        aspect=30,       # larger -> thinner bar
+                        )
+
+    cbar.outline.set_visible(False)
+    cbar.ax.set_yticklabels(cbar_tick_labels)
+    cbar.ax.tick_params(axis='y', labelsize=BIGGER_SIZE)
+    
+    ##### PATH SETUP #####
+    plot_path = njoin(DROOT, f"figure_ms/{fcn}_npc")
+    if not os.path.isdir(plot_path): os.makedirs(plot_path)    
+    epochs_str = [str(epoch) for epoch in epochs]
+    epochs_str = "_".join(epochs_str)
+    g100_str = [str(g100) for g100 in g100_ls]
+    g100_str = "_".join(g100_str)
+    metric_str = "_".join(metric_ls)
+
+    ##### SAVE FIGURE #####
+    plt.savefig(njoin(plot_path, f'pca_cbar_post={post}.pdf'), bbox_inches='tight')   
+
+    if "fcn_grid" in seed_root or "gaussian_data" not in seed_root:
+        file_full = f"{plot_path}/{fcn}-ds=mnist-seed={seed}-post={post}-epoch={epochs[1]}_g100={g100_str}_{metric_str}-separation.pdf"
+    else:
+        gaussian_data_setting = pd.read_csv(njoin(seed_root,"gaussian_data_setting.csv"))
+        X_dim, Y_classes, cluster_seed, assignment_and_noise_seed = gaussian_data_setting.loc[0,["X_dim", "Y_classes, ,noise_sigma", "cluster_seed,assignment_and_noise_seed"]]
+        file_full = f"{plot_path}/{fcn}_gaussian_post={post}"
+        file_full += f"_{X_dim}_{Y_classes}_{cluster_seed}_{assignment_and_noise_seed}"
+        file_full += f"_epoch={epochs[1]}_g100={g100_str}_{metric_str}-separation.pdf"
+
+    plt.savefig(file_full)
+    print(f"Figure 1 saved as {file_full}")
+
+    plt.close()  # clear figure 
+
+    # -------------------- Figure 2 (neural representation analysis) --------------------
+
+    nrows = len(g100_ls)
+    ncols = len(metric_ls)
+    # figsize=(12.5/3*ncols,3.1*nrows + 3)
+    fig, axs = plt.subplots(nrows, ncols, sharex=False,sharey=False,figsize=(12.5, 10),
+                            constrained_layout=True)   
+    
+
+    for (midx, metric_name), (gidx, g100) in product(enumerate(metric_ls),enumerate(g100_ls)):
+        # remove spines
+        axs[gidx, midx].spines['top'].set_visible(False); axs[gidx,midx].spines['right'].set_visible(False) 
+        # label ticks
+        #axs[gidx, midx].tick_params(axis='both', labelsize=axis_size - 3.5) 
+         
+        # set title
+        if gidx == 0:
+            axs[gidx,midx].set_title(ALL_METRIC_DICT[metric_name], fontsize=tick_size) 
+        # set sigma_w labels
+        if midx == 0:
+            axs[gidx,midx].set_ylabel(rf'$\sigma_w$ = {g100_ls[gidx]/100}', fontsize=tick_size)
+          
+        for epoch_plot, (aidx, alpha100) in product(epochs, enumerate(alpha100_ls)):  
+            # Extract numeric arguments.
+            alpha, g = int(alpha100)/100., int(g100)/100.
+            # load nets and weights
+            fcn, activation, total_epoch, net_folder = setting_from_path(seed_root, alpha100, g100)   
+            # all data
+            all_data = np.load(njoin(seed_root, net_folder, f'npc_epoch={epoch_plot}_post={post}.npz'))
+
+            lstyle = linestyle_ls[0] if epoch_plot == 0 else linestyle_ls[1]
+            if metric_name == "ED":
+                # metric_means = np.load(njoin(seed_root, net_folder, f"ed-batches_{POST_DICT[post]}", f"ED_means_{epoch_plot}.npy"))
+                # metric_stds = np.load(njoin(seed_root, net_folder, f"ed-batches_{POST_DICT[post]}", f"ED_stds_{epoch_plot}.npy"))
+                metric_means = all_data['ED_means']; metric_stds = all_data['ED_stds']; 
+                # only includes preactivation    
+                depth = len(metric_means[0])
+                # save ED later
+                ED_all[aidx, gidx, :] = metric_means[0]
+                # mean
+                axs[gidx,midx].plot(np.arange(1, depth+1), metric_means[0],linewidth=lwidth,linestyle=lstyle,
+                                    alpha=1, c = C_LS[aidx])
+                # standard deviation
+                axs[gidx,midx].fill_between(np.arange(1, depth+1), metric_means[0] - metric_stds[0], metric_means[0] + metric_stds[0], color = C_LS[aidx], alpha=0.2) 
+
+                # leaving extra space for labels
+                #if gidx == len(g100_ls) - 1:
+                #    axs[0,gidx].set_ylim(0,200)
+
+            elif "D2" in metric_name:
+                D2_mean = []  # D2's corresponding to the eigenvector of the largest eigenvalue of the covariance matrix  
+                D2_std = []
+                for l in range(depth):        
+                    if metric_name == "D2_npc":                
+                        # metric_data = np.load(njoin(seed_root, net_folder, f"dq_npc-fullbatch_{POST_DICT[post]}", f"D2_{l}_{epoch_plot}.npy"))
+                        metric_data = all_data[f'D2_npc_{l}']
+                    elif metric_name == "D2_npd":
+                        # metric_data = np.load(njoin(seed_root, net_folder, f"dq_npd-fullbatch_{POST_DICT[post]}", f"D2_{l}_{epoch_plot}.npy"))
+                        metric_data = all_data[f'D2_npd_{l}']
+                    elif metric_name == 'D2_hidden':
+                        ##### NOT DONE YET #####
+                        # metric_data = np.load(njoin(seed_root, net_folder, f"dq_hidden-fullbatch_{POST_DICT[post]}", f"D2_{l}_{epoch_plot}.npy"))
+                        metric_data = all_data[f'D2_hidden_{l}']
+
+                    if metric_name in ["D2_npc", "D2_npd"]:                                  
+                        if n_top != None:                          
+                            D2_mean.append(metric_data[:n_top].mean())
+                            D2_std.append(metric_data[:n_top].std())
+                        else:
+                            n_top = round(ED_all[aidx, gidx, l])    # top PCs of the mean ED of that layer
+                            D2_mean.append(metric_data[0:5].mean())
+                            D2_std.append(metric_data[0:5].std())    
+                    else:
+                        D2_mean.append(metric_data.mean())
+                        D2_std.append(metric_data.std())                                  
+
+                D2_mean, D2_std = np.array(D2_mean), np.array(D2_std)
+                axs[gidx,midx].plot(np.arange(1, depth+1), D2_mean,linewidth=lwidth,linestyle=lstyle,
+                                        alpha=1, c = C_LS[aidx]) 
+
+                # standard deviation
+                axs[gidx,midx].fill_between(np.arange(1, depth+1), D2_mean - D2_std, D2_mean + D2_std, color = C_LS[aidx], alpha=0.2)
+
+            elif metric_name == "cum_var":
+                var_ls = []
+                for l in range(depth):
+                    # eigvals = np.load(njoin(seed_root, net_folder, f"eigvals-fullbatch_{POST_DICT[post]}", f"npc-eigvals_{l}_{epoch_plot}.npy"))    
+                    eigvals = all_data[f'npc_eigvals_{l}']                        
+                    if n_top != None: 
+                        var_ls.append(eigvals[:n_top].sum()/eigvals.sum())
+                    else:
+                        n_top = round(ED_all[aidx, gidx, l])    # top PCs of the mean ED of that layer
+                        var_ls.append(eigvals[:n_top].sum()/eigvals.sum())
+                axs[gidx,midx].plot(np.arange(1, depth+1), var_ls,linewidth=lwidth,linestyle=lstyle,
+                                    alpha=1, c = C_LS[aidx]) 
+
+            # elif metric_name == "eigvals_ordered" and epoch_plot == epochs[-1]: 
+            #     l_selected = depth
+            #     eigvals = np.load(njoin(seed_root, net_folder, f"eigvals-fullbatch_{POST_DICT[post]}", f"npc-eigvals_{l_selected - 1}_{epoch_plot}.npy"))                       
+            #     reg = LinearRegression().fit(np.log(np.arange(1, len(eigvals)+1))[0:100].reshape(-1,1), np.log(eigvals)[0:100].reshape(-1,1))
+            #     # eye guide line
+            #     b = np.log(eigvals[0])
+            #     x_guide = np.arange(1, len(eigvals)+1)
+            #     y_guide = np.exp(reg.coef_[0] * np.log(x_guide) + b)
+
+            #     axs[gidx,midx].loglog(np.arange(1, len(eigvals)+1), eigvals,linewidth=lwidth,linestyle=lstyle,
+            #                         alpha=1, c = C_LS[aidx]) 
+            #     axs[gidx,midx].loglog(x_guide, y_guide,linewidth=lwidth,linestyle='--',
+            #                         alpha=1, c = 'k') 
+
+        print(f"Metric {metric_name}")                 
+
+    # legend
+    legend_idx = 0
+    selected_col = 0
+    axs[legend_idx,selected_col].plot([], [], linewidth=lwidth, linestyle=linestyle_ls[0], c='k', label="Before training")
+    axs[legend_idx,selected_col].plot([], [], linewidth=lwidth, linestyle=linestyle_ls[1], c='k', label="After training")   
+    for aidx in range(len(alpha100_ls)):
+        axs[legend_idx,selected_col].plot([], [], linewidth=lwidth, c = C_LS[aidx], label=rf"$\alpha$ = {alpha100_ls[aidx]/100}")
+
+    # bbox_to_anchor=[0, 1.25],
+    axs[legend_idx,selected_col].legend(fontsize=legend_size+3, ncol=2, loc="lower left", bbox_to_anchor=[0, 1.2],
+                                        frameon=True)
+
+    for row in range(nrows):
+        for col in range(ncols):
+            # label ticks
+            axs[row,col].tick_params(axis='both', labelsize=axis_size + 1)
+
+    # metrics plotted against layers
+    for row in range(nrows):
+        for col in range(ncols):
+            axs[row,col].set_xlim(1, depth)
+            axs[row,col].set_xticks(list(range(1,depth+1)))
+            xtick_ls = []
+            for num in range(1,depth+1):
+                if num % 2 == 1:
+                    xtick_ls.append(str(num))
+                else:
+                    xtick_ls.append('')
+            if row == nrows-1:
+                axs[row,col].set_xticklabels(xtick_ls)
+            else:
+                axs[row,col].set_xticklabels([])
+    # d2 and cumulative variance
+    for col in [1,2]:
+        for row in range(nrows):
+            axs[row,col].set_ylim(-0.05,1.05) 
+            axs[row,col].set_yticks(np.arange(0,1.01,0.2)) 
+
+    # fig.tight_layout(h_pad=2.5, w_pad=-5)
+    fig.tight_layout(h_pad=4.5, w_pad=-4)
+    #fig.tight_layout(h_pad=6)
+
+    fig.supxlabel(r'Layer $l$', y=-0.02, fontsize=tick_size)
+
+    ##### SUBFIGURE LABELS #####
+    for ii, ax in enumerate(axs.flatten()):
+        ax.text(-0.1, 1.15, rf"$\mathbf{{{ascii_lowercase[ii]}}}$",
+            transform=ax.transAxes, ha='left',  va='top', fontsize=tick_size,
+            usetex=False)
+
+    if "fcn_grid" in seed_root or "gaussian_data" not in seed_root:
+        file_full = f"{plot_path}/{fcn}-ds=mnist-seed={seed}-post={post}-epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf"
+    else:
+        gaussian_data_setting = pd.read_csv(njoin(seed_root,"gaussian_data_setting.csv"))
+        X_dim, Y_classes, cluster_seed, assignment_and_noise_seed = gaussian_data_setting.loc[0,["X_dim", "Y_classes, ,noise_sigma", "cluster_seed,assignment_and_noise_seed"]]
+        file_full = f"{plot_path}/{fcn}_gaussian_post={post}"
+        file_full += f"_{X_dim}_{Y_classes}_{cluster_seed}_{assignment_and_noise_seed}"
+        file_full += f"_epoch={epochs[0]}_{epochs[1]}_g100={g100_str}_{metric_str}-vs-depth.pdf"
+
+    #plt.savefig(file_full, bbox_inches='tight')
+    # plt.savefig(file_full)  
+    fig.savefig(file_full, bbox_inches="tight", pad_inches="layout")      
+    print(f"Figure 2 saved as {file_full}")
+
 
 if __name__ == '__main__':
     import sys
