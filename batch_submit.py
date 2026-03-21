@@ -25,7 +25,7 @@ if __name__ == '__main__':
     elif exp_type == 'exp2':
         EXPS_TO_RUN = train_cnns(); EXP_NAME = 'Training Vanilla CNNs on the phase transition diagram.'
         ARGS_ORDER = ['alpha100', 'g100', 'seed', 'depth', 'c_size', 'k_size',
-                      'epochs', 'root_path']
+                      'epochs', 'lr', 'momentum', 'bs', 'root_path']
     elif exp_type == 'exp3':
         EXPS_TO_RUN = jac_analysis(); EXP_NAME = 'Jacobian eigenvector analysis for MLPs' 
         ARGS_ORDER = ['net_path', 'navg', 'epoch', 'post', 'reig']
