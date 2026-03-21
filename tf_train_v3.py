@@ -4,25 +4,9 @@ import random
 from os.path import join, isdir, isfile
 from os import makedirs
 
-#C_SIZE = 32 # channel size.
-# C_SIZE = 100
-# C_SIZE = 250
-# K_SIZE = 3 # kernel size
-#LEARNING_RATE = 2e-2
-#LEARNING_RATE = 3e-2
-#LEARNING_RATE = 1.5e-2
-LEARNING_RATE = 1e-2
-#LEARNING_RATE = 1e-3
-#LEARNING_RATE = 8e-3
-#MOMENTUM = 0.95
-MOMENTUM = 0
-
-#BATCH_SIZE = 300
-BATCH_SIZE = 1024 
-
 def run_model(alpha100, g100, seed,
               depth, c_size, k_size,
-              epochs, root_path):
+              epochs, lr, momentum, bs, root_path):
     #global df, accuracy_log, loss_log
 
     import numpy as np
@@ -35,11 +19,12 @@ def run_model(alpha100, g100, seed,
     # from tf_models import ConvModel
 
     print('Settings')
-    print(f'c_size = {c_size}, k_size = {k_size}, lr = {LEARNING_RATE}, mom = {MOMENTUM}, bs = {BATCH_SIZE} \n')
+    print(f'c_size = {c_size}, k_size = {k_size}, lr = {lr}, mom = {momentum}, bs = {bs} \n')
     print(f'alpha100 = {alpha100}, g100 = {g100}, seed = {seed}, depth = {depth}, epochs = {epochs} \n')
 
-    alpha100, g100, seed, depth, epochs = int(alpha100), int(g100), int(seed), int(depth), int(epochs)   
+    alpha100, g100, seed, depth = int(alpha100), int(g100), int(seed), int(depth)   
     c_size, k_size = int(c_size), int(k_size) 
+    epochs, lr, momentum, bs, = int(epochs), float(lr), float(momentum), int(bs),
 
     # SET SEED
     tf.config.experimental.enable_op_determinism()  # remove randomness from GPUs
@@ -54,12 +39,13 @@ def run_model(alpha100, g100, seed,
     y_train = to_categorical(y_train, 10)
     y_test = to_categorical(y_test, 10)
 
-    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(60000, seed=seed).batch(BATCH_SIZE)
-    test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(BATCH_SIZE)
+    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(60000, seed=seed).batch(bs)
+    test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(bs)
 
     # Ensure the model is leveraging GPU
-    device = '/GPU:0' if tf.config.experimental.list_physical_devices('GPU') else '/CPU:0'
-    print("Running on GPU" if tf.config.experimental.list_physical_devices('GPU') else "Running on CPU")
+    GPU_devs = tf.config.experimental.list_physical_devices('GPU')
+    device = '/GPU:0' if len(GPU_devs) > 0 else '/CPU:0'
+    print("Running on GPU" if len(GPU_devs) > 0 else "Running on CPU")
     print('\n')
 
     # Instantiate and train model
@@ -76,8 +62,16 @@ def run_model(alpha100, g100, seed,
         model = ConvModel_cpu(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
                             c_size=c_size, k_size=k_size)
 
+    # Materialize the model once and confirm Keras is tracking its weights.
+    _ = model(tf.zeros([1, 28, 28], dtype=tf.float32), training=False)
+    if not model.trainable_variables:
+        raise RuntimeError(
+            f"Model has no tracked trainable variables on {device}. "
+            "Check that weights are created with self.add_weight(...) or tracked layers."
+        )
+
     loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
-    optimizer = tf.keras.optimizers.SGD(learning_rate=LEARNING_RATE)
+    optimizer = tf.keras.optimizers.SGD(learning_rate=lr)
 
     # Training function
     @tf.function
@@ -150,6 +144,7 @@ def submit(*args):
 
     SEED = 0
     DEPTH = 4
+    c_size = 500; k_size = 3
     net_type = 'cnn_cpad'  # cnn with circular pad
     fc_init = "fc_default"
     dataset = 'mnist'
@@ -164,7 +159,7 @@ def submit(*args):
 
     # save training settings
     df_settings = pd.DataFrame(columns=['c_size', 'k_size', 'lr', 'momentum', 'batch_size'])
-    df_settings.loc[0,:] = [c_size, k_size, LEARNING_RATE, MOMENTUM, BATCH_SIZE]
+    df_settings.loc[0,:] = [c_size, k_size, lr, momentum, bs]
     df_settings.to_csv(join(models_path, 'settings.csv'))
 
     ncpus, ngpus = 1, 0
@@ -261,7 +256,7 @@ def batch_submit(*args):
                    'depth', 'c_size', 'k_size', 'lr', 'momentum', 'batch_size']
         df_settings = pd.DataFrame(columns=df_cols)
         df_settings.loc[0,:] = [net_type, fc_init, dataset, optimizer,
-                                DEPTH, c_size, k_size, LEARNING_RATE, MOMENTUM, BATCH_SIZE]
+                                DEPTH, c_size, k_size, lr, momentum, bs]
         df_settings.to_csv(join(models_path, 'settings.csv'))
 
         #ncpus, ngpus = 1, 0
@@ -302,15 +297,15 @@ def batch_submit(*args):
 # y_train = to_categorical(y_train, 10)
 # y_test = to_categorical(y_test, 10)
 
-# train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(60000, seed=SEED).batch(BATCH_SIZE)
-# test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(BATCH_SIZE)
+# train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(60000, seed=SEED).batch(bs)
+# test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(bs)
 
 # # Instantiate and train model
 # DEPTH = 5
 # model = ConvModel(alpha=1.5, g=0.5, seed=SEED, depth=DEPTH)
 
 # loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
-# optimizer = tf.keras.optimizers.SGD(learning_rate=LEARNING_RATE)
+# optimizer = tf.keras.optimizers.SGD(learning_rate=lr)
 
 # # Training function
 # @tf.function
