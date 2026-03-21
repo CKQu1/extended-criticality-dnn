@@ -48,8 +48,16 @@ class ConvModel_cpu(tf.keras.Model):
         # self.levy_stable_seeds = np.random.randint(1000000, size=depth+3)
         self.levy_stable_seeds = np.random.randint(1000000, size=depth)
 
-        # Define convolutional layers
-        self.conv_layers.append(get_weight([k_size, k_size, 1, c_size], alpha, g, self.levy_stable_seeds[0], name='kernel_0'))
+        # Register weights through Keras so trainable_variables is populated on CPU too.
+        init_val = get_weight([k_size, k_size, 1, c_size], alpha, g, self.levy_stable_seeds[0], name='kernel_0')
+        self.conv_layers.append(
+            self.add_weight(
+                name='kernel_0',
+                shape=init_val.shape,
+                trainable=True,
+                initializer=tf.constant_initializer(init_val.numpy())
+            )
+        )
         shape = [k_size, k_size, c_size, c_size]
         # for j in range(2):
         #     self.conv_layers.append(get_weight(shape, alpha, g, self.levy_stable_seeds[j+1], name='reduction_{}_kernel'.format(j)))        
@@ -63,11 +71,25 @@ class ConvModel_cpu(tf.keras.Model):
             name = 'block_conv_{}'.format(j+1)
             kernel_name, bias_name = name + 'kernel', name + 'bias'
             #kernel = get_orthogonal_weight(kernel_name, shape, gain=std)
-            self.conv_layers.append(get_weight(shape, alpha, g, self.levy_stable_seeds[j+1], name='reduction_{}_kernel'.format(j+1)))
+            init_val = get_weight(shape, alpha, g, self.levy_stable_seeds[j+1], name='reduction_{}_kernel'.format(j+1))
+            self.conv_layers.append(
+                self.add_weight(
+                    name='reduction_{}_kernel'.format(j+1),
+                    shape=init_val.shape,
+                    trainable=True,
+                    initializer=tf.constant_initializer(init_val.numpy())
+                )
+            )
 
         # Final dense layer
         #self.logit_W = self.add_weight(shape=[c_size, 10], initializer='random_uniform', name='logit_W')
-        self.logit_W = get_uniform_weight([c_size, 10])
+        init_val = get_uniform_weight([c_size, 10])
+        self.logit_W = self.add_weight(
+            name='logit_W',
+            shape=init_val.shape,
+            trainable=True,
+            initializer=tf.constant_initializer(init_val.numpy())
+        )
     
     def call(self, inputs, training=False):
         z = tf.reshape(inputs, [-1, 28, 28, 1])
