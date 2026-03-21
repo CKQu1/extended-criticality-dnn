@@ -90,7 +90,7 @@ def get_mlp_ls(path):
 
 def get_cnn_ls(path, net_type='cnn5'):
 
-    net_ls = [join(path,net) for net in next(os.walk(path))[1] if net_type in net]
+    net_ls = [njoin(path,net) for net in next(os.walk(path))[1] if net_type in net]
     
     return net_ls
 
@@ -358,14 +358,21 @@ def epochs_all(alpha100s, g100s, acc_type, path, display=False):
     Plots the all epoch accuracy/loss for specified (\alpha, \sigma_w)
     """
 
-    global net_ls, dataname, epoch_last, fcn, net_paths, net_path, alpha, g, accs_all, losses_all
+    global net_ls, dataname, epoch_last, fcn, net_paths, net_path, alpha, g, accs_all, losses_all, net_type,\
+    alpha100, g100
 
     assert acc_type == "test" or acc_type == "train", "acc_type does not exist!"
-    alpha100s = literal_eval(alpha100s); g100s = literal_eval(g100s)
+    alpha100s = [int(ele) for ele in alpha100s.split(',')] 
+    g100s = [int(ele) for ele in g100s.split(',')]
     display = literal_eval(display) if isinstance(display,str) else display
 
+    # DNN info
+    settings = pd.read_csv(njoin(path, 'settings.csv'))
+    path = path if path[-1] != '/' else path[:-1]
+    net_type = path.split('/')[-1].split('_')[0]
+
     lstyles = ['-', '-.', '--']
-    net_ls = get_cnn_ls(path)
+    net_ls = get_cnn_ls(path, net_type)
     print(f'path: {path}')
 
     nrows, ncols = 1, 3
