@@ -73,7 +73,11 @@ if __name__ == '__main__':
         print(f'----- SUBMITTING ----- \n')
         for i in range(len(commands)):
             if 'tf_train' in script_name:
-                kwargs_qsubs[i]['conda'] = '/taiji1/chqu7424/myenvs/tf_v2' 
+                if CLUSTER == 'PHYSICS':
+                    kwargs_qsubs[i]['conda'] = '/taiji1/chqu7424/myenvs/tf_v2' 
+                elif CLUSTER == 'GADI':
+                    kwargs_qsubs[i]['conda'] = '/scratch/uu69/cq5024/venvs/tf_v2/bin/activate'
             else:
-                kwargs_qsubs[i]['conda'] = '/taiji1/chqu7424/myenvs/pydl'
+                if CLUSTER == 'PHYSICS':
+                    kwargs_qsubs[i]['conda'] = '/taiji1/chqu7424/myenvs/pydl'
             qsub(f'{commands[i]} {batch_script_names[i]}', pbs_array_trues[i], path=job_path, **kwargs_qsubs[i])  
