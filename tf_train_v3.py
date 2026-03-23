@@ -3,6 +3,7 @@ import os
 import random
 from os.path import join, isdir, isfile
 from os import makedirs
+from constants import SPATH, BPATH, DROOT
 
 def run_model(alpha100, g100, seed,
               depth, c_size, k_size,
@@ -32,8 +33,14 @@ def run_model(alpha100, g100, seed,
     tf.random.set_seed(seed)
     np.random.seed(seed)
 
-    # Load and preprocess MNIST dataset
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    # Load and preprocess MNIST dataset. Use a project-local Keras cache so
+    # cluster jobs do not depend on a writable /tmp or home directory.
+    keras_home = join(root_path, DROOT)
+    keras_datasets = join(keras_home, 'datasets')
+    if not isdir(keras_datasets):
+        makedirs(keras_datasets)
+    mnist_path = join(keras_datasets, 'mnist.npz')
+    (x_train, y_train), (x_test, y_test) = mnist.load_data(path=mnist_path)
     x_train = x_train.astype('float32') / 255.0
     x_test = x_test.astype('float32') / 255.0
     y_train = to_categorical(y_train, 10)
@@ -134,7 +141,6 @@ def submit(*args):
 
     import pandas as pd
     from qsub import qsub, job_divider, project_ls, command_setup
-    from constants import SPATH, BPATH, DROOT
 
     alpha100s = list(range(100,201,10))
     g100s = list(range(25, 301, 25))
@@ -192,17 +198,13 @@ def batch_run_model(triplets, depth, epochs, root_path):
 # func: batch_run_model
 def batch_submit(*args):
     import pandas as pd
-    from qsub import qsub, job_divider, project_ls, command_setup
-    from constants import SPATH, BPATH, DROOT    
+    from qsub import qsub, job_divider, project_ls, command_setup, list_str_divider
     from ast import literal_eval
 
     """
     Batch training mnist with MLPs
     """
     global pbs_array_data, tripletss
-
-    from qsub import qsub, job_divider, project_ls, command_setup, list_str_divider
-    from constants import SPATH, BPATH
 
     dataset_name = "mnist"
     
