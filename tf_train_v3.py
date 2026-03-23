@@ -3,7 +3,6 @@ import os
 import random
 from os.path import join, isdir, isfile
 from os import makedirs
-from constants import SPATH, BPATH, DROOT
 
 def run_model(alpha100, g100, seed,
               depth, c_size, k_size,
@@ -16,6 +15,7 @@ def run_model(alpha100, g100, seed,
     from tensorflow.keras.datasets import mnist
     from tensorflow.keras.utils import to_categorical    
     from tqdm import tqdm
+    from constants import SPATH, BPATH, DROOT
 
     # from tf_models import ConvModel
 
@@ -141,6 +141,7 @@ def submit(*args):
 
     import pandas as pd
     from qsub import qsub, job_divider, project_ls, command_setup
+    from constants import SPATH, BPATH, DROOT
 
     alpha100s = list(range(100,201,10))
     g100s = list(range(25, 301, 25))
@@ -200,6 +201,7 @@ def batch_submit(*args):
     import pandas as pd
     from qsub import qsub, job_divider, project_ls, command_setup, list_str_divider
     from ast import literal_eval
+    from constants import SPATH, BPATH, DROOT
 
     """
     Batch training mnist with MLPs
