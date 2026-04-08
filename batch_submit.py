@@ -21,17 +21,26 @@ if __name__ == '__main__':
     is_qsub = args.is_qsub
     exp_type = args.exp
     if exp_type == 'exp1':                           # train full-sized models (R^d)
-        EXPS_TO_RUN = train_mlps(); EXP_NAME = 'Training MLPs on the phase transition diagram.'
+        EXPS_TO_RUN = train_mlps(args.nstack); EXP_NAME = 'Training MLPs on the phase transition diagram.'
+        ARGS_ORDER = ['name', 'Y_classes', 'X_clusters', 'cluster_seed', 'assignment_and_noise_seed', 
+                      'num_train', 'num_test',
+                      'train_seed', 'alpha100', 'g100', 'optimizer', 'bs', 
+                      'init_path', 'init_epoch', 'root_path', 'depth', 'lr',
+                      'epochs', 'save_epoch']
+        is_use_subjobs = False
     elif exp_type == 'exp2':
-        EXPS_TO_RUN = train_cnns(); EXP_NAME = 'Training Vanilla CNNs on the phase transition diagram.'
+        EXPS_TO_RUN = train_cnns(args.nstack); EXP_NAME = 'Training Vanilla CNNs on the phase transition diagram.'
         ARGS_ORDER = ['alpha100', 'g100', 'seed', 'depth', 'c_size', 'k_size',
                       'epochs', 'lr', 'momentum', 'bs', 'root_path']
+        is_use_subjobs = False
     elif exp_type == 'exp3':
-        EXPS_TO_RUN = jac_analysis(); EXP_NAME = 'Jacobian eigenvector analysis for MLPs' 
+        EXPS_TO_RUN = jac_analysis(args.nstack); EXP_NAME = 'Jacobian eigenvector analysis for MLPs' 
         ARGS_ORDER = ['net_path', 'navg', 'epoch', 'post', 'reig']
+        is_use_subjobs = True
     elif exp_type == 'exp4':
         EXPS_TO_RUN = npc_analysis(args.nstack); EXP_NAME = 'Neural representation analysis for MLPs' 
         ARGS_ORDER = ['net_path', 'epoch', 'post', 'batch_size']
+        is_use_subjobs = True
 
     print('-----------------------')
     print(f'{exp_type}: {EXP_NAME}')
@@ -67,7 +76,8 @@ if __name__ == '__main__':
                     mem=mem,                    
                     job_path=job_path,
                     nstack=nstack,
-                    cluster=CLUSTER)
+                    cluster=CLUSTER,
+                    is_use_subjobs=is_use_subjobs)
     
     if is_qsub:
         print(f'----- SUBMITTING ----- \n')
@@ -80,4 +90,7 @@ if __name__ == '__main__':
             else:
                 if CLUSTER == 'PHYSICS':
                     kwargs_qsubs[i]['conda'] = '/taiji1/chqu7424/myenvs/pydl'
+
+            if not is_use_subjobs:
+                kwargs_qsubs[i]['is_use_subjobs'] = is_use_subjobs
             qsub(f'{commands[i]} {batch_script_names[i]}', pbs_array_trues[i], path=job_path, **kwargs_qsubs[i])  
