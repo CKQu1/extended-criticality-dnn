@@ -11,12 +11,67 @@ from UTILS.mutils import njoin
 from qsub_parser import add_common_kwargs, str_to_time, time_to_str
 
 # train FCNs according to the phase transition diagram
-def train_mlps():
-    pass
+def train_mlps(nstack):
+    
+    # resources
+    is_use_gpu = True
+    cfg = RESOURCE_CONFIGS[CLUSTER][is_use_gpu]
+    q, ngpus, ncpus = cfg["q"], cfg["ngpus"], cfg["ncpus"]                              
+    # single_walltime = '02:10:59'  # cpu  20 epochs
+    single_walltime = '00:30:59'  # gpu  50 epochs
+    walltime = time_to_str(str_to_time(single_walltime) * nstack)   
+    mem = '12GB'   
+    select = 1
+
+    script_name = 'train_supervised.py'
+    script_func = 'train_ht_dnn'
+
+    name = 'mnist'
+    Y_classes, X_clusters, cluster_seed, assignment_and_noise_seed = ['none'] * 4
+    num_train, num_test = 0, 0
+
+    # alpha100s = list(range(100,201,5))
+    # g100s = list(range(20, 301, 20))
+    alpha100s = [100,200]
+    g100s = [20,100,300]
+    train_seeds = [0]
+
+    optimizer = 'sgd'
+    # lr = 1e-4
+    lr = 5e-4
+    bs = 1024
+    init_path, init_epoch = ['none'] * 2
+    epochs = 1200
+    save_epoch = epochs
+    depth = 30
+
+    root_path = f'.droot/fc{depth}_{optimizer}_{name}'
+    job_path = njoin(root_path, 'jobs_all')
+
+    kwargss_all = []    
+    common_kwargs = {                                  
+        'name':          name,
+        'Y_classes':     Y_classes, 'X_clusters':    X_clusters, 'cluster_seed':  cluster_seed,
+        'assignment_and_noise_seed': assignment_and_noise_seed,
+        'num_train': num_train, 'num_test': num_test,
+        'init_path': init_path, 'init_epoch': init_epoch             
+    }                 
+
+    kwargss = []      
+    for alpha100, g100, train_seed in product(alpha100s, g100s, train_seeds):
+        kwargss.append({'alpha100': alpha100, 'g100': g100, 'train_seed': train_seed,
+                        'depth': depth, 'optimizer': optimizer, 
+                        'epochs': epochs, 'lr': lr, 'bs': bs, 'save_epoch': save_epoch,
+                        'root_path': njoin(root_path,f'fc{depth}_{optimizer}_{name}_seed={train_seed}')})
+
+    kwargss = add_common_kwargs(kwargss, common_kwargs)
+    kwargss_all += kwargss
+
+    return kwargss_all, script_name, script_func, q, ncpus, ngpus, select, walltime, mem, job_path, nstack
 
 
 # train vanilla cnns according to the phase transition diagram
-def train_cnns():
+def train_cnns(nstack):
 
     ##### Previous best results #####
     # epochs = 50; depth = 5; c_size = 500; k_size = 3; lr = 0.005; momentum = 0
@@ -48,8 +103,7 @@ def train_cnns():
     # resources
     is_use_gpu = True
     cfg = RESOURCE_CONFIGS[CLUSTER][is_use_gpu]
-    q, ngpus, ncpus = cfg["q"], cfg["ngpus"], cfg["ncpus"]   
-    nstack = 3                              
+    q, ngpus, ncpus = cfg["q"], cfg["ngpus"], cfg["ncpus"]                                
     # single_walltime = '02:10:59'  # cpu  20 epochs
     single_walltime = '00:30:59'  # gpu  50 epochs
     walltime = time_to_str(str_to_time(single_walltime) * nstack)   
@@ -89,7 +143,7 @@ def train_cnns():
 
 
 # multifractal analysis for Jacobian eigenvectors of pretrained MLPs
-def jac_analysis():
+def jac_analysis(nstack):
     global image
     from UTILS.mutils import point_to_path
 
@@ -113,8 +167,7 @@ def jac_analysis():
     # resources
     is_use_gpu = False
     cfg = RESOURCE_CONFIGS[CLUSTER][is_use_gpu]
-    q, ngpus, ncpus = cfg["q"], cfg["ngpus"], cfg["ncpus"]   
-    nstack = 10                              
+    q, ngpus, ncpus = cfg["q"], cfg["ngpus"], cfg["ncpus"]                                
     single_walltime = '00:15:59'  # gpu  50 epochs
     walltime = time_to_str(str_to_time(single_walltime) * nstack)   
     mem = '8GB'   
