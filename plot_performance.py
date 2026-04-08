@@ -103,7 +103,8 @@ def get_accloss(net_path, acc_type):
     # alpha100 = int(net_params.loc[0,'alpha100'])
     # g100 = int(net_params.loc[0,'g100'])
 
-    acc_loss = pd.read_csv(f"{net_path}/acc_loss", index_col=0)
+    # acc_loss = pd.read_csv(f"{net_path}/acc_loss", index_col=0)
+    acc_loss = pd.read_csv(f"{net_path}/acc_loss")
     metrics = acc_loss.iloc[:,0:2] if acc_type=="train" else acc_loss.iloc[:,2:]           
     losses = metrics.iloc[:,0]   
     accs = metrics.iloc[:,1] * 100      
@@ -353,7 +354,7 @@ def combined_phase(acc_type, model_paths, seeds='0,1,2,3,4', acc_threshold=93, d
     print(f"Good: {good}")    
 
 
-def epochs_all(alpha100s, g100s, acc_type, path, display=False):
+def single_seed_epochs(path, alpha100s, g100s, acc_type, display=False):
     """
     Plots the all epoch accuracy/loss for specified (\alpha, \sigma_w)
     """
@@ -377,7 +378,7 @@ def epochs_all(alpha100s, g100s, acc_type, path, display=False):
 
     nrows, ncols = 1, 3
     figsize = (5,2)
-    fig, axs = plt.subplots(nrows,ncols,sharex = True,sharey=True,figsize=figsize)     # without text
+    fig, axs = plt.subplots(nrows,ncols,sharex=True,sharey=True,figsize=figsize)     # without text
     axs = axs.flat
 
     accs_all, losses_all = [], []
@@ -409,6 +410,115 @@ def epochs_all(alpha100s, g100s, acc_type, path, display=False):
         plt.savefig(join(fig1_path, file_name), bbox_inches='tight')
 
         print(f"Figure saved: {join(fig1_path, file_name)}")
+
+
+def multi_seed_epochs(path, seeds, alpha100s, g100s, acc_type, display=False):
+    """
+    Plots the all epoch accuracy/loss for specified (\alpha, \sigma_w)
+    """
+
+    global net_ls, dataname, epoch_last, fcn, net_paths, net_path, alpha, g, accs_all, losses_all, net_type,\
+    alpha100, g100, accs, losses
+
+    assert acc_type == "test" or acc_type == "train", "acc_type does not exist!"
+    seeds = [int(ele) for ele in seeds.split(',')] 
+    alpha100s = [int(ele) for ele in alpha100s.split(',')] 
+    g100s = [int(ele) for ele in g100s.split(',')]
+    display = literal_eval(display) if isinstance(display,str) else display
+
+    # DNN info
+    path_str = path if path[-1] != '/' else path[:-1]
+    net_type = path_str.split('/')[-1].split('_')[0]
+
+    lstyles = ['-', '-.', '--']
+    print(f'path: {path}')
+
+    nrows, ncols = 2, len(g100s)
+    figsize = (7,4)
+    fig, axs = plt.subplots(nrows,ncols,sharex=True,sharey='row',figsize=figsize)     # without text
+
+    ##### SUBFIGURE LABELS #####
+    for ii, ax in enumerate(axs.flatten()):
+        ax.text(-0.1, 1.15, rf"$\mathbf{{{ascii_lowercase[ii]}}}$",
+            transform=ax.transAxes, ha='left',  va='top',
+            usetex=False)
+
+    accs_all, losses_all = [], []
+    for (aidx, alpha100), (gidx, g100) in product(enumerate(alpha100s), enumerate(g100s)):
+        
+        alpha, g = alpha100/100, g100/100
+
+        accs, losses = None, None
+        for seed in seeds:
+        
+            for subdir in os.listdir(path):
+                if f'seed={seed}' in subdir:
+                    seed_path = njoin(path, subdir)
+                    break
+
+            net_ls = get_cnn_ls(seed_path, net_type)
+            net_paths = get_net_paths(net_ls, alpha100, g100)
+            net_path = net_paths[0]
+            acc, loss = get_accloss(net_path, acc_type)
+            if accs is None:
+                accs = acc; losses = loss
+            else:
+                accs = pd.concat([accs, acc], axis=1); losses = pd.concat([losses, loss], axis=1)
+
+        # ----- accuracy -----
+        axis = axs[0, gidx]
+        accs_mean = accs.mean(1)
+        accs_mean = accs.median(1)
+        accs_std = accs.std(1)
+        epochs = np.arange(1,len(accs) + 1)
+        axis.plot(epochs, accs_mean, 
+                  c=HYP_CMAP(HYP_CNORM(alpha)),  
+                  label=rf'$\alpha$ = {alpha}')  # label=rf'$\sigma_w$ = {g}' linestyle=lstyles[gidx],
+        # axis.fill_between(epochs, accs_mean - accs_std, accs_mean + accs_std, 
+        #                   color=HYP_CMAP(HYP_CNORM(alpha)), alpha=0.2)
+        
+        axis.spines['top'].set_visible(False); axis.spines['right'].set_visible(False)
+
+        # axis.set_ylim([10,100])
+        axis.set_title(rf'$\sigma_w$ = {g}', fontsize=10)
+        if gidx == 0:
+            axis.set_ylabel(f'{acc_type[0].upper() + acc_type[1:]} Accuracy')
+
+        # ----- loss -----
+        axis = axs[1, gidx]
+        axis.set_yscale('log') 
+        # losses_mean = losses.mean(1)
+        losses_mean = losses.median(1)
+        losses_std = losses.std(1)
+        axis.plot(epochs, losses_mean, 
+                  c=HYP_CMAP(HYP_CNORM(alpha)))  # linestyle=lstyles[gidx]
+        # axis.fill_between(epochs, losses_mean - losses_std, losses_mean + losses_std, 
+        #                   color=HYP_CMAP(HYP_CNORM(alpha)), alpha=0.2)
+
+        axis.spines['top'].set_visible(False); axis.spines['right'].set_visible(False)             
+
+        # axis.set_ylim([0,2.5])
+        if gidx == 0:
+            axis.set_ylabel(f'{acc_type[0].upper() + acc_type[1:]} Loss')
+
+        axis.set_xlabel('Epochs')
+
+        axis.set_xticks([0,25,50,75,100])
+
+    axs[0,0].legend(frameon=False)
+    #axs[1].set_yticklabels([])
+
+    plt.tight_layout()
+    if display:
+        plt.show()
+    else:
+        fig1_path = njoin(DROOT, 'figure_ms')
+        if not isdir(fig1_path):  makedirs(fig1_path)
+        file_name = f'{net_type}_epochs_{acc_type}.pdf'
+        plt.savefig(join(fig1_path, file_name), bbox_inches='tight')
+
+        print(f"Figure saved: {join(fig1_path, file_name)}")
+
 
 
 if __name__ == '__main__':
