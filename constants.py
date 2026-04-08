@@ -30,7 +30,8 @@ RESOURCE_CONFIGS = {
     },
     "PHYSICS": {
         True:  {"q": "l40s", "ngpus": 1, "ncpus": 1},
-        False: {"q": "taiji", "ngpus": 0, "ncpus": 1},
+        # False: {"q": "taiji", "ngpus": 0, "ncpus": 1},
+        False: {"q": "physics", "ngpus": 0, "ncpus": 1},
     },
 }
 # -------------------
