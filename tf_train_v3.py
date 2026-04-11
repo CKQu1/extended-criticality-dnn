@@ -9,13 +9,15 @@ def run_model(alpha100, g100, seed,
               epochs, lr, momentum, bs, root_path):
     #global df, accuracy_log, loss_log
 
+    from constants import SPATH, BPATH, DROOT
+    KERAS_HOME = join(DROOT, '.keras')
+    os.environ['KERAS_HOME'] = KERAS_HOME
     import numpy as np
     import tensorflow as tf
     import pandas as pd
     from tensorflow.keras.datasets import mnist
     from tensorflow.keras.utils import to_categorical    
     from tqdm import tqdm
-    from constants import SPATH, BPATH, DROOT
 
     # from tf_models import ConvModel
 
@@ -28,19 +30,18 @@ def run_model(alpha100, g100, seed,
     epochs, lr, momentum, bs, = int(epochs), float(lr), float(momentum), int(bs),
 
     # SET SEED
-    tf.config.experimental.enable_op_determinism()  # remove randomness from GPUs
+    if os.environ.get('TF_TRAIN_DETERMINISTIC', '1') == '1':
+        tf.config.experimental.enable_op_determinism()  # remove randomness from GPUs
     random.seed(seed)
     tf.random.set_seed(seed)
     np.random.seed(seed)
 
     # Load and preprocess MNIST dataset. Use a project-local Keras cache so
     # cluster jobs do not depend on a writable /tmp or home directory.
-    keras_home = join(root_path, DROOT)
-    keras_datasets = join(keras_home, 'datasets')
-    if not isdir(keras_datasets):
-        makedirs(keras_datasets)
-    mnist_path = join(keras_datasets, 'mnist.npz')
-    (x_train, y_train), (x_test, y_test) = mnist.load_data(path=mnist_path)
+    # keras_datasets = join(KERAS_HOME, 'datasets')
+    if not isdir(KERAS_HOME):
+        makedirs(KERAS_HOME)
+    (x_train, y_train), (x_test, y_test) = mnist.load_data(path='mnist.npz')
     x_train = x_train.astype('float32') / 255.0
     x_test = x_test.astype('float32') / 255.0
     y_train = to_categorical(y_train, 10)
@@ -49,28 +50,42 @@ def run_model(alpha100, g100, seed,
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(60000, seed=seed).batch(bs)
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(bs)
 
-    # Ensure the model is leveraging GPU
+    def build_model(device_name):
+        if 'GPU' in device_name:
+            from tf_models import ConvModel_gpu
+            return ConvModel_gpu(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
+                                 c_size=c_size, k_size=k_size)
+        from tf_models import ConvModel_cpu
+        return ConvModel_cpu(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
+                             c_size=c_size, k_size=k_size)
+
+    # Prefer GPU when visible, but fall back to CPU only if a representative
+    # probe convolution fails on the local CUDA/cuDNN stack.
     GPU_devs = tf.config.experimental.list_physical_devices('GPU')
+    for gpu in GPU_devs:
+        try:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        except Exception:
+            pass
     device = '/GPU:0' if len(GPU_devs) > 0 else '/CPU:0'
     print("Running on GPU" if len(GPU_devs) > 0 else "Running on CPU")
     print('\n')
 
-    # Instantiate and train model
-    # model = ConvModel(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
-    #                   c_size=c_size, k_size=k_size)
+    model = build_model(device)
+    probe_batch = max(2, min(bs, 8))
+    try:
+        with tf.device(device):
+            _ = model(tf.zeros([probe_batch, 28, 28], dtype=tf.float32), training=False)
+    except tf.errors.OpError as exc:
+        if 'GPU' not in device:
+            raise
+        print(f"GPU probe failed on {device}: {exc}")
+        print("Falling back to CPU because the visible GPU/cuDNN stack is unusable for Conv2D.")
+        device = '/CPU:0'
+        model = build_model(device)
+        with tf.device(device):
+            _ = model(tf.zeros([probe_batch, 28, 28], dtype=tf.float32), training=False)
 
-    # Instantiate and train model
-    if 'GPU' in device:
-        from tf_models import ConvModel_gpu
-        model = ConvModel_gpu(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
-                            c_size=c_size, k_size=k_size)
-    else:
-        from tf_models import ConvModel_cpu
-        model = ConvModel_cpu(alpha=alpha100/100, g=g100/100, seed=seed, depth=depth,
-                            c_size=c_size, k_size=k_size)
-
-    # Materialize the model once and confirm Keras is tracking its weights.
-    _ = model(tf.zeros([1, 28, 28], dtype=tf.float32), training=False)
     if not model.trainable_variables:
         raise RuntimeError(
             f"Model has no tracked trainable variables on {device}. "
@@ -78,7 +93,7 @@ def run_model(alpha100, g100, seed,
         )
 
     loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
-    optimizer = tf.keras.optimizers.SGD(learning_rate=lr)
+    optimizer = tf.keras.optimizers.SGD(learning_rate=lr, momentum=momentum)
 
     # Training function
     @tf.function
