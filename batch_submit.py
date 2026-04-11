@@ -86,7 +86,7 @@ if __name__ == '__main__':
                 if CLUSTER == 'PHYSICS':
                     kwargs_qsubs[i]['conda'] = '/taiji1/chqu7424/myenvs/tf_v2' 
                 elif CLUSTER == 'GADI':
-                    kwargs_qsubs[i]['conda'] = '/scratch/uu69/cq5024/venvs/tf_v2/bin/activate'
+                    kwargs_qsubs[i]['source'] = '/scratch/uu69/cq5024/venvs/tf_v2/bin/activate'
             else:
                 if CLUSTER == 'PHYSICS':
                     kwargs_qsubs[i]['conda'] = '/taiji1/chqu7424/myenvs/pydl'
