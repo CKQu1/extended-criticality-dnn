@@ -64,8 +64,8 @@ def single_dw_mfrac(seeds_root, alpha100s=[120,200], g100s=[100], seeds=[0],
     global net_paths_dict, Dqs
 
     # ---------- Figure setup ----------
-    # fig, axs = plt.subplots(2, 3, figsize=(7.5, 4.5))
-    fig, axs = plt.subplots(2, 3, figsize=(7, 4.2))
+    # figsize=(6.5, 3.9) if legend inside, otherwise use figsize=(7, 3.9)
+    fig, axs = plt.subplots(2, 3, figsize=(7.5, 3.9))  # figsize=(7, 4.2) figsize=(7.5, 4.5)
     insets = []
     for ii in range(axs.shape[0]):
         insets.append(inset_axes(axs[ii,0], width="35%", height="35%", loc="upper right",
@@ -113,6 +113,7 @@ def single_dw_mfrac(seeds_root, alpha100s=[120,200], g100s=[100], seeds=[0],
         if aidx == len(alpha100s) - 1:
             axs[aidx,0].set_xlabel('Site')
         axs[aidx,0].set_ylabel('Magnitude')
+        axs[aidx,0].set_title('Jacobian Eigenvector')
         axs[aidx,0].set_ylim([0, 1])
 
         # inset plot here
@@ -164,18 +165,19 @@ def single_dw_mfrac(seeds_root, alpha100s=[120,200], g100s=[100], seeds=[0],
 
     # legend
     for (aidx, alpha100) in enumerate(alpha100s):
-        axs[0,0].plot([], [], color=color_dict[alpha100], label=rf'$\alpha$ = {alpha100/100}')
+        axs[0,-1].plot([], [], color=color_dict[alpha100], label=rf'$\alpha$ = {alpha100/100}')
     # axs[0,0].legend(frameon=False, ncols=2,
     #                 loc="upper center", bbox_to_anchor=(0.5, 1.25))
     axs[0,-1].legend(frameon=False, ncols=1,
-                    loc="upper center", bbox_to_anchor=(0.8, 1))
+                     loc="upper center", bbox_to_anchor=(1.25, 1.1))
 
     # Improve layout spacing
     fig.tight_layout()
     fig_path = njoin(DROOT, 'figure_ms', 'pretrained_analysis')
     os.makedirs(fig_path, exist_ok=True)
-    seeds = ','.join(seeds)
-    plt.savefig(njoin(fig_path, f'single_jacobian_seeds={seeds}.pdf'), bbox_inches="tight")  # dpi=300, 
+    joined_seeds = ','.join(map(str, seeds))
+    plt.savefig(njoin(fig_path, f'single_jacobian_seeds={joined_seeds}.pdf'), 
+                bbox_inches="tight")  # dpi=300, 
     print(f'Figure saved in {fig_path}')
 
 
