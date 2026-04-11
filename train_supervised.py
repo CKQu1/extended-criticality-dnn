@@ -126,11 +126,12 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
     if stablefit_epoch and (not stablefit_step):
         params_epoch = stablefit_model(model)
 
-    print("EVAL STARTS!")  # delete
+    # print("EVAL STARTS!")  # delete
 
     # pure evaluation of train and test acc/loss
     losses, nums, corrects = zip(
-        *[loss_batch(model, loss_func, xb, yb) for xb, yb in tqdm(train_dl)]
+        *[loss_batch(model, loss_func, xb, yb) for xb, yb in train_dl]
+        # *[loss_batch(model, loss_func, xb, yb) for xb, yb in tqdm(train_dl)]
     )
     train_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
     train_acc = np.sum(corrects) / np.sum(nums)
@@ -142,7 +143,7 @@ def train_epoch(model, loss_func, opt, train_dl, valid_dl, hidden_epochs=0,
     val_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
     val_acc = np.sum(corrects) / np.sum(nums)
 
-    print("EVAL ENDS!")  # delete
+    # print("EVAL ENDS!")  # delete
 
     # save levy alpha stable distribution (for MLP)
     if not (stablefit_epoch or stablefit_step):
