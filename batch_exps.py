@@ -18,7 +18,8 @@ def train_mlps(nstack):
     cfg = RESOURCE_CONFIGS[CLUSTER][is_use_gpu]
     q, ngpus, ncpus = cfg["q"], cfg["ngpus"], cfg["ncpus"]                              
     # single_walltime = '02:10:59'  # cpu  20 epochs
-    single_walltime = '00:30:59'  # gpu  50 epochs
+    # single_walltime = '00:30:59'  # gpu  50 epochs
+    single_walltime = '00:20:59'  # gpu  50 epochs
     walltime = time_to_str(str_to_time(single_walltime) * nstack)   
     mem = '12GB'   
     select = 1
@@ -38,14 +39,14 @@ def train_mlps(nstack):
 
     optimizer = 'sgd'
     # lr = 1e-4
-    lr = 5e-4
+    lr = 1e-3  # 5e-4
     bs = 1024
     init_path, init_epoch = ['none'] * 2
     epochs = 1200
     save_epoch = epochs
-    depth = 30
+    depth = 20
 
-    root_path = f'.droot/fc{depth}_{optimizer}_{name}'
+    root_path = f'.droot/fc{depth}_lr={lr}_epochs={epochs}'
     job_path = njoin(root_path, 'jobs_all')
 
     kwargss_all = []    
@@ -78,40 +79,54 @@ def train_cnns(nstack):
     # batch_size = 1024
     #################################
 
-    script_name = 'tf_train_v3.py'
+    script_name = 'train_cnn.py'
     script_func = 'run_model'
+
+    # success example
+    """
+    c_size = 500  # channel size
+    k_size = 3    # kernel size
+    lr = 5e-3
+    momentum = 0
+    bs = 1024 
+    epochs = 50
+    depth = 5
+    """
 
     c_size = 500  # channel size
     k_size = 3    # kernel size
     lr = 5e-3
     momentum = 0
     bs = 1024 
+    epochs = 100
+    depth = 10
 
-    # alpha100s = list(range(100,201,5))
-    # g100s = list(range(20, 301, 20))
-    alpha100s = [100,200]
-    g100s = [20,100,300]
-    seeds = [0]
-    
-    epochs = 50
-    depth = 5
     net_type = 'cnn_cpad'  # cnn with circular pad
     fc_init = "fc_default"
     dataset = 'mnist'
     optimizer = 'sgd'
 
+    # alpha100s = list(range(100,201,5))
+    # g100s = list(range(20, 301, 20))
+    alpha100s = [100,200]
+    # g100s = [20,100,300]
+    g100s = [20]
+    seeds = [0]
+
     # resources
     is_use_gpu = True
     cfg = RESOURCE_CONFIGS[CLUSTER][is_use_gpu]
     q, ngpus, ncpus = cfg["q"], cfg["ngpus"], cfg["ncpus"]                                
-    # single_walltime = '02:10:59'  # cpu  20 epochs
-    single_walltime = '00:30:59'  # gpu  50 epochs
+    # single_walltime = '02:10:59'  # cpu 20 epochs
+    # single_walltime = '00:30:59'  # gpu 50 epochs
+    single_walltime = '01:40:59'  # gpu cnn10, 100 epochs, GADI
     walltime = time_to_str(str_to_time(single_walltime) * nstack)   
-    mem = '8GB'   
+    mem = '8GB'  # cnn10   
     select = 1
 
     # set up dir
-    models_path = njoin(DROOT, 'trained_cnns', f'cnn{depth}-v2')
+    # models_path = njoin(DROOT, 'trained_cnns', f'cnn{depth}-v4')
+    models_path = njoin(DROOT, 'trained_cnns', f'cnn{depth}_lr={lr}_epochs={epochs}')
     job_path = njoin(models_path, 'jobs_all')
     if not isdir(models_path): makedirs(models_path)
     # save shared training settings
