@@ -105,9 +105,13 @@ def get_accloss(net_path, acc_type):
 
     # acc_loss = pd.read_csv(f"{net_path}/acc_loss", index_col=0)
     acc_loss = pd.read_csv(f"{net_path}/acc_loss")
-    metrics = acc_loss.iloc[:,0:2] if acc_type=="train" else acc_loss.iloc[:,2:]           
-    losses = metrics.iloc[:,0]   
-    accs = metrics.iloc[:,1] * 100      
+    metrics = acc_loss.iloc[:,0:2] if acc_type=="train" else acc_loss.iloc[:,2:]    
+    if 'cnn' in net_path:
+        losses = metrics.iloc[:,1]   
+        accs = metrics.iloc[:,0] * 100  
+    else:       
+        losses = metrics.iloc[:,0]   
+        accs = metrics.iloc[:,1] * 100      
 
     return accs, losses
 
@@ -354,12 +358,12 @@ def combined_phase(acc_type, model_paths, seeds='0,1,2,3,4', acc_threshold=93, d
     print(f"Good: {good}")    
 
 
-def single_seed_epochs(path, alpha100s, g100s, acc_type, display=False):
+def single_seed_epochs(path, net_type, alpha100s, g100s, acc_type, display=False):
     """
     Plots the all epoch accuracy/loss for specified (\alpha, \sigma_w)
     """
 
-    global net_ls, dataname, epoch_last, fcn, net_paths, net_path, alpha, g, accs_all, losses_all, net_type,\
+    global net_ls, dataname, epoch_last, fcn, net_paths, net_path, alpha, g, accs_all, losses_all,\
     alpha100, g100
 
     assert acc_type == "test" or acc_type == "train", "acc_type does not exist!"
@@ -370,7 +374,7 @@ def single_seed_epochs(path, alpha100s, g100s, acc_type, display=False):
     # DNN info
     settings = pd.read_csv(njoin(path, 'settings.csv'))
     path = path if path[-1] != '/' else path[:-1]
-    net_type = path.split('/')[-1].split('_')[0]
+    # net_type = path.split('/')[-1].split('_')[0]
 
     lstyles = ['-', '-.', '--']
     net_ls = get_cnn_ls(path, net_type)
@@ -412,12 +416,12 @@ def single_seed_epochs(path, alpha100s, g100s, acc_type, display=False):
         print(f"Figure saved: {join(fig1_path, file_name)}")
 
 
-def multi_seed_epochs(path, seeds, alpha100s, g100s, acc_type, display=False):
+def multi_seed_epochs(path, net_type, seeds, alpha100s, g100s, acc_type, display=False):
     """
     Plots the all epoch accuracy/loss for specified (\alpha, \sigma_w)
     """
 
-    global net_ls, dataname, epoch_last, fcn, net_paths, net_path, alpha, g, accs_all, losses_all, net_type,\
+    global net_ls, dataname, epoch_last, fcn, net_paths, net_path, alpha, g, accs_all, losses_all,\
     alpha100, g100, accs, losses
 
     assert acc_type == "test" or acc_type == "train", "acc_type does not exist!"
@@ -428,7 +432,7 @@ def multi_seed_epochs(path, seeds, alpha100s, g100s, acc_type, display=False):
 
     # DNN info
     path_str = path if path[-1] != '/' else path[:-1]
-    net_type = path_str.split('/')[-1].split('_')[0]
+    # net_type = path_str.split('/')[-1].split('_')[0]
 
     lstyles = ['-', '-.', '--']
     print(f'path: {path}')
@@ -467,9 +471,13 @@ def multi_seed_epochs(path, seeds, alpha100s, g100s, acc_type, display=False):
 
         # ----- accuracy -----
         axis = axs[0, gidx]
-        accs_mean = accs.mean(1)
-        accs_mean = accs.median(1)
-        accs_std = accs.std(1)
+        # accs_mean = accs.mean(1)
+        if len(seeds) < 1:
+            accs_mean = accs.median(1)
+            accs_std = accs.std(1)
+        else:
+            accs_mean = accs.expanding().median()
+            accs_std = accs.expanding().std()
         epochs = np.arange(1,len(accs) + 1)
         axis.plot(epochs, accs_mean, 
                   c=HYP_CMAP(HYP_CNORM(alpha)),  
@@ -487,9 +495,14 @@ def multi_seed_epochs(path, seeds, alpha100s, g100s, acc_type, display=False):
         # ----- loss -----
         axis = axs[1, gidx]
         axis.set_yscale('log') 
-        # losses_mean = losses.mean(1)
-        losses_mean = losses.median(1)
-        losses_std = losses.std(1)
+        if len(seeds) < 1:
+            # losses_mean = losses.mean(1)
+            losses_mean = losses.median(1)
+            losses_std = losses.std(1)
+        else:
+            losses_mean = losses.expanding().median()
+            losses_std = losses.expanding().std()
+    
         axis.plot(epochs, losses_mean, 
                   c=HYP_CMAP(HYP_CNORM(alpha)))  # linestyle=lstyles[gidx]
         # axis.fill_between(epochs, losses_mean - losses_std, losses_mean + losses_std, 
@@ -503,7 +516,7 @@ def multi_seed_epochs(path, seeds, alpha100s, g100s, acc_type, display=False):
 
         axis.set_xlabel('Epochs')
 
-        axis.set_xticks([0,25,50,75,100])
+        # axis.set_xticks([0,25,50,75,100])
 
     axs[0,0].legend(frameon=False)
     #axs[1].set_yticklabels([])
