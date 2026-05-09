@@ -130,3 +130,6 @@ celeba*/
 *svg
 *fig
 .droot/
+
+# Local paper/reference material
+random_dnn/.agents/
