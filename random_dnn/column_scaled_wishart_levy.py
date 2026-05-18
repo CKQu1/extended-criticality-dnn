@@ -1,15 +1,26 @@
 """Column-scaled Wishart-Lévy prototype following the Belinschi profile ansatz.
 
-This module implements the scalar closure written in
-``column_scaled_wishart_levy.md`` for a rectangular heavy-tailed random matrix
-whose columns carry a deterministic profile ``c(u)``.  The derivation is based
-on the general profile theorem of Belinschi--Dembo--Guionnet specialized to the
-Hermitization of a column-scaled rectangular matrix.
+This module implements the scalar closure of Theorem 2 (the one-sided profile
+case) in ``structured_wishart_levy.md`` for a rectangular heavy-tailed random
+matrix whose columns carry a deterministic profile ``c(u)``.  The derivation is
+based on the general profile theorem of Belinschi--Dembo--Guionnet specialized
+to the Hermitization of a column-scaled rectangular matrix.
 
 The implementation is a numerical prototype of that specialization.  It is
 anchored by one mandatory sanity check: for a constant profile ``c(u) == 1`` it
 should reproduce the ordinary Wishart-Lévy singular-value law implemented in
 ``wishart_levy.py``.
+
+Solver note: the scalar closure eliminates the column field ``Y_c``, so its
+residual composes ``g(g(.))`` with a ``z**(-alpha)`` amplification.  At small
+``|z|`` (the small singular values) and ``alpha`` >~ 1.5 this is stiff: a naive
+``hybr`` root-find either overflows to a NaN residual or settles on a spurious
+branch.  Two safeguards make it robust across ``alpha`` in (1, 2) and
+``gamma`` in (0, 1]: the Gauss--Laguerre exponent is clipped to stay finite,
+and every solve is seeded from ``wishart_levy.solve_y_pair`` at the same ``z``
+(its joint ``(Y1, Y2)`` solver is stable everywhere on the grid, and its ``Y1``
+is the exact ``Y_r`` for a constant profile / the correct-branch neighbour
+otherwise).  This is why the module imports and depends on ``wishart_levy``.
 """
 
 from __future__ import annotations
@@ -410,12 +421,25 @@ def asymptotic_singular_quantile(
     return (amplitude / p) ** (1.0 / alpha)
 
 
+# Real-part clip for the Gauss-Laguerre exponent.  At small |z| the eliminated
+# column field y_col ~ z^{-alpha} g(Y_r) amplifies hybr's finite-difference
+# probes; without a clip exp() overflows to inf -> NaN residual, and hybr stalls
+# ("not making good progress").  Clipping the exponent's real part returns a
+# large-but-finite, monotone surrogate in the pathological region only (the true
+# integrand is astronomically large there anyway), so the solver's line search
+# retreats instead of dying.  np.exp tops out near 709 in float64; 700 leaves
+# headroom for the prefactor without changing any non-overflowing value.
+_EXP_CLIP = 700.0
+
+
 def _g_alpha_vector(values: np.ndarray, alpha: float, quadrature_order: int) -> np.ndarray:
     values = np.atleast_1d(np.asarray(values, dtype=complex))
     nodes, weights = wl._laguerre_rule(int(quadrature_order))
     powers = nodes ** (alpha / 2.0)
     prefactor = weights * nodes ** (alpha / 2.0 - 1.0)
-    integrand = prefactor[:, None] * np.exp(-powers[:, None] * values[None, :])
+    expo = -powers[:, None] * values[None, :]
+    expo = np.clip(expo.real, -_EXP_CLIP, _EXP_CLIP) + 1j * expo.imag
+    integrand = prefactor[:, None] * np.exp(expo)
     return np.sum(integrand, axis=0)
 
 
@@ -435,12 +459,23 @@ def _row_residual(
     quadrature_order: int,
 ) -> complex:
     z_alpha = z ** alpha
-    g_row = wl.g_alpha(y_row, alpha, quadrature_order=quadrature_order)
+    # Use the overflow-safe evaluator for g_row as well: hybr also probes y_row
+    # into very-negative-real territory, where wl.g_alpha would overflow.
+    g_row = complex(_g_alpha_vector(y_row, alpha, quadrature_order)[0])
     y_col = (c_alpha / (1.0 + gamma)) * (profile_alpha * g_row) / z_alpha
     g_col = _g_alpha_vector(y_col, alpha, quadrature_order)
     integral = np.sum(profile_weights * profile_alpha * g_col)
     rhs = (gamma * c_alpha / (1.0 + gamma)) * integral
-    return z_alpha * y_row - rhs
+    residual = z_alpha * y_row - rhs
+    if not np.isfinite(residual):
+        # Defensive: hand hybr a large finite value so its line search retreats
+        # rather than seeing NaN.  Penalise both components equally; zeroing the
+        # imaginary part would tell hybr that half the residual is already
+        # satisfied and bias its finite-difference Jacobian.  With the exponent
+        # clip in place this path is not expected to fire.
+        penalty = 1e6 * (1.0 + abs(y_row))
+        return complex(penalty, penalty)
+    return residual
 
 
 def _solve_row_field_with_profile(
@@ -453,6 +488,7 @@ def _solve_row_field_with_profile(
     profile_values: np.ndarray,
     alpha_moment: float,
     initial_guess: Optional[complex] = None,
+    anchor_guess: Optional[complex] = None,
     solver_tol: float = 1e-10,
     solver_maxfev: int = 400,
 ) -> complex:
@@ -462,11 +498,8 @@ def _solve_row_field_with_profile(
     profile_alpha = profile_values ** alpha
     z_alpha = z ** alpha
 
-    if initial_guess is None:
-        g0 = wl.g_alpha(0.0, alpha, quadrature_order=quadrature_order)
-        initial_guess = (gamma / (1.0 + gamma)) * c_alpha * g0 * alpha_moment / z_alpha
-
-    x0 = np.array([initial_guess.real, initial_guess.imag], dtype=float)
+    g0 = wl.g_alpha(0.0, alpha, quadrature_order=quadrature_order)
+    asymptotic_guess = (gamma / (1.0 + gamma)) * c_alpha * g0 * alpha_moment / z_alpha
 
     def residual(values: np.ndarray) -> np.ndarray:
         y_row = complex(values[0], values[1])
@@ -482,17 +515,25 @@ def _solve_row_field_with_profile(
         )
         return np.array([res.real, res.imag], dtype=float)
 
-    result = optimize.root(residual, x0, method="hybr", tol=solver_tol, options={"maxfev": solver_maxfev})
-    if not result.success:
-        g0 = wl.g_alpha(0.0, alpha, quadrature_order=quadrature_order)
-        alt_guess = (gamma / (1.0 + gamma)) * c_alpha * g0 * alpha_moment / z_alpha
-        alt_x0 = np.array([alt_guess.real, alt_guess.imag], dtype=float)
+    # Seed priority: the wishart-anchored guess first.  wishart_levy's joint
+    # (Y1, Y2) solver is robust at every z we hit (including the small-z points
+    # where the eliminated scalar Jacobian is stiff), and for a constant profile
+    # its Y1 *is* the exact Y_r, so anchoring selects the physically-correct
+    # branch and prevents the spurious-root jump seen at small s.  The carried
+    # continuation guess is tried next, then the large-z asymptotic form.
+    seeds = [
+        g for g in (anchor_guess, initial_guess, asymptotic_guess) if g is not None
+    ]
+    last_message = "no seed produced a solution"
+    for seed in seeds:
+        x0 = np.array([seed.real, seed.imag], dtype=float)
         result = optimize.root(
-            residual, alt_x0, method="hybr", tol=solver_tol, options={"maxfev": solver_maxfev},
+            residual, x0, method="hybr", tol=solver_tol, options={"maxfev": solver_maxfev},
         )
-    if not result.success:
-        raise RuntimeError(f"Could not solve Y_r(z) at z={z!r}: {result.message}")
-    return complex(result.x[0], result.x[1])
+        if result.success:
+            return complex(result.x[0], result.x[1])
+        last_message = result.message
+    raise RuntimeError(f"Could not solve Y_r(z) at z={z!r}: {last_message}")
 
 
 def solve_row_field(
@@ -526,6 +567,14 @@ def solve_row_field(
         exponent=exponent,
         cutoff=cutoff,
     )
+    try:
+        y1, _ = wl.solve_y_pair(
+            alpha, gamma, z, quadrature_order=quadrature_order,
+            solver_tol=solver_tol, solver_maxfev=solver_maxfev,
+        )
+        anchor_guess: Optional[complex] = complex(y1)
+    except RuntimeError:
+        anchor_guess = None
     return _solve_row_field_with_profile(
         alpha,
         gamma,
@@ -535,6 +584,7 @@ def solve_row_field(
         profile_values=profile_values,
         alpha_moment=alpha_moment,
         initial_guess=initial_guess,
+        anchor_guess=anchor_guess,
         solver_tol=solver_tol,
         solver_maxfev=solver_maxfev,
     )
@@ -592,10 +642,29 @@ def theoretical_column_scaled_singular_value_curve(
     y_row_values = np.full(singular_values.shape, np.nan + 1j * np.nan, dtype=complex)
 
     guess: Optional[complex] = None
+    wish_guess: Optional[tuple[complex, complex]] = None
     for idx in range(num_points - 1, 0, -1):
         s_out = singular_values[idx]
         s_base = s_out / output_scale
         z = complex(s_base, imag_eps)
+        # Robust physical-branch anchor: wishart_levy's joint (Y1, Y2) solver is
+        # stable at every z on this grid.  Its Y1 is the exact Y_r for a
+        # constant profile and the correct-branch neighbour otherwise, so it is
+        # the primary seed handed to the scalar solve below.
+        try:
+            y1, y2 = wl.solve_y_pair(
+                alpha,
+                gamma,
+                z,
+                quadrature_order=quadrature_order,
+                initial_guess=wish_guess,
+                solver_tol=solver_tol,
+                solver_maxfev=solver_maxfev,
+            )
+            wish_guess = (y1, y2)
+            anchor_guess: Optional[complex] = complex(y1)
+        except RuntimeError:
+            anchor_guess = None
         y_row = _solve_row_field_with_profile(
             alpha,
             gamma,
@@ -605,6 +674,7 @@ def theoretical_column_scaled_singular_value_curve(
             profile_values=profile_values,
             alpha_moment=alpha_moment,
             initial_guess=guess,
+            anchor_guess=anchor_guess,
             solver_tol=solver_tol,
             solver_maxfev=solver_maxfev,
         )

@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Working agreement
+
+- The user does their own `git` staging and commits. Make file edits/deletions as requested (including `git rm` when retiring a file), but do not run `git add`/`git commit`, and do not surface reminders or warnings about staging or commit state.
+
 ## Project Overview
 
 Research implementation for the paper *"Dynamical and computational properties of heavy-tailed deep neural networks"* (Qu, Wardak, Gong). The central object is a randomly-initialised MLP whose weight matrices are drawn from Lévy alpha-stable distributions, parameterised by stability index `alpha` (α ∈ [1,2]) and scale `sigma_W`. The code studies phase transitions in dynamical and computational properties across the `(alpha, sigma_W)` plane.
