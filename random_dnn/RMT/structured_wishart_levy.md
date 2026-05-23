@@ -1,7 +1,7 @@
-# The structured Wishart–Lévy law
+# The structured Wishart-Levy law
 
 Two theorems (with proofs). **Theorem 1** generalizes Theorem `wishart-amir`
-of Belinschi–Dembo–Guionnet to a rectangular heavy-tailed matrix $X_{N,M}$
+of Belinschi-Dembo-Guionnet to a rectangular heavy-tailed matrix $X_{N,M}$
 carrying its **own deterministic entry profile**; it is written so as to
 **replace Theorem `wishart-amir`** in the paper (a constant profile recovers it
 verbatim). **Theorem 2** specializes to a **one-sided profile** (the
@@ -12,8 +12,8 @@ density and the qualitative features of `wishart-amir`.
 
 References to `weakening`, `wishart-amir`, `gammaone`, `eq:BAG6`, `rhoalpha`
 are to `.agents/notes/belinschi-2008-preprint/wishart-arxiv-rev.tex`; sibling
-notes are `belinschi-2008.md` and `sing_vals.md`. The numerical prototype of
-the one-sided case (Theorem 2) is `column_scaled_wishart_levy.py`.
+notes are `belinschi-2008.md` and `hermitisation.md`. The structured law
+(both theorems) is implemented in `structured_wishart_levy.py`.
 
 ## Preliminaries
 
@@ -72,24 +72,24 @@ For $z\in\mathbb C^+$ write $\langle f\rangle:=\int_0^1 f(x)\,dx$.
 **Squared vs. singular values.** $\nu=\mu_\alpha^{\gamma,\tau}$, the limit of
 $\hat\mu_{W_{N,M}}$, is the law of the **squared** singular values of
 $a_{N+M}^{-1}X_{N,M}$: a probability measure with an atom of mass $1-\gamma$ at
-$0$ and continuous mass $\gamma$ on $(0,\infty)$ (Theorems 1–2 are about
+$0$ and continuous mass $\gamma$ on $(0,\infty)$ (Theorems 1-2 are about
 $\nu$, with continuous density $\rho_\nu$). To compare with singular values
 $s=\sqrt t$ there are two conventions, differing by the factor $\gamma$: the
 **atomless** law of the $M$ actual singular values, $f_{\mathrm{SV}}(s)
-=\tfrac{2s}{\gamma}\rho_\nu(s^2)$ (mass $1$ — an empirical SVD histogram), and
+=\tfrac{2s}{\gamma}\rho_\nu(s^2)$ (mass $1$ -- an empirical SVD histogram), and
 the **Gram** law $f^{(N)}_{\mathrm{SV}}(s)=2s\,\rho_\nu(s^2)$ (mass $\gamma$,
-atom $1-\gamma$ — the `column_scaled_wishart_levy.py` theory curves).
+atom $1-\gamma$ -- the convention used by `structured_wishart_levy.py`).
 
 ---
 
-## Theorem 1 (Structured Wishart–Lévy law)
+## Theorem 1 (Structured Wishart-Levy law)
 
 *Let $\tau\in\mathcal F_\alpha^{\mathrm{rect}}$ be deterministic and
 $M/N\to\gamma\in(0,1]$. Then:*
 
 **(i)** *$\hat\mu_{W_{N,M}}$ converges weakly to a non-random probability
-measure $\mu_\alpha^{\gamma,\tau}$ — almost surely if $\tau$ is
-piecewise-constant-equivalent on both axes, otherwise in expectation —
+measure $\mu_\alpha^{\gamma,\tau}$ -- almost surely if $\tau$ is
+piecewise-constant-equivalent on both axes, otherwise in expectation --
 with an atom at $0$ of mass $1-\gamma$.*
 
 **(ii)** *There is a unique pair of analytic mappings
@@ -104,7 +104,7 @@ z^\alpha Y_c(y,z)=\frac{1}{1+\gamma}\,C_\alpha
 \int_0^1|\tau(w,y)|^\alpha g_\alpha\!\big(Y_r(w,z)\big)\,dw.
 $$
 
-**(iii) (Collapse).** *The Cauchy–Stieltjes transform of
+**(iii) (Collapse).** *The Cauchy-Stieltjes transform of
 $\mu_\alpha^{\gamma,\tau}$ is, for $\zeta\in\mathbb C^+$,*
 $$
 G_\nu(\zeta)=\int\frac{d\mu_\alpha^{\gamma,\tau}(t)}{\zeta-t}
@@ -130,13 +130,13 @@ $$
 $Y_r,Y_c$ are constant in $x,y$, equal to the functions $Y_1,Y_2$ of
 `wishart-amir`; (ii) becomes the two-function system
 $z^\alpha Y_1=\tfrac{\gamma}{1+\gamma}C_\alpha g_\alpha(Y_2)$,
-$z^\alpha Y_2=\tfrac1{1+\gamma}C_\alpha g_\alpha(Y_1)$; (iii)–(v) become
+$z^\alpha Y_2=\tfrac1{1+\gamma}C_\alpha g_\alpha(Y_1)$; (iii)-(v) become
 $G_\nu=\tfrac1\zeta h_\alpha(Y_1(\sqrt\zeta))$, the atom $1-\gamma$, the density
 $-\tfrac1{\pi t}\Im h_\alpha(Y_1(\sqrt t))$, and the tail constant
-$\tfrac{\alpha\gamma}{2(1+\gamma)}$ — i.e. Theorem `wishart-amir` verbatim. For
+$\tfrac{\alpha\gamma}{2(1+\gamma)}$ -- i.e. Theorem `wishart-amir` verbatim. For
 $\gamma=1$ this further reduces, by the paper's identity, to
 $\rho^1_\alpha(t)=2^{1/\alpha}t^{-1/2}\rho_\alpha(2^{1/\alpha}\sqrt t)$ with
-$\rho_\alpha$ the Wigner–Lévy density.*
+$\rho_\alpha$ the Wigner-Levy density.*
 
 ### Proof of Theorem 1
 
@@ -167,7 +167,7 @@ $dv=\Delta_c\,d\hat v$ on $I_c$ and $dw=\Delta_r\,d\hat w$ on $I_r$ turns the
 $C_\alpha\Delta_c=\tfrac{\gamma}{1+\gamma}C_\alpha$ and
 $C_\alpha\Delta_r=\tfrac1{1+\gamma}C_\alpha$.
 
-**Step 4 (the sum-rule — the load-bearing step).** Multiply the $Y_r$-equation
+**Step 4 (the sum-rule -- the load-bearing step).** Multiply the $Y_r$-equation
 by $g_\alpha(Y_r(x,z))$ and integrate $\Delta_r\!\int_0^1 dx$; multiply the
 $Y_c$-equation by $g_\alpha(Y_c(y,z))$ and integrate $\Delta_c\!\int_0^1 dy$.
 The two right-hand sides are
@@ -196,7 +196,7 @@ $$
 
 **Step 5 (bipartite symmetrization).** The Hermitization
 $\bar Y^{\sigma_\tau}$ has eigenvalues $\pm s_k$ ($s_k$ the singular values of
-$a_{N+M}^{-1}X_{N,M}$) and $N-M$ zeros, so (as in `sing_vals.md` eq. (10)) the
+$a_{N+M}^{-1}X_{N,M}$) and $N-M$ zeros, so (as in `hermitisation.md` eq. (10)) the
 squared-singular law $\nu$ satisfies
 $$
 G_\nu(\zeta)=\frac{1+\gamma}{2\sqrt\zeta}\,G_{\sigma_\tau}(\sqrt\zeta)
@@ -223,9 +223,8 @@ the case $\tau\equiv1$, where the $x$-independence collapses $\langle\cdot
 row field is constant in $x$, $Y_r(x,z)\equiv Y_r(z)$. A clean, robust,
 checkable sufficient condition is that $\tau$ be **one-sided**:
 $|\tau(x,y)|=c(y)$ depends on the column coordinate only. (Canonical case:
-column-scaling, implemented in `column_scaled_wishart_levy.py`;
-$c\equiv\mathrm{const}$ is plain Wishart; the row-only profile $|\tau|=r(x)$
-follows by the transpose
+column-scaling; $c\equiv\mathrm{const}$ is plain Wishart; the row-only
+profile $|\tau|=r(x)$ follows by the transpose
 $X_{N,M}\leftrightarrow X_{N,M}^{\mathsf t}$, with $\gamma\mapsto1/\gamma$ and
 the zero-atom rebooked.) The hypothesis is what makes the Theorem 1(iii)
 collapse a **single-scalar** object; everything below flows from that.*
@@ -257,7 +256,7 @@ $$
 *which, inherited from `weakening`, is real-analytic on $(R,\infty)$ for some
 finite $R=R_\alpha^{\gamma,\tau}$ (the same threshold beyond which $Y_r$
 continues analytically). Non-vanishing of the density near $0$ is **not
-asserted for a general one-sided profile** — it holds only in the degenerate
+asserted for a general one-sided profile** -- it holds only in the degenerate
 corner (see Specializations and remarks).*
 
 For a general two-sided $\tau$ this Theorem 2 does not apply: $Y_r$ stays
@@ -267,8 +266,8 @@ functional and only Theorem 1's field-level forms hold.
 
 **(i).** One-sidedness gives $|\tau(x,v)|^\alpha=c(v)^\alpha$, independent of
 $x$, so the right-hand side of the Theorem 1(ii) row equation is $x$-free for
-every $z$ and every solution $Y_c$; hence $Y_r(x,z)$ is constant in $x$ — a
-scalar — unconditionally (no fragile cancellation, no dependence on $\gamma$ or
+every $z$ and every solution $Y_c$; hence $Y_r(x,z)$ is constant in $x$ -- a
+scalar -- unconditionally (no fragile cancellation, no dependence on $\gamma$ or
 on the solution). Substituting the scalar $Y_r$ into the Theorem 1(ii) column
 equation, $z^\alpha Y_c(y)=\tfrac{C_\alpha}{1+\gamma}g_\alpha(Y_r)
 \int_0^1|\tau(w,y)|^\alpha dw=\tfrac{C_\alpha}{1+\gamma}g_\alpha(Y_r)\,c(y)^\alpha$
@@ -288,12 +287,13 @@ are inherited from `weakening` / Theorem 1. $\qquad\square$
 
 - **One-sided is the Theorem 2 hypothesis, not a specialization.**
   $|\tau(x,y)|=c(y)$ (or, by the transpose, $r(x)$) is exactly the scalar-$Y_r$
-  condition; it is implemented in `column_scaled_wishart_levy.py`. Plain
-  Wishart `wishart-amir` ($c\equiv\mathrm{const}$, Corollary 1) and, at
-  $\gamma=1$, the Wigner–Lévy law are its degenerate corner (next bullet).
+  condition; the structured solver collapses to this scalar automatically
+  (validated by `compare_one_sided_to_scalar_closure`). Plain Wishart
+  `wishart-amir` ($c\equiv\mathrm{const}$, Corollary 1) and, at $\gamma=1$,
+  the Wigner-Levy law are its degenerate corner (next bullet).
 
 - **Degenerate corner ($c\equiv\mathrm{const}$).** One-sided with constant $c$
-  is plain Wishart `wishart-amir`; at $\gamma=1$ it is the Wigner–Lévy law
+  is plain Wishart `wishart-amir`; at $\gamma=1$ it is the Wigner-Levy law
   $\mu_\alpha$ via $\rho^1_\alpha(t)=2^{1/\alpha}t^{-1/2}
   \rho_\alpha(2^{1/\alpha}\sqrt t)$ (Corollary 1). There the closure is the
   genuine single fixed point $z^\alpha Y=C_\alpha g_\alpha(Y)$ (`eq:BAG6`), so
@@ -301,31 +301,30 @@ are inherited from `weakening` / Theorem 1. $\qquad\square$
   $\rho_\alpha(t)=\tfrac{\alpha}{2\pi}\Im[C_\alpha^{-1}|t|^{\alpha-1}Y(|t|)^2]$
   (from $g_\alpha(Y)=z^\alpha Y/C_\alpha$ in $h_\alpha=1-\tfrac\alpha2 Y
   g_\alpha$; both equalities of the paper's `rhoalpha`), is real-analytic on
-  $(R,\infty)$, and **does not vanish in any neighbourhood of $0$** — unlike
-  the Marchenko–Pastur law $\mu_2^\gamma$, which vanishes throughout
+  $(R,\infty)$, and **does not vanish in any neighbourhood of $0$** -- unlike
+  the Marchenko-Pastur law $\mu_2^\gamma$, which vanishes throughout
   $[0,1-\gamma]$ (paper's Remark after `wishart-amir`). These qualitative
   features are **not** asserted for a general one-sided profile: `weakening`
   does not give the non-vanishing; only `gammaone` ($\sigma\equiv1$) does.
 
 - **Two-sided $\tau$ is outside Theorem 2.** If $|\tau|$ depends on both
-  coordinates, $Y_r$ stays functional; only Theorem 1 applies — no scalar
+  coordinates, $Y_r$ stays functional; only Theorem 1 applies -- no scalar
   reduction.
 
 - **Quadrature consistency (implementation).** The collapse in Step 4 and
   Theorem 2(ii) use the *analytic* identity $h_\alpha=1-\tfrac\alpha2 y
-  g_\alpha$. Under finite Gauss–Laguerre quadrature this holds only if
+  g_\alpha$. Under finite Gauss-Laguerre quadrature this holds only if
   $h_\alpha$ is **defined** as $1-\tfrac\alpha2 y\,g_\alpha$ from the *same*
   rule; evaluating $h_\alpha$ and $g_\alpha$ as independent Laguerre sums
-  breaks it (numerically $\sim5\times10^{-3}$ at order $64$–$128$, while the
+  breaks it (numerically $\sim5\times10^{-3}$ at order $64$-$128$, while the
   shared-rule sum-rule $\Delta_r\langle Yg_\alpha(Y)\rangle=\Delta_c\langle
-  Y_cg_\alpha(Y_c)\rangle$ holds to $\sim10^{-14}$). The existing
-  `column_scaled_wishart_levy.py` should use the shared-rule $h_\alpha$ for the
-  identities to be exact.
+  Y_cg_\alpha(Y_c)\rangle$ holds to $\sim10^{-14}$). `structured_wishart_levy.py`
+  uses the shared-rule $h_\alpha$ throughout.
 
 - **Deterministic $\tau$ only.** A random multiplicative profile (e.g. the DNN
   Jacobian column scaling $|\phi'(h_j)|$) is outside the scope of `weakening`;
   the correct reduction is the deterministic quantile embedding of the
-  mean-field $|\phi'|$ law — replace the random column scaling by the
+  mean-field $|\phi'|$ law -- replace the random column scaling by the
   deterministic quantile function of its limiting distribution, then apply
   Theorem 2. The paper's
   Theorem `weakeningD` (an independent *additive* diagonal of finite second
@@ -335,26 +334,26 @@ are inherited from `weakening` / Theorem 1. $\qquad\square$
   piecewise-constant-equivalent on both axes (Step 1); otherwise Theorem 1(i)
   is the convergence of $\mathbb E[\hat\mu_{W_{N,M}}]$.
 
-- **Normalization (do not skip).** Theorems 1–2 deliver the **squared**,
+- **Normalization (do not skip).** Theorems 1-2 deliver the **squared**,
   atom-carrying law $\nu$ (density of (ii), mass $\gamma$ off the $1-\gamma$
   atom). To compare with singular values one must pass through the
   Preliminaries bridges: an empirical SVD histogram is the atomless $M$-value
-  law $\mu_{\mathrm{SV}}$, whereas `column_scaled_wishart_levy.py` theory
-  curves are the Gram law $\mu^{(N)}_{\mathrm{SV}}$ (mass $\gamma$, atom
-  $1-\gamma$); the two differ by a factor $\gamma$. Conflating them is the
-  spurious "$\sim(1-\gamma)$ discrepancy".
+  law $\mu_{\mathrm{SV}}$, whereas `structured_wishart_levy.py` theory curves
+  are the Gram law $\mu^{(N)}_{\mathrm{SV}}$ (mass $\gamma$, atom $1-\gamma$);
+  the two differ by a factor $\gamma$. Conflating them is the spurious
+  "$\sim(1-\gamma)$ discrepancy".
 
 ## Summary
 
 **Theorem 1** is the general structured law: it follows from the continuum
-general profile theorem `weakening` by the same Hermitize–specialize–
+general profile theorem `weakening` by the same Hermitize-specialize-
 pushforward recipe as `wishart-amir`, the only novel algebra being the sum-rule
 (Step 4, by relabelling) that collapses the coupled $(Y_r,Y_c)$ system to
 $G_\nu(\zeta)=\tfrac1\zeta\langle h_\alpha(Y_r(\cdot,\sqrt\zeta))\rangle$;
 setting $\tau\equiv1$ returns Theorem `wishart-amir` verbatim, so it slots into
 the paper as a strict generalization.
 
-**Theorem 2** adds the one hypothesis that the row field is scalar — cleanly,
+**Theorem 2** adds the one hypothesis that the row field is scalar -- cleanly,
 robustly, and checkably guaranteed by a **one-sided profile** $|\tau|=c(y)$
 (the column-scaling case; $c\equiv\mathrm{const}$ is plain Wishart). Then the
 transform is the single-scalar $G_\nu=\tfrac1\zeta h_\alpha(Y_r)$ and the

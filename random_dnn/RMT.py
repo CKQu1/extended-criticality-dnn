@@ -347,6 +347,11 @@ def cavity_svd_resolvent(
     This is the resolvent of the bipartisation of the matrix $M$ where the diagonals are zero
     and the off-diagonals are $M$ and $M^T$.
     Uses a population dynamics algorithm to evaluate the RMT cavity equations of this resolvent.
+
+    Derivation: ``RMT/hermitisation.md`` (Hermitisation + bipartite cavity
+    eqs. 12-13).  Density readout uses the complex-z Stieltjes route
+    (Im G / pi) from that note's "Density readout" section, with the
+    regulariser injected by ``jac_cavity_svd_log_pdf``.
     """
     chi_samples_sq = abs(chi_samples) ** 2
     if g1 is None:
@@ -374,7 +379,7 @@ def cavity_svd_resolvent(
             # get the estimate of the norm (should be 1)
             norms = empirical_avg(lambda x: 1, sing_vals, resolvent_pdf(g1, g2).T)
             pbar.set_postfix_str(
-                f"norm estimate: {norms.mean().item():.4f}±{norms.std().item():.4f}"
+                f"norm estimate: {norms.mean().item():.4f}+-{norms.std().item():.4f}"
             )
     return g1, g2
 

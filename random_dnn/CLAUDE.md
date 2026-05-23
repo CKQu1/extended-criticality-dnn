@@ -5,10 +5,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Working agreement
 
 - The user does their own `git` staging and commits. Make file edits/deletions as requested (including `git rm` when retiring a file), but do not run `git add`/`git commit`, and do not surface reminders or warnings about staging or commit state.
+- Source files (.md, .py, .ipynb, comments, docstrings, etc.) must be ASCII-only. Render math through LaTeX commands (e.g. `\alpha`, `\gamma`, `\int`) rather than Unicode glyphs. Replace em/en dashes with `--`/`-`, smart quotes with straight quotes, arrows with `->`/`<-`/`<->`, and accented letters with their nearest ASCII equivalent (e.g. `Levy`, `Cizeau-Bouchaud`).
+- `.agents/notes/` is literature only: each note describes a paper/result in its own terms and never references repository files. Repo derivations cite literature notes, not the reverse.
+- Any script or piece of code you write (cells, throwaway scripts, validations) must time its subparts so bottlenecks are visible at a glance. Use a context-manager Timer or equivalent that prints `[label] elapsed` per block; collect timings into a running log when the run has more than a handful of stages. Treat unprofiled code as incomplete.
+- Do not use the per-session memory system. All persistent material (including collaboration preferences and meta-guidance like this one) belongs in the repo, routed to one of:
+  - (a) `CLAUDE.md` -- general principles, conventions, workflows.
+  - (b) Markdown derivations -- specific mathematical/theoretical results.
+  - (c) Script files -- validations of derivations alongside the code.
+  - (d) Jupyter notebooks -- visualisations of results.
+  - (e) `.agents/notes/` -- summaries of literature results essential to the project.
+  - (f) `.agents/scripts/` -- standard reusable scripts intended to be invoked many times without modification.
+  - (g) `.agents/temp/` -- temporary files (throwaway scripts, scratch work).
+  - `.agents/` lives at the parent repo root (`extended-criticality-dnn/.agents/`), not inside `random_dnn/`.
 
 ## Project Overview
 
-Research implementation for the paper *"Dynamical and computational properties of heavy-tailed deep neural networks"* (Qu, Wardak, Gong). The central object is a randomly-initialised MLP whose weight matrices are drawn from Lévy alpha-stable distributions, parameterised by stability index `alpha` (α ∈ [1,2]) and scale `sigma_W`. The code studies phase transitions in dynamical and computational properties across the `(alpha, sigma_W)` plane.
+Research implementation for the paper *"Dynamical and computational properties of heavy-tailed deep neural networks"* (Qu, Wardak, Gong). The central object is a randomly-initialised MLP whose weight matrices are drawn from Levy alpha-stable distributions, parameterised by stability index `alpha` (\alpha \in [1,2]) and scale `sigma_W`. The code studies phase transitions in dynamical and computational properties across the `(alpha, sigma_W)` plane.
 
 The primary working directory is `random_dnn/`. The parent repo `extended-criticality-dnn/` contains training, post-training analysis, and visualisation code that feeds into or draws from this subfolder's outputs.
 
@@ -19,36 +31,36 @@ pip install -r ../requirements.txt   # PyTorch, NumPy, SciPy
 pip install torchlevy                # needed by RMT.py
 ```
 
-`RMT.py` uses `torchlevy` for GPU-accelerated Lévy sampling (wraps with a NaN-retry loop in `stable_dist_sample`). `random_dnn.py` uses `scipy.stats.levy_stable` instead and is CPU-only.
+`RMT.py` uses `torchlevy` for GPU-accelerated Levy sampling (wraps with a NaN-retry loop in `stable_dist_sample`). `random_dnn.py` uses `scipy.stats.levy_stable` instead and is CPU-only.
 
 ## Repository Structure
 
 ```
 extended-criticality-dnn/
-├── random_dnn/               ← primary working directory
-│   ├── RMT.py               # core module: empirical MLP stats + RMT theory
-│   ├── theory_submit.py     # cluster submission + data management utilities
-│   ├── random_dnn.py        # older CV/SEM analysis (scipy, positional CLI)
-│   ├── mixed_selectivity.py # mixed selectivity MFT analysis
-│   ├── fig/                 # output data and figures (auto-created)
-│   ├── *.ipynb              # exploratory notebooks
-│   └── rsync-gadi/setonix   # sync scripts for clusters
-├── UTILS/
-│   ├── utils_dnn.py         # IPR, D_q, transition line loading
-│   └── data_utils.py        # MNIST/CIFAR-10/FashionMNIST/Gaussian loaders
-├── train_DNN_code/
-│   └── model_loader.py      # named architecture registry (fc3_mnist_tanh, alexnet, …)
-├── dq_analysis/             # Jacobian eigenvector and NPC analysis (post-training)
-├── geometry_analysis/       # circular manifold propagation through MLPs
-├── pretrained_workflow/     # fits Lévy-stable to pretrained PyTorch/TF weights
-├── train_supervised.py      # main training entry point (MLP + CNN)
-├── path_names.py            # defines `root_data` path (cluster-aware)
-└── constants.py             # cluster configs, logging defaults
+|-- random_dnn/               <- primary working directory
+|   |-- RMT.py               # core module: empirical MLP stats + RMT theory
+|   |-- theory_submit.py     # cluster submission + data management utilities
+|   |-- random_dnn.py        # older CV/SEM analysis (scipy, positional CLI)
+|   |-- mixed_selectivity.py # mixed selectivity MFT analysis
+|   |-- fig/                 # output data and figures (auto-created)
+|   |-- *.ipynb              # exploratory notebooks
+|   `-- rsync-gadi/setonix   # sync scripts for clusters
+|-- UTILS/
+|   |-- utils_dnn.py         # IPR, D_q, transition line loading
+|   `-- data_utils.py        # MNIST/CIFAR-10/FashionMNIST/Gaussian loaders
+|-- train_DNN_code/
+|   `-- model_loader.py      # named architecture registry (fc3_mnist_tanh, alexnet, ...)
+|-- dq_analysis/             # Jacobian eigenvector and NPC analysis (post-training)
+|-- geometry_analysis/       # circular manifold propagation through MLPs
+|-- pretrained_workflow/     # fits Levy-stable to pretrained PyTorch/TF weights
+|-- train_supervised.py      # main training entry point (MLP + CNN)
+|-- path_names.py            # defines `root_data` path (cluster-aware)
+`-- constants.py             # cluster configs, logging defaults
 ```
 
 ## Key Modules in `random_dnn/`
 
-### `RMT.py` — core computations (PyTorch)
+### `RMT.py` -- core computations (PyTorch)
 
 All functions accept `alpha` and `sigma_W` as floats (not the `alpha100`/`g100` integer convention used in older scripts).
 
@@ -70,7 +82,7 @@ python RMT.py func_name arg_name arg_val arg_type [arg_name arg_val arg_type ...
 python RMT.py q_star_MC alpha 1.5 float sigma_W 1.0 float
 ```
 
-### `theory_submit.py` — cluster submission & data management
+### `theory_submit.py` -- cluster submission & data management
 
 **Submission functions** (auto-detect cluster from `platform.node()`):
 
@@ -107,7 +119,7 @@ tail -qn1 *OU | cut -d' ' -f4 | python -c "import numpy as np, sys; arr = np.loa
 nci_account   # NCI quota
 ```
 
-### `random_dnn.py` — older CV/SEM analysis (SciPy, CPU)
+### `random_dnn.py` -- older CV/SEM analysis (SciPy, CPU)
 
 Uses positional CLI: `python random_dnn.py FUNCTION_NAME ARG1 ... ARGN`
 

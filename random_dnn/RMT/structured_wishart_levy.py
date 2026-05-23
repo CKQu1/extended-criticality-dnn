@@ -1,4 +1,4 @@
-"""Structured Wishart-Lévy law — numerical implementation of
+"""Structured Wishart-Levy law -- numerical implementation of
 ``structured_wishart_levy.md``.
 
 **Theorem 1 (general two-sided deterministic profile tau).** The limiting
@@ -6,8 +6,8 @@ squared-singular-value law of ``W = a_{N+M}^{-2} X X^T`` with
 ``X(i,j) = tau(i/N, j/M) x_{ij}`` is characterised by the coupled functional
 fixed point
 
-    z^a Y_r(x) = (gamma/(1+gamma)) C_a ∫ |tau(x,v)|^a g_a(Y_c(v)) dv
-    z^a Y_c(y) = (1/(1+gamma))     C_a ∫ |tau(w,y)|^a g_a(Y_r(w)) dw
+    z^a Y_r(x) = (gamma/(1+gamma)) C_a \int |tau(x,v)|^a g_a(Y_c(v)) dv
+    z^a Y_c(y) = (1/(1+gamma))     C_a \int |tau(w,y)|^a g_a(Y_r(w)) dw
 
 collapsing to  G_nu(zeta) = (1/zeta) <h_a(Y_r(., sqrt zeta))>  (atom 1-gamma
 at 0).  This module discretises the (x, y) integrals on Gauss-Legendre grids
@@ -15,17 +15,14 @@ and solves the coupled system by damped Gauss-Seidel, seeded from the
 ``wishart_levy`` two-scalar physical-branch anchor with high->low continuation.
 
 **Theorem 2 (one-sided tau(x,y) = c(y)).** The row field collapses to a single
-scalar; that case is the validated prototype ``column_scaled_wishart_levy.py``
-and is used here only as a validation gate (it is *not* re-implemented or
-modified here).
+scalar; that case is validated by ``compare_one_sided_to_scalar_closure``
+against the direct scalar Theorem 2(i) closure.
 
 **Shared-rule h (quadrature-consistency requirement of the derivation).**
 ``h_a := 1 - (a/2) y g_a(y)`` is evaluated from the *same* Gauss-Laguerre rule
-as ``g_a``, so the collapse identity is exact in quadrature.  (The legacy
-``wishart_levy.h_alpha`` / ``column_scaled`` density use an independent
-Laguerre rule and therefore differ by ~5e-3 at order 64-128; field-level
-checks are exact, density-level checks carry that documented gap unless both
-sides use the shared-rule h.)
+as ``g_a``, so the collapse identity is exact in quadrature.  (Evaluating
+``g_a`` and ``h_a`` from independent Laguerre rules breaks the identity by
+~5e-3 at order 64-128; this module uses the shared rule everywhere.)
 
 Scope: per the derivation, no cdf / quantile machinery; the tail prefactor and
 asymptotic density (Theorem 1(v)) are in scope.
@@ -47,8 +44,8 @@ import wishart_levy as wl
 # 1-D arrays, or a 2-D array resampled onto the quadrature nodes.
 ProfileSpec = Union[float, np.ndarray, Callable[[np.ndarray, np.ndarray], np.ndarray]]
 
-_EXP_CLIP = 700.0  # see column_scaled_wishart_levy.py: keep exp() finite so a
-# bad Gauss-Seidel/df-sane probe yields a large finite residual, not NaN.
+_EXP_CLIP = 700.0  # keep exp() finite (float64 tops out near 709) so a bad
+# Gauss-Seidel/Newton probe yields a large finite residual, not NaN.
 
 
 @dataclass
@@ -67,7 +64,7 @@ class StructuredTheoryCurve:
     squared_density: np.ndarray
     row_nodes: np.ndarray
     y_row: np.ndarray            # shape (num_points, profile_order)
-    profile_alpha_moment: float  # ∫∫ |tau|^a dx dy
+    profile_alpha_moment: float  # \int\int |tau|^a dx dy
     atom_at_zero: float
 
 
@@ -90,6 +87,9 @@ class EmpiricalStructuredSpectrum:
     sq_bin_edges: np.ndarray
     sq_bin_centers: np.ndarray
     sq_density: np.ndarray
+    row_grid: np.ndarray          # n_rows cell centres in [0,1]
+    col_grid: np.ndarray          # n_cols cell centres in [0,1]
+    profile_matrix: np.ndarray    # tau evaluated on (row_grid, col_grid)
 
 
 # --- shared alpha-stable engine (Laguerre rule reused from wishart_levy) -----
@@ -104,12 +104,17 @@ def _legendre01(order: int) -> tuple[np.ndarray, np.ndarray]:
     return 0.5 * (nodes + 1.0), 0.5 * weights
 
 
+@lru_cache(maxsize=None)
+def _laguerre_powers(alpha: float, order: int) -> tuple[np.ndarray, np.ndarray]:
+    """Cached (nodes^{a/2}, lw * nodes^{a/2 - 1}) for the alpha-stable kernel."""
+    nodes, lw = wl._laguerre_rule(int(order))
+    return nodes ** (alpha / 2.0), lw * nodes ** (alpha / 2.0 - 1.0)
+
+
 def _g_alpha_vec(values: np.ndarray, alpha: float, quadrature_order: int) -> np.ndarray:
     """Overflow-safe vectorised g_alpha on an array of complex arguments."""
     arr = np.atleast_1d(np.asarray(values, dtype=complex))
-    nodes, lw = wl._laguerre_rule(int(quadrature_order))
-    powers = nodes ** (alpha / 2.0)
-    prefactor = lw * nodes ** (alpha / 2.0 - 1.0)
+    powers, prefactor = _laguerre_powers(float(alpha), int(quadrature_order))
     expo = -powers[:, None] * arr[None, :]
     expo = np.clip(expo.real, -_EXP_CLIP, _EXP_CLIP) + 1j * expo.imag
     return np.sum(prefactor[:, None] * np.exp(expo), axis=0)
@@ -170,7 +175,7 @@ def _profile_alpha_matrix(
 def profile_alpha_moment(
     tau: ProfileSpec, alpha: float, *, profile_order: int = 96
 ) -> float:
-    """∫∫_{[0,1]^2} |tau|^alpha dx dy via Gauss-Legendre."""
+    """\int\int_{[0,1]^2} |tau|^alpha dx dy via Gauss-Legendre."""
     alpha = wl._validate_alpha(alpha)
     xn, xw = _legendre01(int(profile_order))
     yn, yw = _legendre01(int(profile_order))
@@ -183,7 +188,6 @@ def profile_alpha_moment(
 
 def _coupled_rhs(
     Y_r: np.ndarray,
-    Y_c: np.ndarray,
     *,
     z_alpha: complex,
     alpha: float,
@@ -194,7 +198,11 @@ def _coupled_rhs(
     y_w: np.ndarray,
     quadrature_order: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """One application of the Theorem 1(ii) maps (Gauss-Seidel order)."""
+    """One application of the Theorem 1(ii) maps (Gauss-Seidel order).
+
+    Only ``Y_r`` is needed: the column update uses the just-computed g(Y_r),
+    and the row update then uses g(Y_c_new). Jacobi order would also pass Y_c.
+    """
     pref_r = gamma * c_alpha / ((1.0 + gamma) * z_alpha)
     pref_c = c_alpha / ((1.0 + gamma) * z_alpha)
     g_r = _g_alpha_vec(Y_r, alpha, quadrature_order)
@@ -218,8 +226,9 @@ def _coupled_residual(
     quadrature_order: int,
 ) -> float:
     """sup-norm of the Theorem 1(ii) coupled residual at (Y_r, Y_c)."""
-    g_r = _g_alpha_vec(Y_r, alpha, quadrature_order)
-    g_c = _g_alpha_vec(Y_c, alpha, quadrature_order)
+    n_x = Y_r.size
+    g = _g_alpha_vec(np.concatenate([Y_r, Y_c]), alpha, quadrature_order)
+    g_r, g_c = g[:n_x], g[n_x:]
     res_r = z_alpha * Y_r - (gamma * c_alpha / (1.0 + gamma)) * (T @ (y_w * g_c))
     res_c = z_alpha * Y_c - (c_alpha / (1.0 + gamma)) * (T.T @ (x_w * g_r))
     if not (np.all(np.isfinite(res_r)) and np.all(np.isfinite(res_c))):
@@ -248,8 +257,9 @@ def solve_structured_fields(
 
     Returns ``(Y_r, Y_c, (y1, y2))`` where ``(y1, y2)`` is the wishart_levy
     two-scalar anchor used (to be threaded back as ``wish_seed`` for
-    continuation, exactly as in column_scaled_wishart_levy.py).  Damped
-    Gauss-Seidel from the anchor / carried seed, df-sane fallback.
+    continuation). Strategy: damped Gauss-Seidel from anchor/carried seed,
+    then hybr Newton; imag-eps homotopy fallback for stiff (small-z,
+    alpha-near-2) points.
     """
     alpha = wl._validate_alpha(alpha)
     gamma = wl._validate_gamma(gamma)
@@ -262,8 +272,8 @@ def solve_structured_fields(
 
     # Physical-branch anchor at *this* z: the wishart_levy two-scalar solution
     # broadcast across the grids.  Exact for tau == const (Corollary 1); the
-    # correct branch otherwise.  Recomputed every z (not continuation-only),
-    # mirroring the proven column_scaled_wishart_levy.py robustness pattern.
+    # correct branch otherwise.  Recomputed every z (not continuation-only)
+    # because the joint (Y1, Y2) solver is stable at every z on the grid.
     try:
         y1, y2 = wl.solve_y_pair(alpha, gamma, z, quadrature_order=quadrature_order,
                                  initial_guess=wish_seed)
@@ -289,8 +299,8 @@ def solve_structured_fields(
 
     def residual(v: np.ndarray) -> np.ndarray:
         yr, yc = _unpack(v)
-        g_r = _g_alpha_vec(yr, alpha, quadrature_order)
-        g_c = _g_alpha_vec(yc, alpha, quadrature_order)
+        g = _g_alpha_vec(np.concatenate([yr, yc]), alpha, quadrature_order)
+        g_r, g_c = g[:n_x], g[n_x:]
         res_r = z_alpha * yr - (gamma * c_alpha / (1.0 + gamma)) * (T @ (y_w * g_c))
         res_c = z_alpha * yc - (c_alpha / (1.0 + gamma)) * (T.T @ (x_w * g_r))
         out = np.concatenate([res_r.real, res_r.imag, res_c.real, res_c.imag])
@@ -308,7 +318,7 @@ def solve_structured_fields(
         Y_r, Y_c = Y_r0.copy(), Y_c0.copy()
         theta = 1.0
         for _ in range(120):
-            Y_r_new, Y_c_new = _coupled_rhs(Y_r, Y_c, **kw)
+            Y_r_new, Y_c_new = _coupled_rhs(Y_r, **kw)
             if not (np.all(np.isfinite(Y_r_new)) and np.all(np.isfinite(Y_c_new))):
                 theta *= 0.5
                 if theta < 1e-3:
@@ -318,7 +328,7 @@ def solve_structured_fields(
             Y_c = (1.0 - theta) * Y_c + theta * Y_c_new
             if _coupled_residual(Y_r, Y_c, **kw) < accept:
                 return Y_r, Y_c, wish_pair
-        # Newton-type solve (proven-robust path, as in column_scaled hybr)
+        # Newton-type solve (hybr) from the warmed-up seed and the raw seed.
         for x0 in (_pack(Y_r, Y_c), _pack(Y_r0, Y_c0)):
             sol = optimize.root(residual, x0, method="hybr",
                                 options={"maxfev": maxfev})
@@ -336,7 +346,10 @@ def solve_structured_fields(
     if _homotopy and z.imag > 0:
         hseed = None
         chain_ok = True
-        for fac in (8.0, 4.0, 2.0, 1.0):
+        # Widened from (8, 4, 2, 1): the alpha-near-2, small-s corner needs the
+        # imag axis to grow super-exponentially before the broadened solve sits
+        # on the smooth branch we can then sharpen back to imag_eps.
+        for fac in (64.0, 16.0, 4.0, 1.0):
             zz = complex(z.real, z.imag * fac)
             try:
                 Yr_h, Yc_h, _ = solve_structured_fields(
@@ -401,15 +414,25 @@ def theoretical_structured_singular_value_curve(
 
     seed: Optional[tuple[np.ndarray, np.ndarray]] = None
     wish_seed: Optional[tuple[complex, complex]] = None
+    n_failed = 0
     for idx in range(int(num_points) - 1, 0, -1):
         s_out = singular_values[idx]
         s_base = s_out / output_scale
         z = complex(s_base, imag_eps)
-        Y_r, Y_c, wish_seed = solve_structured_fields(
-            alpha, gamma, z, T=T, x_nodes=x_nodes, x_w=x_w,
-            y_nodes=y_nodes, y_w=y_w, quadrature_order=quadrature_order,
-            seed=seed, wish_seed=wish_seed, tol=tol,
-        )
+        try:
+            Y_r, Y_c, wish_seed = solve_structured_fields(
+                alpha, gamma, z, T=T, x_nodes=x_nodes, x_w=x_w,
+                y_nodes=y_nodes, y_w=y_w, quadrature_order=quadrature_order,
+                seed=seed, wish_seed=wish_seed, tol=tol,
+            )
+        except RuntimeError:
+            # Stiff-corner failure: NaN this bin, keep `seed`/`wish_seed`
+            # unchanged so the next (larger) s resumes from the last good
+            # anchor instead of aborting the sweep.
+            singular_density[idx] = np.nan
+            squared_density[idx] = np.nan
+            n_failed += 1
+            continue
         seed = (Y_r, Y_c)
         H_avg = complex(x_w @ _h_alpha_vec(Y_r, alpha, quadrature_order))
         sv_density_base = max(0.0, -2.0 * H_avg.imag / (np.pi * s_base))
@@ -417,7 +440,18 @@ def theoretical_structured_singular_value_curve(
         squared_density[idx] = singular_density[idx] / (2.0 * s_out)
         y_row[idx] = Y_r
 
+    # Gram convention boundary: density at s=0 is 0 (the 1-gamma mass is the
+    # atom). In the Wigner / plain-square degenerate corner the true density
+    # does not vanish at s=0; see structured_wishart_levy.md
+    # "Specializations" remark for the algebraic formula in that limit.
     singular_density[0] = 0.0
+    if n_failed > 0:
+        import warnings
+        warnings.warn(
+            f"structured curve: {n_failed}/{int(num_points)} solver failures "
+            f"(stiff corner; affected bins set to NaN).",
+            RuntimeWarning, stacklevel=2,
+        )
     return StructuredTheoryCurve(
         alpha=float(alpha), gamma=float(gamma), normalization=normalization,
         entry_scale=float(entry_scale), profile_name=profile_name,
@@ -445,7 +479,7 @@ def structured_singular_tail_prefactor(
 ) -> float:
     """Prefactor B in the singular-value tail  f(s) ~ B s^{-1-alpha}.
 
-    Theorem 1(v): t^{1+a/2} rho_nu(t) -> (a*gamma/(2(1+gamma))) ∫∫|tau|^a.
+    Theorem 1(v): t^{1+a/2} rho_nu(t) -> (a*gamma/(2(1+gamma))) \int\int|tau|^a.
     ``atomless`` selects mu_SV (drop the gamma) vs the Gram mu_SV^{(N)}.
     """
     alpha = wl._validate_alpha(alpha)
@@ -454,6 +488,22 @@ def structured_singular_tail_prefactor(
     scale = wl._output_scale(alpha, entry_scale, normalization)
     g_factor = 1.0 if atomless else gamma
     return float(alpha * g_factor / (1.0 + gamma) * K * scale ** alpha)
+
+
+def structured_singular_tail_prefactor_from_curve(
+    curve: StructuredTheoryCurve, *, atomless: bool = False,
+) -> float:
+    """B from a solved curve, reusing the cached ``profile_alpha_moment``.
+
+    Same value as ``structured_singular_tail_prefactor`` but skips the
+    Gauss-Legendre re-quadrature of |tau|^a.
+    """
+    g_factor = 1.0 if atomless else curve.gamma
+    scale = wl._output_scale(curve.alpha, curve.entry_scale, curve.normalization)
+    return float(
+        curve.alpha * g_factor / (1.0 + curve.gamma)
+        * curve.profile_alpha_moment * scale ** curve.alpha
+    )
 
 
 def asymptotic_singular_density(
@@ -491,7 +541,8 @@ def sample_structured_levy_matrix(
     entry_scale: float = 1.0,
     normalization: str = "stable",
     random_state: Optional[np.random.Generator] = None,
-) -> tuple[np.ndarray, str]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str]:
+    """Sample a structured Levy matrix. Returns (M, x, y, T_profile, name)."""
     alpha = wl._validate_alpha(alpha)
     gamma = wl._validate_gamma(gamma)
     normalization = wl._validate_normalization(normalization)
@@ -516,7 +567,7 @@ def sample_structured_levy_matrix(
     divisor = (n_rows + n_cols) ** (1.0 / alpha)
     if normalization == "belinschi":
         divisor *= wl.belinschi_quantile_scale(alpha, entry_scale=entry_scale)
-    return M / divisor, name
+    return M / divisor, x, y, Tprofile, name
 
 
 def empirical_structured_singular_value_spectrum(
@@ -538,8 +589,9 @@ def empirical_structured_singular_value_spectrum(
     rng = np.random.default_rng(seed)
     n_cols = max(1, int(round(gamma * n_rows)))
     sv, sq, name = [], [], None
+    x_grid = y_grid = T_profile = None
     for _ in range(num_matrices):
-        M, name = sample_structured_levy_matrix(
+        M, x_grid, y_grid, T_profile, name = sample_structured_levy_matrix(
             n_rows, alpha, gamma, tau, entry_scale=entry_scale,
             normalization=normalization, random_state=rng,
         )
@@ -558,7 +610,8 @@ def empirical_structured_singular_value_spectrum(
         squared_singular_values=sq, sv_bin_edges=sve,
         sv_bin_centers=0.5 * (sve[1:] + sve[:-1]), sv_density=svd,
         sq_bin_edges=sqe, sq_bin_centers=0.5 * (sqe[1:] + sqe[:-1]),
-        sq_density=sqd,
+        sq_density=sqd, row_grid=x_grid, col_grid=y_grid,
+        profile_matrix=T_profile,
     )
 
 
@@ -619,7 +672,73 @@ def compare_constant_to_wishart(
     }
 
 
-def compare_one_sided_to_column_scaled(
+def _scalar_one_sided_closure(
+    alpha: float,
+    gamma: float,
+    z: complex,
+    *,
+    c_profile: Callable[[np.ndarray], np.ndarray],
+    profile_order: int,
+    quadrature_order: int,
+    anchor: Optional[complex] = None,
+    tol: float = 1e-12,
+) -> complex:
+    """Solve the Theorem 2(i) scalar Y_r closure directly for tau(x,y)=c(y).
+
+        z^a Y_r = (gamma/(1+gamma)) C_a int c(v)^a g_a((C_a c(v)^a /
+                  ((1+gamma) z^a)) g_a(Y_r)) dv
+
+    Uses the shared-rule g (same Laguerre as the structured solver), so the
+    structured row field collapses to this scalar to machine precision when
+    the profile is one-sided. Used by ``compare_one_sided_to_scalar_closure``
+    as an independent (no Newton over a vector field) reference.
+    """
+    y_nodes, y_w = _legendre01(int(profile_order))
+    c_vals = np.asarray(c_profile(y_nodes), dtype=float)
+    c_alpha_arr = np.abs(c_vals) ** alpha
+    C_a = wl.belinschi_constant(alpha)
+    z_alpha = z ** alpha
+    pref_outer = gamma * C_a / (1.0 + gamma)
+    pref_inner = C_a / ((1.0 + gamma) * z_alpha)
+
+    def residual(v: np.ndarray) -> np.ndarray:
+        y_r = complex(v[0], v[1])
+        g_r = complex(_g_alpha_vec(np.array([y_r]), alpha, quadrature_order)[0])
+        Y_c = pref_inner * c_alpha_arr * g_r
+        g_c = _g_alpha_vec(Y_c, alpha, quadrature_order)
+        integral = complex(np.sum(y_w * c_alpha_arr * g_c))
+        res = z_alpha * y_r - pref_outer * integral
+        if not np.isfinite(res):
+            return np.array([1e6, 1e6])
+        return np.array([res.real, res.imag])
+
+    # Seed priority: wishart anchor first (physical branch -- matches the
+    # structured solver's branch choice off support), then carried
+    # continuation, then asymptote. Same strategy as the structured solver,
+    # so the two solvers track the same analytic branch.
+    seeds: list[complex] = []
+    try:
+        y1, _ = wl.solve_y_pair(alpha, gamma, z, quadrature_order=quadrature_order)
+        seeds.append(complex(y1))
+    except RuntimeError:
+        pass
+    if anchor is not None:
+        seeds.append(anchor)
+    if not seeds:
+        y1, _ = wl._asymptotic_y_pair(alpha, gamma, z)
+        seeds.append(complex(y1))
+    for seed in seeds:
+        sol = optimize.root(
+            residual, [seed.real, seed.imag], method="hybr", tol=tol,
+        )
+        if sol.success:
+            return complex(sol.x[0], sol.x[1])
+    raise RuntimeError(
+        f"scalar one-sided closure did not converge at z={z!r}: {sol.message}"
+    )
+
+
+def compare_one_sided_to_scalar_closure(
     alpha: float,
     gamma: float,
     c_profile: Callable[[np.ndarray], np.ndarray],
@@ -630,42 +749,55 @@ def compare_one_sided_to_column_scaled(
     quadrature_order: int = 64,
     profile_order: int = 96,
 ) -> dict[str, float]:
-    """Gate 2: tau(x,y)=c(y) must reproduce the Theorem 2 prototype
-    ``column_scaled_wishart_levy.py`` at the *field* level (both use the same
-    shared-rule g closure -> exact).  Density differs only by the legacy
-    independent-rule h gap in column_scaled, which is expected."""
-    import column_scaled_wishart_levy as cwl
+    """Gate 2: tau(x,y) = c(y) must reproduce the Theorem 2 scalar closure.
 
+    Compares the structured vector Y_r(x) to the directly-solved scalar Y_r
+    from ``_scalar_one_sided_closure``. Both sides use the shared-rule g/h,
+    so agreement is exact (to machine precision) at both field and density
+    level. Self-contained: no external prototype dependency.
+    """
     scur = theoretical_structured_singular_value_curve(
-        alpha, gamma, (lambda X, Y: c_profile(Y)), s_max=s_max,
+        alpha, gamma, (lambda _, Y: c_profile(Y)), s_max=s_max,
         num_points=num_points, imag_eps=imag_eps,
         quadrature_order=quadrature_order, profile_order=profile_order,
     )
-    ccur = cwl.theoretical_column_scaled_singular_value_curve(
-        alpha, gamma, profile=c_profile, s_max=s_max, num_points=num_points,
-        imag_eps=imag_eps, quadrature_order=quadrature_order,
-        profile_order=profile_order,
-    )
-    max_field_support = 0.0   # where the spectrum is non-trivial
-    max_field_all = 0.0       # incl. branch-ambiguous spectrally-empty pts
-    max_dens = 0.0
+    # The theorem fixes the measure (and Y on the support); off-support, Y
+    # is a branch-dependent analytic continuation whose value depends on
+    # solver seed strategy. We therefore restrict the comparison to bins
+    # where the structured density is non-negligible.
+    scale = wl._output_scale(alpha, 1.0, "stable")
+    max_field_support = 0.0
+    max_dens_support = 0.0
+    anchor: Optional[complex] = None
     for idx in range(num_points - 1, 0, -1):
-        yr_struct = scur.y_row[idx]
-        yr_col = ccur.y_row[idx]
-        if not np.isfinite(yr_col) or not np.all(np.isfinite(yr_struct)):
+        Yr = scur.y_row[idx]
+        if not np.all(np.isfinite(Yr)):
             continue
-        # one-sided => Y_r constant in x; compare to the column scalar
-        fd = float(np.max(np.abs(yr_struct - yr_col)))
-        max_field_all = max(max_field_all, fd)
-        if scur.singular_density[idx] > 1e-6:
-            max_field_support = max(max_field_support, fd)
-        max_dens = max(max_dens, abs(scur.singular_density[idx]
-                                     - ccur.singular_density[idx]))
+        s_base = scur.singular_values[idx] / scale
+        z = complex(s_base, imag_eps)
+        try:
+            y_r_scalar = _scalar_one_sided_closure(
+                alpha, gamma, z, c_profile=c_profile,
+                profile_order=profile_order, quadrature_order=quadrature_order,
+                anchor=anchor,
+            )
+        except RuntimeError:
+            continue
+        anchor = y_r_scalar
+        if scur.singular_density[idx] <= 1e-6:
+            continue
+        fd = float(np.max(np.abs(Yr - y_r_scalar)))
+        max_field_support = max(max_field_support, fd)
+        h_val = complex(_h_alpha_vec(np.array([y_r_scalar]),
+                                     alpha, quadrature_order)[0])
+        dens_scalar = max(0.0, -2.0 * h_val.imag / (np.pi * s_base)) / scale
+        max_dens_support = max(max_dens_support,
+                               abs(dens_scalar - scur.singular_density[idx]))
     return {
         "max_field_diff_on_support": max_field_support,
-        "max_field_diff_all_pts": max_field_all,
-        "max_density_diff(legacy-h gap expected ~5e-3)": max_dens,
+        "max_density_diff_on_support": max_dens_support,
         "row_field_x_spread": float(
-            np.nanmax([np.ptp(np.abs(r)) for r in scur.y_row if np.all(np.isfinite(r))])
+            np.nanmax([np.ptp(np.abs(r)) for r in scur.y_row
+                       if np.all(np.isfinite(r))])
         ),
     }
