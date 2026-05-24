@@ -689,6 +689,14 @@ Two independent extensions of the heavy-tailed MFT, neither depending on a separ
 
 - **Backward / gradient analysis.** Heavy-tailed analogue of Schoenholz 2017. The naive $\chi_1|_\alpha^{\text{naive}}$ no more controls backward gradient magnitude than it controls forward perturbation growth (Sections 6.3 and 8.4 establish that decoupling fails for $\alpha < 2$). The right object is the bivariate-stable joint of $(\delta^l, \delta^l)$ across the two inputs; the recursion is the dual of $\mathcal{F}$ acting on this joint. Open.
 
-- **Connection to `RMT/structured_wishart_levy.md`.** The column profile $c(y) = |\phi^\prime(h^{l-1}(y))|$ at the heavy-tailed $q^*$ feeds the structured Wishart-Levy spectral theorem. Closing the loop between this MFT and the random-matrix theory in `RMT/` requires fixing $c(y)$ from the heavy-tailed length map; the spectral consequences for the layer-wise Jacobian then follow from the Wishart-Levy machinery without further operator-level input.
+- **Connection to `RMT/structured_wishart_levy.md`.** *Realised in
+  `ht_mlp_jacobian.md`* (derivation), `ht_mlp_jacobian.py` (validation),
+  `ht_mlp_jacobian.ipynb` (visualisation). The column profile
+  $c(y) = |\phi^\prime(h^{l-1}(y))|$ at the heavy-tailed $q^*$ feeds the
+  structured Wishart-Levy Theorem 2 via a random-to-deterministic quantile
+  embedding (Lemma 1 of `ht_mlp_jacobian.md`), giving the layerwise
+  Jacobian SV density as a single scalar fixed point in $Y_r$ at
+  $\gamma = 1$ -- agreement with population dynamics, synthetic and
+  MLP-derived empirical SVDs is verified at bin-noise tolerance.
 
 - **Validation.** Cross-check follow-on predictions against `heavy_tailed_mlp.ipynb` -- Test 4 empirical edge of chaos is the standing benchmark for any heavy-tailed criticality statement.
