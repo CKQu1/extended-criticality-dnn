@@ -1,1202 +1,512 @@
-# Profile-aligned singular-vector localisation for structured Wishart-Levy matrices
+# Localisation and the mobility edge for structured heavy-tailed matrices
 
-## Setting and scope
+A general RMT foundation: the Anderson localisation transition (mobility edge)
+for structured heavy-tailed random matrices $A = (a_{ij} x_{ij})$, with
+$x_{ij}$ i.i.d. Levy $\alpha$-stable and $a_{ij}$ an arbitrary deterministic
+entry profile. The method is the Tarquini-Biroli-Tarzia (TBT) transfer-operator
+analysis adapted to the Belinschi structured ensemble. A constant profile
+recovers TBT verbatim. The heavy-tailed MLP Jacobian is one downstream
+specialisation (Section 6, a Gate), not part of the core.
 
-Let $A \in \mathbb{R}^{N \times M}$ be a structured heavy-tailed
-rectangular matrix with profile $\tau$ as in `RMT/structured_wishart_levy.md`.
-The bipartite Hermitisation $H = \begin{pmatrix} 0 & A \\ A^\dagger & 0 \end{pmatrix}$
-has resolvent diagonals $R^{(1)}_i(z) := (H - z)^{-1}_{ii}$ for the type-(1) side
-(rows of $A$, $i = 1, \ldots, N$) and $R^{(2)}_j(z) := (H - z)^{-1}_{(N+j)(N+j)}$
-for the type-(2) side (columns, $j = 1, \ldots, M$). The local density of states
-(LDoS) at site $i$ on the type-(1) side is
-
-$$
-\rho^{(1)}_i(E) \;:=\; -\frac{1}{\pi}\,\lim_{\eta \to 0^+}\,\mathrm{Im}\, R^{(1)}_i(E + i\eta)
-\;=\; \sum_n |u_n(i)|^2\, \delta(E - \mu_n)
-$$
-
-where $\{(\mu_n, u_n)\}$ are the eigenvalues / eigenvectors of $H$
-(left singular vectors of $A$ correspond to $u_n$ restricted to the
-type-(1) block, after the bipartite-mass split of `RMT/hermitisation.md`).
-Analogous statements hold on the type-(2) side for right singular vectors.
-
-This note derives a profile-aligned **localisation observable** -- a
-non-trivial readout of the structured-Wishart-Levy solution
-$(Y_r, Y_c)$ that detects whether singular vectors concentrate on
-particular regions of the row/column profile. It is distinct from the
-intrinsic localisation of Bordenave-Guionnet in unstructured heavy-tailed
-matrices, which is a finite-$N$ fluctuation phenomenon (cf.
-`.agents/notes/bordenave-2012.md`) that the BDG-style deterministic limit
-does not see -- this is discussed in Section 4.
-
-## 1. The per-position resolvent from $(Y_r, Y_c)$
-
-The structured-Wishart-Levy solution $(Y_r, Y_c) :
-\mathbb{C}^+ \to L^\infty([0,1]; \mathcal{K}_\alpha)$ from Theorem 1 of
-`structured_wishart_levy.md` encodes the per-position limit of the
-resolvent diagonals. Specifically, for $x = i/N$ on the row axis and
-$y = j/M$ on the column axis, the BDG-style limit relations are
-
-$$
-\boxed{\quad
-G^{(1)}_x(z) \;=\; \frac{1}{z}\, h_\alpha\!\big(Y_r(x, z)\big),
-\qquad
-G^{(2)}_y(z) \;=\; \frac{1}{z}\, h_\alpha\!\big(Y_c(y, z)\big),
-\quad} \qquad (1)
-$$
-
-where $G^{(1)}_x(z), G^{(2)}_y(z)$ are the (deterministic-in-the-limit)
-type-(1) and type-(2) resolvent diagonals at row position $x$ and
-column position $y$, and $h_\alpha(y) = \int_0^\infty e^{-t}\, e^{-t^{\alpha/2} y}\, dt$
-is the integral kernel of Theorem 1. Integrating (1) over $x$ recovers
-the spectral density via Theorem 1(iv).
-
-Equation (1) is the load-bearing identification for what follows: the
-BDG-style field $Y_r(x, z)$ contains, in transformed form, the per-row
-local resolvent at *bipartite* spectral coordinate $z$, i.e. at
-singular value $s = \mathrm{Re}\, z$ of $A$ (eigenvalues of $H$ are
-$\pm s_k$, so the bipartite-$z$ coordinate and the singular-value
-coordinate coincide for $\mathrm{Re}\, z > 0$). The corresponding per-row
-LDoS in the singular-value variable $s$ is
-
-$$
-\rho^{(1)}_x(s) \;=\; -\frac{1}{\pi s}\,\mathrm{Im}\, h_\alpha\!\big(Y_r(x, s + i 0^+)\big)
-\qquad (s > 0).
-$$
-
-This matches Theorem 1(iv) of `structured_wishart_levy.md` upon
-$\zeta = s^2$ change of variable: the squared-singular-value density
-$\rho_\nu(t) = -\frac{1}{\pi t}\, \mathrm{Im} \int_0^1 h_\alpha(Y_r(x, \sqrt t))\, dx$
-and the singular-value density satisfy $f_{\text{SV}}(s) = 2s\, \rho_\nu(s^2)
-= -\frac{2}{\pi s}\,\mathrm{Im}\int_0^1 h_\alpha(Y_r(x, s))\, dx$,
-which integrates the per-row $\rho^{(1)}_x(s)$ (up to a factor $2$ from
-the bipartite mass split, cf. `RMT/hermitisation.md` eq. (10)). The
-load-bearing point is that $\rho^{(1)}_x(s)$ is well-defined per row $x$,
-and its $x$-variation is the seat of profile-aligned localisation.
-
-## 2. Profile-aligned localisation observable
-
-For singular vectors of $A$ to localise on a particular region $R \subseteq
-[0, 1]$ of the row profile, the per-row LDoS $\rho^{(1)}_x(s)$ must be
-*concentrated* on $x \in R$ for singular values $s$ corresponding to those
-vectors. This is precisely captured by the variation of $\rho^{(1)}_x(s)$
-across $x$, which the BDG framework retains.
-
-Define, for $q \in (0, 1)$ and $s$ in the singular-value spectrum,
-
-$$
-\boxed{\quad
-M_q^{(1)}(s) \;:=\; \int_0^1 \big(\rho^{(1)}_x(s)\big)^q\, dx,
-\qquad
-\bar\rho^{(1)}(s) \;:=\; \int_0^1 \rho^{(1)}_x(s)\, dx
-\quad} \qquad (2)
-$$
-
-with analogous $M_q^{(2)}, \bar\rho^{(2)}$ on the column side. By Jensen's
-inequality (concavity of $x \mapsto x^q$ for $q < 1$),
-
-$$
-M_q^{(1)}(s) \;\le\; \big(\bar\rho^{(1)}(s)\big)^q,
-$$
-
-with equality if and only if $\rho^{(1)}_x(s)$ is constant in $x$
-(uniform LDoS, no profile-aligned localisation). The **localisation index**
-
-$$
-\boxed{\quad
-\ell_q^{(1)}(s) \;:=\; 1 \,-\, \frac{M_q^{(1)}(s)}{\big(\bar\rho^{(1)}(s)\big)^q}
-\;\in\; [0, 1]
-\quad}\qquad (3)
-$$
-
-is $0$ for uniform LDoS (profile-delocalised) and approaches $1$ for
-maximally concentrated LDoS (singular vectors localised on a vanishing
-fraction of rows). The natural choice $q = \alpha/2$ parallels the
-Bordenave-Guionnet observable; other $q \in (0, 1)$ give related but
-generally weaker diagnostics (the optimal $q$ depends on the tail
-exponent of the LDoS distribution across rows).
-
-For the column side: $\ell_q^{(2)}(s)$ defined analogously diagnoses
-right-singular-vector localisation on column-profile regions.
-
-## 3. Profile-conditional refinement
-
-In the structured setting the row position $x$ is more informative than a
-single number per spectral value: the profile $\tau$ partitions $[0, 1]$
-into regions of constant or slowly varying $|\tau(x, \cdot)|^\alpha$, and
-localisation is naturally diagnosed *within* each region. Concretely,
-for a profile-stratification $[0, 1] = \bigsqcup_k S_k$ with strata $S_k$
-on which $|\tau(x, \cdot)|^\alpha$ is approximately constant, define
-
-$$
-\rho^{(1)}_k(s) \;:=\; \frac{1}{|S_k|}\int_{S_k} \rho^{(1)}_x(s)\, dx,
-\qquad
-M_{q,k}^{(1)}(s) \;:=\; \frac{1}{|S_k|}\int_{S_k} \big(\rho^{(1)}_x(s)\big)^q dx.
-$$
-
-The within-stratum localisation index
-$\ell_{q,k}^{(1)}(s) := 1 - M_{q,k}^{(1)}(s) / (\rho^{(1)}_k(s))^q$
-detects localisation *within* the constant-profile region $S_k$.
-Cross-stratum localisation is detected by comparing $\rho^{(1)}_k(s)$
-across $k$: if certain strata have $\rho^{(1)}_k(s) \gg$ others, singular
-vectors at singular value $s$ concentrate on those strata.
-
-The two readouts -- within-stratum $\ell_{q,k}$ and cross-stratum
-$\{\rho^{(1)}_k\}_k$ -- decompose the full profile-aligned localisation
-into "fine-grained" (within a constant-profile patch) and "coarse-grained"
-(profile-feature-aligned) components.
-
-## 4. What this captures and what it does not
-
-**This observable captures**: profile-aligned localisation -- singular
-vectors concentrating on regions of the row/column profile where the
-LDoS is non-uniform. For the MLP Jacobian (Section 6), this is
-singular vectors aligning with neurons in particular regimes of $|\phi'|$
-(saturating vs linear), which is the operationally important
-localisation phenomenon.
-
-**This observable does *not* capture**: intrinsic Bordenave-Guionnet
-localisation in the *unstructured* case $\tau \equiv 1$. In that case
-$Y_r(x, z) = Y_r(z)$ is $x$-independent, $\rho^{(1)}_x(s)$ is constant in
-$x$, and $\ell_q^{(1)}(s) = 0$ identically -- yet Bordenave-Guionnet
-predict and prove genuine eigenvector localisation in the heavy-tailed
-tails of the spectrum for $\alpha < 2/3$ (cf.
-`.agents/notes/bordenave-2012.md`). The reason: that localisation is a
-*finite-$N$ fluctuation* of $\mathrm{Im}\, R^{(1)}_i(s + i\eta)$ across
-sites $i$, which the deterministic BDG limit by construction smooths
-out. To recover it in our framework we would have to track the
-*variance* (or higher moments) of $R^{(1)}_i$ across $i$ at finite $N$,
-which is a sub-leading-in-$N$ phenomenon outside the
-structured-Wishart-Levy theorem.
-
-For the structured heavy-tailed MLP Jacobian, intrinsic Bordenave-Guionnet
-localisation and profile-aligned localisation can in principle coexist;
-the operationally important one for trainability and gradient
-interpretation is the profile-aligned one, which the observables (2)-(3)
-deliver.
-
-## 5. Numerical evaluation
-
-The structured-Wishart-Levy solver in `structured_wishart_levy.py`
-computes $Y_r(x, z), Y_c(y, z)$ on a discretisation of $[0, 1]$ at given
-$z = E + i\eta$ (typically with small $\eta > 0$ regulariser). The
-localisation observable evaluation adds a single reduction step:
-
-1. Pull $Y_r(x_k, z), Y_c(y_k, z)$ at the discretisation nodes $x_k, y_k$.
-2. Evaluate $h_\alpha(Y_r(x_k, z))$ and $\mathrm{Im}\, h_\alpha(Y_r(x_k, z))$
-   for each node (the spectral-density code path already does this for the
-   $x$-integral).
-3. Take per-node LDoS $\rho^{(1)}_{x_k}(s) = -\frac{1}{\pi s}\, \mathrm{Im}\,
-   h_\alpha(Y_r(x_k, s + i\eta))$.
-4. Numerical integrals over $x_k$: $\bar\rho^{(1)}(s)$ (existing) and
-   $M_q^{(1)}(s) = \sum_k w_k\, (\rho^{(1)}_{x_k}(s))^q$ for $q = \alpha/2$.
-5. Localisation index $\ell_q^{(1)}(s) = 1 - M_q^{(1)}(s) /
-   (\bar\rho^{(1)}(s))^q$.
-6. Sweep $s$ across the spectrum; sweep $(\alpha, \sigma_w$ or profile parameters)
-   for a localisation phase diagram.
-
-No new equations to solve; one extra reduction step over the same nodes.
-
-## 6. Connection to the MLP Jacobian
-
-In the heavy-tailed MLP setting of `heavy_tailed_mlp.md`, the layer-wise
-Jacobian $J^l = D^l W^l$ has $D^l = \mathrm{diag}(\phi'(h^l))$ on the
-right. Its singular value spectrum is captured by the structured
-Wishart-Levy law with column profile
-
-$$
-c(y) \;=\; |\phi'(h^{l-1}(y))|
-$$
-
-at the heavy-tailed length-map fixed point $q^*$ (cf. `heavy_tailed_mlp.md`
-Section 4(e)). The corresponding $Y_c(y, z)$ field thus encodes how the
-right-singular-vector LDoS varies with the column-position $y$, i.e.,
-with the *activation regime* of the previous-layer pre-activation: $y$
-in a regime where $\phi'(h^{l-1}(y)) \approx 1$ (linear) vs $\approx 0$
-(saturated) gives qualitatively different LDoS.
-
-Profile-aligned right-singular-vector localisation (the column-side
-observable $\ell_q^{(2)}(s)$) at a given $E$ in the Jacobian spectrum
-therefore answers: do right singular vectors of $J^l$ at this singular
-value concentrate on neurons whose previous-layer pre-activations are in
-the linear regime, the saturated regime, or distributed uniformly?
-Heavy-tailed weights at $\alpha < 2$ are expected to align localisation
-with the saturated regime (small $|\phi'|$), where the structured tail
-of the matrix amplifies rare large entries; verifying this empirically
-is the load-bearing follow-on.
-
-The full input-output Jacobian $J = J^L \cdots J^1$ requires composing
-the per-layer localisation via free product (analogous to S-transform
-composition for the spectrum); this is a separate derivation
-(`random_dnn/heavy_tailed_mlp_jacobian.md`, to be written).
-
-## 7. Open questions
-
-1. *Optimal $q$.* The choice $q = \alpha/2$ parallels Bordenave-Guionnet
-   for the symmetric case. Whether the Jensen-gap (3) is maximised at
-   $q = \alpha/2$ for our structured case, or at a different $q$
-   depending on the tail of the LDoS-across-rows distribution, is open.
-   For practical use a $q$-sweep at one $(\alpha, \tau)$ point should
-   identify the diagnostic $q$.
-2. *Equation (1) verification.* The identification
-   $G^{(1)}_x(z) = z^{-1} h_\alpha(Y_r(x, z))$ is read off from
-   Theorem 1(iv) of `structured_wishart_levy.md` (where the row-integral
-   of the same expression gives the spectral density); the per-row form
-   should be checked against the underlying BDG paper to make sure no
-   row-average is implicit. A spot-check on the unstructured
-   (Corollary 1) reduction case where $Y_r, Y_c$ collapse to scalars and
-   $G^{(1,2)}_x$ to constants should suffice.
-3. *Intrinsic vs profile-aligned coexistence.* For the MLP Jacobian, the
-   structured-Wishart-Levy framework captures profile-aligned
-   localisation. Intrinsic Bordenave-Guionnet localisation (in the
-   fluctuations) coexists in principle; whether it is operationally
-   relevant for the heavy-tailed MLP at $\alpha > 2/3$ (where intrinsic
-   localisation is not proven) is open.
+Companion files:
+- `structured_wishart_levy.md` -- the real-part / spectral-density closure; the
+  analytic input reused in Section 2.
+- `hermitisation.md` -- bipartite Hermitisation of the singular-value problem.
+- `levy_mobility_edge.md` -- the unstructured symmetric anchor (TBT closed
+  mobility-edge equation), against which Section 4 reduces and validates.
+- literature notes: `.agents/notes/tarquini-2015.md`, `belinschi-2008.md`,
+  `bordenave-2012.md`, `cizeau-bouchaud-1994.md`.
 
 ---
 
-## Next step
+## 0. Why the density is analytic and localisation is not
 
-Implementation: extend `structured_wishart_levy.py` with a post-solve
-reduction computing $\ell_q^{(1)}(s), \ell_q^{(2)}(s)$ from $Y_r, Y_c$
-and the column profile. Validate on the unstructured Corollary 1 case
-(localisation index $\equiv 0$, by construction) and on a step-profile
-$c(y) = c_1 \mathbf{1}_{[0, 1/2]} + c_2 \mathbf{1}_{(1/2, 1]}$ with
-$c_1 \ne c_2$ (localisation index $> 0$ expected, concentrated on the
-larger-$c$ stratum). Then sweep $(\alpha, c_2/c_1)$ for a phase diagram.
+The two questions one asks of the resolvent $G_{ii}(z) = [(z-H)^{-1}]_{ii}$ at
+$z = E + i\eta$ are computed from genuinely different functionals of its
+limiting law.
 
-## 8. One-sided specialisation $|\tau(x, y)| = c(y)$
+- **Spectral density** is $\rho(E) = -\frac{1}{\pi}\langle \mathrm{Im}\,G\rangle$:
+  a *linear* (first-moment) functional of the resolvent law. The
+  Belinschi-Dembo-Guionnet (BDG) limit hands over the full limiting law of $G$
+  as a complex $\alpha/2$-stable distribution, so $\langle\mathrm{Im}\,G\rangle$
+  is a single integral. Closed form (`structured_wishart_levy.md`, Thm 1(iv)).
 
-For the Theorem 2 case (one-sided profile, `RMT/one_sided_wishart_levy.md`),
-the row field collapses to a scalar: $Y_r(x, z) = Y_r(z)$, $x$-independent.
-By (1), $G^{(1)}_x(z) = z^{-1} h_\alpha(Y_r(z))$ is $x$-independent as well,
-so the per-row LDoS is constant in $x$:
+- **Localisation** is *not* a moment of that law at all. It is the **stability of
+  the $\mathrm{Im}\,G = 0$ fixed point** under the cavity recursion. Linearising
+  (Section 3) makes this explicit: the imaginary part obeys
+  $\Delta_i = \sum_j \frac{a_{ij}^2 x_{ij}^2}{(E - S_j)^2}\,\Delta_j$, and the
+  bond weight $\frac{1}{(E-S)^2} = |\mathrm{Re}\,G|^2$ is the squared modulus of
+  the resolvent. The transition is governed by fractional moments of $|G|$, not
+  of $\mathrm{Im}\,G$ -- the *width* of the law, not its mean. This has no
+  single-integral closed form.
 
+TBT's achievement is that one need not compute the non-analytic $|G|$-moments
+to *locate the transition*: the transfer-operator stability closes via a
+directed-polymer freezing analysis that collapses to a replica index $m = 1/2$.
+That is the only tractable route to the $|G|$-localisation object, and it is the
+spine of this note.
+
+Asymptotic corollary (TBT): the transition is direct (delocalised/localised);
+the multifractal exponents satisfy $D_q \in \{0, 1\}$ in the $N \to \infty$
+limit, so a non-trivial $D_q(s)$ is a **finite-$N$ crossover** phenomenon
+(Section 5), not an asymptotic multifractal phase. Locating the mobility edge is
+therefore the complete asymptotic localisation answer.
+
+---
+
+## 1. Setting: structured ensemble and bipartite cavity
+
+Let $A \in \mathbb{R}^{N \times M}$, $A_{ij} = a_{ij}\, x_{ij}$, with $x_{ij}$
+i.i.d. symmetric Levy $\alpha$-stable (tail index $\alpha \in (0, 2)$) scaled so
+the bulk singular values are $O(1)$, and $a_{ij} \ge 0$ a deterministic profile
+with empirical two-dimensional law $\Pi$. The singular-value problem is the
+eigenvalue problem of the bipartite Hermitisation
+$H = \begin{pmatrix} 0 & A \\ A^\top & 0 \end{pmatrix}$ (`hermitisation.md`):
+the eigenvalues are $\pm s_k$, and at $z = E + i\eta$ the bipartite coordinate
+$E$ coincides with the singular value $s$ for $E > 0$. Left/right singular
+vectors are the row-block / column-block restrictions of the eigenvectors, so
+**row-side localisation = left-SV localisation, column-side = right-SV**.
+
+On the locally tree-like bipartite graph the diagonal cavity resolvents split
+into a row side $G^R_i$ and a column side $G^C_j$:
 $$
-\rho^{(1)}_x(s) \;=\; -\frac{1}{\pi s}\, \mathrm{Im}\, h_\alpha(Y_r(s + i 0^+))
-\qquad \text{(independent of } x \text{)}.
-$$
-
-Consequently
-$$
-\boxed{\quad \ell_q^{(1)}(s) \;\equiv\; 0 \quad \text{for all } s, q
-\qquad \text{(one-sided case).} \quad}
-$$
-Left singular vectors of a one-sided structured Wishart-Levy matrix are
-**profile-uniform**: there is no row-axis structure for them to localise
-against, and the BDG deterministic limit reflects this exactly. (Intrinsic
-Bordenave-Guionnet localisation may still exist for left vectors as a
-finite-$N$ effect; the structured-deterministic framework does not see
-it, per Section 4.)
-
-All profile-aligned localisation in the one-sided case lives in the
-**column-side observable $\ell_q^{(2)}(s)$**, via the slaved column field
-
-$$
-Y_c(y, z) \;=\; \frac{C_\alpha\, c(y)^\alpha}{(1+\gamma)\, z^\alpha}\, g_\alpha(Y_r(z)),
-\qquad (8)
-$$
-
-(Theorem 2(i) of `RMT/one_sided_wishart_levy.md`). The per-column LDoS is
-
-$$
-\rho^{(2)}_y(s) \;=\; -\frac{1}{\pi s}\, \mathrm{Im}\, h_\alpha\!\big(Y_c(y, s + i 0^+)\big),
-$$
-
-with $Y_c(y, z)$ explicit in $c(y)$ via (8), and the column localisation
-index follows from (3):
-
-$$
-\boxed{\quad
-\ell_q^{(2)}(s)
-\;=\; 1 \,-\, \frac{\displaystyle\int_0^1 \big(\rho^{(2)}_y(s)\big)^q\, dy}
-{\Big(\displaystyle\int_0^1 \rho^{(2)}_y(s)\, dy\Big)^q}. \quad} \qquad (9)
-$$
-
-Two structurally clean features:
-
-(a) *No extra solve.* Equation (9) requires only the already-computed
-    scalar $Y_r(z)$ from `one_sided_wishart_levy.py`'s Theorem 2 scalar
-    closure; $Y_c(y, z)$ is reconstructed pointwise from (8) at the
-    Gauss-Legendre $y$-nodes used for the spectral-density quadrature.
-    One extra Laguerre evaluation of $h_\alpha$ per $y$-node per $s$ on
-    the SV grid.
-
-(b) *Sees the profile signature directly.* Through (8),
-    $Y_c(y) \propto c(y)^\alpha$, so $\rho^{(2)}_y \propto |\Im h_\alpha
-    (c(y)^\alpha \cdot \mathrm{anchor})|$ varies with $y$ in a way
-    inherited from the column profile. Jensen-gap is non-zero whenever
-    $c(\cdot)$ is non-constant.
-
-**Recovery of the constant-$c$ degenerate corner.** For
-$c \equiv \text{const}$ (Wigner/plain-square corner, Corollary 1 of
-`RMT/structured_wishart_levy.md`), $Y_c(y, z)$ is $y$-independent,
-$\rho^{(2)}_y(s)$ is constant, and $\ell_q^{(2)}(s) \equiv 0$ -- profile
-delocalised, as required.
-
-**Heavy-tailed MLP Jacobian application.** With
-$c(v) = F^{-1}_{|\phi'(S^* Z)|}(v)$, $Z \sim p_\alpha$ (the Jacobian
-column profile of `ht_mlp_jacobian.md`), $c(v)$ rises sharply from $\approx 0$
-at $v \to 0$ (saturated $\tanh$) to $\approx 1$ at $v \to 1$ (linear regime).
-The $y$-variation of $\rho^{(2)}_y(s)$ then encodes whether right singular
-vectors of $J^l$ at SV $s$ concentrate on saturated neurons (small $c$) or
-linear-regime neurons (large $c$). Per (9), $\ell_q^{(2)}(s) > 0$ identically
-in this heavy-tailed Jacobian setting; its $s$-dependence and the sign of the
-profile-side concentration (small-$c$ vs large-$c$ end of $[0, 1]$) is the
-operationally interesting follow-on diagnostic, implemented as
-`localisation.localisation_index_curve` (implemented in `RMT/localisation.py`).
-
-## 9. Heavy-tail multifractal $D_q$ from the BDG field (planning skeleton)
-
-This section is currently a planning skeleton, not a derivation. It
-records the structural setup for deriving the multifractal exponent
-$D_q(\lambda)$ from the BDG cavity field $Y_r(z)$ via two parallel
-formulations of the inverse participation ratio. The actual analytic
-derivations are deferred until each load-bearing step is settled.
-
-$\ell_q$ of sections 2-8 above is a **profile-aligned mean-LDoS**
-observable -- it captures position-axis variation of the deterministic
-mean LDoS $\rho^{(i)}_x(s)$ and gives $\ell_q^{(1)} \equiv 0$ for the
-one-sided case. It is *not* the heavy-tail multifractal exponent $D_q$
-of the eigenvectors. $D_q$ instead captures finite-$N$ heavy-tail
-fluctuations of the local resolvent across sites at fixed position,
-and is non-trivial for both left and right singular vectors of one-sided
-structured matrices. Empirical $D_2$ from MLP-Jacobian SVDs
-(`RMT.MLP_agg`) is well-defined for both sides, and this section sets
-up the theory to match.
-
-### 9.0 Setup: the cavity-resolvent distribution from $Y_r$
-
-From the Belinschi-Dembo-Guionnet 2009 / Ben-Arous-Guionnet 2007
-construction (cf. Belinschi `wishart-arxiv-rev.tex`, Prop.
-`projectionoflimitpoint`), the limiting distribution $\mu^z_r$ of
-the resolvent diagonal $G^r_{ii}(z)$ on the row side is the
-**pushforward** of an explicit complex $\alpha/2$-stable distribution
-$P^{\mu^z_r}$ on $\mathbb{C}^-$, parameterised by the scalar
-$\widehat{X}_r(z) := \Gamma(1-\alpha/2) \sum_s |\sigma_{rs}|^\alpha \Delta_s X_s(z)$
-(linear combination of the field scalars $X_s(z) = \int x^{\alpha/2}\,d\mu^z_s$,
-which in turn are explicit in $Y_s(z) = (-z)^{-\alpha/2} X_s(z)$), under
-the rational map $\Sigma \mapsto -1/(z - \Sigma)$:
-
-$$
-\mu^z_r \;=\; \big(\Sigma \mapsto -1/(z - \Sigma)\big)_\ast\, P^{\mu^z_r},
+G^R_i = \Big(z - \sum_{j} a_{ij}^2\, x_{ij}^2\, G^C_j\Big)^{-1},
 \qquad
-\widehat{P^{\mu^z_r}}(t) \;=\; \exp\!\big(-\Gamma(1-\alpha/2)(it)^{\alpha/2}\,
-\widehat{X}_r(z)\big).
+G^C_j = \Big(z - \sum_{i} a_{ij}^2\, x_{ij}^2\, G^R_i\Big)^{-1}. \tag{1}
 $$
+The profile $a_{ij}$ sits on both sides but is summed over different indices,
+which is what breaks the row/column (left/right) symmetry.
 
-This is the rigorous content of "$Y_r$ uniquely determines the cavity
-resolvent distribution," via the one-scalar parameterisation of the
-underlying complex stable law. Both formulations of $D_q$ below are
-read off from this pushforward construction without additional ansatz.
+---
 
-### 9A. Formulation via $\mathbb{E}|G|^q$ (absolute-value moments)
+## 2. Real-part closure: the spectral density (analytic, reused)
 
-**Spectral identity.** From the pole structure
-$G_{ii}(\lambda_k + i\eta) \sim |v_k(i)|^2/(i\eta) + R$, the IPR satisfies
+Write the self-energy $\Sigma^R_i = z - (G^R_i)^{-1} = S^R_i + i\Delta^R_i$.
+As $\eta \to 0^+$ and to linear order in $\Delta$, the real part decouples:
 $$
-\bar I_q(\lambda) \;=\; \lim_{\eta \to 0^+}\, \frac{\eta^q}{\rho(\lambda)}\,
-\mathbb{E}_{G \sim \mu^{\lambda + i\eta}_r}\big[|G|^q\big] \qquad (?)
+S^R_i = \sum_j a_{ij}^2\, x_{ij}^2\, \mathrm{Re}\,G^C_j,
+\qquad \mathrm{Re}\,G^C_j = \frac{1}{E - S^C_j}. \tag{2}
 $$
-(needs justification of the spectral-average vs cavity-ensemble
-exchange; load-bearing step **9A.1**.)
-
-**Cavity-ensemble moment.** With $G = -1/(z - \Sigma)$,
+Since $x^2$ is heavy-tailed with index $\alpha/2$, the generalized CLT makes
+$S^R_i$ a Levy-stable variable of index $\alpha/2$, whose scale and skewness
+depend on the row profile $\{a_{ij}\}_j$:
 $$
-\mathbb{E}|G|^q \;=\; \mathbb{E}_{\Sigma \sim P^{\mu^z_r}}\big[|z - \Sigma|^{-q}\big].
-$$
-
-**Load-bearing analytic step 9A.2.** Reduce
-$\mathbb{E}|z - \Sigma|^{-q}$ to a closed-form integral over $Y_r$ (or
-$\widehat{X}_r$). Status by $q$:
-
-**$q = \alpha/2$ anchor (partial).** $\mathbb{E}|G|^{\alpha/2}$ is the
-**absolute $\alpha/2$-th moment** of $\mu^z_r$, which Cizeau-Bouchaud
-sec. 7 identify as their "effective scale" parameter
-$C(z) = (1/N)\sum_i |G_{ii}|^{\alpha/2}$ -- the scale of the heavy-tail
-CLT for $\Sigma_i = \sum_j H_{0j}^2 G_{jj}$. **Key clarification:**
-Belinschi's $X_r(z) := \int x^{\alpha/2}\, d\mu^z_r(x)$ is the
-**complex** $\alpha/2$-moment using the principal branch
-$x^{\alpha/2} = |x|^{\alpha/2}\, e^{i (\alpha/2) \arg x}$, so
-$$
-X_r(z) \;=\; \int |x|^{\alpha/2}\, e^{i (\alpha/2)\, \arg x}\, d\mu^z_r(x)
-\;\ne\; \int |x|^{\alpha/2}\, d\mu^z_r(x) \;=\; C(z).
-$$
-These two are different functionals: $X_r$ is what closes the BAG field
-equation; $C$ is the CB effective scale and equals $\mathbb{E}|G|^{\alpha/2}$.
-They differ through the angular distribution of $\arg G$ over $\mu^z_r$.
-Concretely, since $\mu^z_r$ is supported on $\mathbb{C}^-$ (so $\arg G
-\in [-\pi, 0]$), $X_r$ has both real and imaginary parts; the imaginary
-part of $X_r$ is $\int |x|^{\alpha/2} \sin(\tfrac{\alpha}{2}\arg x)\,d\mu^z_r$,
-and (with $\arg x \le 0$) $\sin(\tfrac{\alpha}{2}\arg x) \le 0$ on the
-support. So $\mathrm{Im}\,X_r \le 0$, $\mathrm{Re}\,X_r$ involves
-$\cos$, and $C(z) = |x|^{\alpha/2}$ alone -- distinct.
-
-The cleanest statement we can make from the BAG/Belinschi pushforward:
-$$
-\mathbb{E}|G|^{\alpha/2} \;=\; \mathbb{E}_{\Sigma \sim P^{\widehat{X}_r}}
-\big[|z - \Sigma|^{-\alpha/2}\big], \qquad (11)
-$$
-where $\Sigma$ is complex $\alpha/2$-stable on $\mathbb{C}^-$ with CF
-parameter $\widehat{X}_r(z)$. Whether (11) reduces to a single-Laguerre
-integral $g_{\alpha, \alpha}(Y_r) = g_\alpha(Y_r)$ (which appears in
-the field equation) or requires the 2-D pushforward is the **open
-analytic step**. The single-Laguerre identity Belinschi `eq:gziden`
-delivers $\mathbb{E}[(z - \Sigma)^{-\alpha/2}] = (-z)^{-\alpha/2}
-g_\alpha(Y_r)$ -- the *complex* moment, equal to $X_r(z)$ -- not the
-absolute moment. So at $q = \alpha/2$ specifically, **9A.2 does not
-collapse to a single Laguerre** by the existing identity.
-
-**Candidate routes to evaluate (11) (and general $q$):**
-
-- Mellin: $|w|^{-q} = \frac{1}{\Gamma(q/2)} \int_0^\infty s^{q/2-1}
-  e^{-s|w|^2}\,ds$. Issue: $|w|^2 = w\bar w$ couples $w$ and its
-  conjugate; the expectation $\mathbb{E}[e^{-s|z-\Sigma|^2}]$ over
-  stable $\Sigma$ is *not* the stable Laplace transform but a
-  Gaussian-like exponent of $\Sigma$, which does not factor against
-  the stable CF.
-- 2-D Fourier: $|w|^{-q} \propto \int_{\mathbb{R}^2} e^{i\langle t, w\rangle}\,
-  |t|^{q-2}\,dt$ (for $0 < q < 2$ in $\mathbb{R}^2$). Combined with
-  $\widehat{P^{\widehat{X}_r}}(t)$, gives a 2-D integral of
-  $|t|^{q-2}\, e^{i\langle t, z\rangle}\, \exp(-\Gamma(1-\alpha/2)
-  (it)^{\alpha/2}\widehat{X}_r)$ over $\mathbb{R}^2$. Polar coords
-  in $t$ may collapse one direction; to be attempted.
-- Direct connection to Cizeau-Bouchaud's self-consistency for $C(z)$:
-  if their derivation is rigorous (the user has expressed doubt; we
-  do not rely on it), it gives a self-consistency equation for $C(z)$
-  directly in terms of $\rho(z)$ and stable densities, *not* in terms
-  of $Y_r$ explicitly. Whether $C(z) = \mathbb{E}|G|^{\alpha/2}$ can
-  be derived as a closed functional of $Y_r$ (the field) without
-  going through CB's controversial steps is the open question for 9A.
-
-**$q \ne \alpha/2$ (not derived).** Same 2-D-integral fallback applies.
-The two anchors ($q = \alpha/2$ for 9A here, $q = 1$ for 9B above)
-together cover the "scale" and "density" moments; general $q$ moments
-require either the 2-D pushforward route or a new identity not in
-Belinschi.
-
-**$D_q$ readout.** Once $\mathbb{E}|G|^q$ is closed in $Y_r$, the IPR
-follows from the spectral identity (step 9A.1), and $D_q$ is the
-finite-$N$ $\log N$ slope, with critical $q$ set by the heavy tail of
-$|G|$ inherited from the $\alpha/2$-stable distribution of $\Sigma$.
-
-### 9B. Formulation via $\mathbb{E}(-\mathrm{Im}\,G)^q$ (BG fractional-moment)
-
-**Spectral identity.** Standard:
-$|v_\lambda(i)|^2 \stackrel{d}{=} -\mathrm{Im}\,G_{ii}(\lambda + i 0^+) / (N\pi\rho(\lambda))$
-(Lehmann), so
-$$
-I_q(\lambda) \;=\; \frac{1}{(N\pi\rho)^q}\, \sum_i \big(-\mathrm{Im}\, G_{ii}\big)^q
-\;\sim\; \frac{N^{1-q}}{(\pi\rho)^q}\, \mathbb{E}_{\mu^{\lambda + i 0^+}_r}
-\big[(-\mathrm{Im}\,G)^q\big]
-$$
-in the wide-$N$ self-averaging limit (for $q$ where the cavity-ensemble
-moment is finite). Load-bearing step **9B.1**: justify the limit
-$\eta \to 0^+$ and the cavity-ensemble self-averaging at the same scale
-that gives the spectral density (i.e., a stronger statement than the
-BAG mean-density convergence).
-
-**Cavity-ensemble moment.** With $G = -1/(z - \Sigma)$,
-$$
--\mathrm{Im}\,G \;=\; \frac{\eta - \mathrm{Im}\,\Sigma}
-{(E - \mathrm{Re}\,\Sigma)^2 + (\eta - \mathrm{Im}\,\Sigma)^2} \;>\; 0
-$$
-(since $\Sigma \in \mathbb{C}^-$). Then
-$$
-M_q^{(\mathrm{Im})}(z) \;:=\; \mathbb{E}_{\Sigma \sim P^{\mu^z_r}}
-\bigg[\bigg(\frac{\eta - \mathrm{Im}\,\Sigma}
-{(E - \mathrm{Re}\,\Sigma)^2 + (\eta - \mathrm{Im}\,\Sigma)^2}\bigg)^q\bigg].
-$$
-
-**Load-bearing analytic step 9B.2.** Closed-form for $M_q^{(\mathrm{Im})}$
-in terms of $Y_r$. Status by $q$:
-
-**$q = 1$ anchor (derived).** $\mathrm{Im}$ is linear, so
-$\mathbb{E}(-\mathrm{Im}\,G^r_{ii}) = -\mathrm{Im}\,\mathbb{E}\,G^r_{ii}$.
-From Belinschi `eqG` / BAG `eqGint`,
-$\mathbb{E}\,G^r_{ii}(z) = z^{-1}\, h_\alpha(Y_r(z))$ (the per-row
-Stieltjes contribution at row position $r$; at one-sided $|\tau|=c(y)$
-with $Y_r(x, z) = Y_r(z)$ scalar, $z\mapsto\sqrt\zeta$ gives Theorem 2
-of `one_sided_wishart_levy.md` eq. 5). Hence
-$$
-\mathbb{E}(-\mathrm{Im}\,G^r_{ii})(z = s + i 0^+)
-\;=\; -\frac{1}{s}\, \mathrm{Im}\, h_\alpha(Y_r(s + i 0^+))
-\;=\; \pi\, \rho^{(r)}(s), \qquad (10)
-$$
-identifying $\mathbb{E}(-\mathrm{Im}\,G) / \pi$ with the per-row spectral
-density $\rho^{(r)}(s)$ from sec. 1. So at $q = 1$ the BG-style fractional
-moment **is** $\pi$ times the spectral density, recovered from $Y_r$ by
-the existing $h_\alpha$ readout. Internal consistency: the $q = 1$ case
-of the formulation 9B reduces to the existing density curve, no new
-quantity to compute.
-
-**$q \ne 1$ (not derived).** $\mathrm{Im}(\cdot)^q$ is non-analytic for
-$q \ne 1$, so the Belinschi `eq:gziden` family (which gives analytic
-moments $\mathbb{E}[(z-\Sigma)^{-\beta/2}] = $ single Laguerre over
-$Y_r$) does not directly produce $\mathbb{E}(-\mathrm{Im}\,G)^q$. The
-fallback is a 2-D pushforward integral over the explicit complex
-$\alpha/2$-stable density of $\Sigma$ on $\mathbb{C}^-$ (obtained as
-the 2-D inverse Fourier of $\widehat{P^{\mu^z_r}}(t) =
-\exp(-\Gamma(1-\alpha/2)(it)^{\alpha/2} \widehat{X}_r(z))$). Polar
-decomposition $\Sigma = R e^{i\phi}$ with $R > 0$,
-$\phi \in (-\pi, 0]$ may collapse one of the two dimensions if the
-stable density factorises favourably; this is open and to be attempted
-when 9B is taken past the anchor.
-
-**$D_q$ readout.** Same finite-$N$ $\log N$-slope formula as in 9A,
-with critical $q_c$ set by the heavy tail of $-\mathrm{Im}\,G$ inherited
-from the $\alpha/2$-stable tail of $\Sigma$.
-
-### 9C. Cross-validation: A and B must agree on $D_q$
-
-Both 9A and 9B target the same eigenvector IPR via two different
-intermediate observables. In the wide-$N$, $\eta \to 0$ limit they must
-give the same $D_q$ (since $D_q$ is a property of the eigenvector
-distribution, not of which functional we use to read it off). At
-finite $N$ and finite $\eta$ they will differ by $O(1)$ corrections.
-Cross-validation steps:
-
-- (9C.1) *Internal consistency at $q = 1$*: $\mathbb{E}|G|$ vs
-  $|\mathbb{E}\,G|$ are different in general; $\mathbb{E}(-\mathrm{Im}\,G) =
-  \pi\rho$ is special. Use this to check that 9A.2 and 9B.2 are
-  consistent with eigenvector normalisation $I_1 = 1$.
-- (9C.2) *Tail-exponent matching*: the critical $q_c$ for both
-  observables should derive from the same $\alpha/2$-stable tail of
-  $\Sigma$. Verify analytically.
-- (9C.3) *Constant-$c$ reduction*: at $c \equiv 1$ (Wigner-Levy
-  / Wishart-Levy degenerate corner), both 9A and 9B should reduce to
-  the standard (Cizeau-Bouchaud predicted / Bordenave-Guionnet
-  rigorous) $D_q$ values.
-
-### 9D. Application to the heavy-tailed MLP Jacobian
-
-For the structured one-sided $c(y)$, the row-side $D_q^{(1)}(\lambda)$
-is set by the single field $Y_r(z)$; the column-side $D_q^{(2)}(\lambda)$
-involves the $y$-dependent slaved $Y_c(y, z)$, with the column profile
-$c(y)^\alpha$ entering the tail amplitude of the column self-energy.
-Expected predictions to compare against `RMT.MLP_agg`'s `D2_mean`:
-
-- $D_2^{(\text{left})}(\lambda)$ and $D_2^{(\text{right})}(\lambda)$
-  as a function of singular value $\lambda$ at fixed $(\alpha, \sigma_w)$.
-- Asymmetry $D_q^{(\text{right})} - D_q^{(\text{left})}$ in the Jacobian
-  case as a structural signature of the heavy-tailed column profile
-  $c(v) = F^{-1}_{|\phi'(S^* Z)|}(v)$.
-
-### 9E. Status (what is and isn't established)
-
-- **Established (from Belinschi 2009 / BAG 2007)**: the BDG field $Y_r$
-  uniquely parameterises the complex $\alpha/2$-stable distribution
-  $P^{\mu^z_r}$ via the scalar $\widehat{X}_r$; $\mu^z_r$ is its
-  pushforward through $\Sigma \mapsto -1/(z - \Sigma)$; complex moments
-  $\mathbb{E}\,G^q$ are single Laguerre integrals $g_{\alpha, 2q}(Y_r)$
-  via Belinschi `eq:gziden`.
-- **To be derived (9A.2 and 9B.2)**: closed-form reductions of
-  $\mathbb{E}|G|^q$ and $\mathbb{E}(-\mathrm{Im}\,G)^q$ for $q \ne 1$.
-  Both candidates may or may not collapse to single Laguerre integrals;
-  if not, the 2-D pushforward integral against the explicit stable
-  density is the fallback.
-- **To be verified (9C)**: internal consistency at $q = 1$, tail-exponent
-  matching, constant-$c$ reduction.
-- **Implemented in `RMT/localisation.py`**:
-  - `localisation_index_curve(...)` -- profile-aligned $\ell_q$
-    (Part 1 of `localisation.py`, validated to machine precision at
-    constant $c$).
-  - `empirical_localisation_index_from_svd(...)` -- finite-$N$
-    cross-check.
-- **Not implemented: $D_q$ via the 2-D pushforward.** A prototype was
-  drafted (`theoretical_Dq_curve`, `_density_sigma_via_ifft`) and
-  then retracted. The 2-D pushforward needs the full 2-D distribution
-  of $\Sigma$ on $\mathbb{C}^-$, which Belinschi's 1-scalar
-  $\widehat{X}_r$ does not determine -- see sec. 9F below for the
-  obstruction.
-- **To be done (9D)**: select a path forward from the list in sec. 9F
-  (rotationally-symmetric ansatz, population dynamics, additional
-  self-consistency, empirical-only).
-
-## 9F. 2-D pushforward: attempted, retracted
-
-**Status: not viable from $Y_r$ alone.** This section was originally
-written as the numerical fallback after the single-Laguerre reductions
-failed (9A.2, 9B.2). A prototype implementation was drafted in
-`localisation.py` and then removed because of the obstruction
-documented below.
-
-**The obstruction.** Belinschi's `cocott` formula
-$$
-\int e^{-itx}\, dP^\nu(x) = \exp\!\big(-\Gamma(1-\alpha/2)(it)^{\alpha/2}\,
-\textstyle\int x^{\alpha/2}\, d\nu\big)
-$$
-parameterises $P^\nu$ through the **single complex scalar**
-$X_r = \int x^{\alpha/2}\,d\nu$. This determines the LT/CF only along
-a one-parameter slice of the 2-D Fourier domain (the line
-$(\tau_1, \tau_2) = (-t, -it)$ for real $t > 0$). But BAG's general
-definition of a complex $\alpha/2$-stable on $\mathbb{C}$ requires
-**two scalar-valued functions** $\sigma_{\mu,\alpha/2}(t)$ and
-$\beta_{\mu, \alpha/2}(t)$ of the direction of $t$ (BAG lines 1384-1394
-of the preprint, eqs. (sigma), (beta)). The Belinschi 1-scalar formula
-gives one slice; it does not determine $\sigma, \beta$ as functions of
-direction, and so does not pin down the full 2-D distribution.
-
-**BAG/Belinschi explicitly do not establish uniqueness** of the full
-$\mu^z_r$ from $Y_r$. BAG line 405-407: "we cannot prove uniqueness
-of the solution to this equation [for $\mu^z$]; we manage to prove
-the uniqueness of the solution for $\int x^{\alpha/2}\,d\mu^z$" -- the
-$Y_r$ scalar, no more.
-
-**Numerical symptom of the obstruction.** The retracted prototype did
-2-D inverse FFT of the 1-slice CF, treating it as if it were the full
-2-D CF. Symptom: $\sim 37\%$ of the resulting "density" mass sits on
-$\mathrm{Im}\,\Sigma > 0$, contradicting the $\mathbb{C}^-$ support
-property of $\Sigma$ (BAG `cocott` requires support in
-$\overline{\mathbb{C}^-}$). The 1-scalar CF is *not* the full 2-D CF,
-and the inverse-FFT density is correspondingly wrong.
-
-**Paths forward.** Selecting one requires user input:
-
-1. *Closed-form analytic-only.* Restrict to analytic moments
-   $\mathbb{E}[G^q] = g_{\alpha, 2q}(Y_r) \cdot \text{const}$
-   (Belinschi `eq:gziden`). These are not the IPR moments
-   ($\mathbb{E}[|G|^q]$, $\mathbb{E}[(\mathrm{Im}\,G)^q]$) for $q \ne 1$,
-   so this approach delivers the spectral density (sec. 1) but not
-   $D_q$.
-
-2. *Rotationally-symmetric ansatz.* Assume $\mu^z_r$ has a known
-   shape (e.g., complex $\alpha/2$-stable with $\beta = 0$ and one-
-   parameter $\sigma$) which makes the 1-scalar Belinschi CF
-   sufficient. Non-rigorous; consistent with Cizeau-Bouchaud sec. 7
-   physics; user has expressed doubt about Cizeau-Bouchaud's
-   derivation.
-
-3. *Population dynamics.* Run the cavity RDE
-   (`RMT.py:cavity_svd_resolvent`) to convergence, average
-   $|G|^q$ or $(-\mathrm{Im}\,G)^q$ across the pool. Valid for
-   moments that are finite in the wide-$N$ limit (convergent
-   regime, $q < q_c$); for $q > q_c$ the pool-extreme statistics do
-   not extrapolate to physical $N$ -- the user's stated objection
-   applies in this regime.
-
-4. *Additional self-consistency equations.* Beyond the BAG-Belinschi
-   scalar $X_r$, derive new self-consistency equations for
-   $\int |x|^{\alpha/2}\,d\mu^z$, $\int |x|^q\,d\mu^z$, etc. This is
-   new derivation work not present in the BAG/Belinschi literature
-   we have notes for.
-
-5. *Empirical-only.* Drop theoretical $D_q$; harvest empirical $D_2$
-   from `RMT.MLP_agg`'s aggregated singular-vector multifractal
-   dimensions; plot. Phenomenological.
-
-The status of the 2-D pushforward and the choice among (1)-(5) is the
-content of any future revision of section 9D.
-
-## 9G. One-ray ansatz: attempted (path 2), retracted
-
-Path (2) of sec. 9F was attempted: ansatz $\Sigma = c_R\, R\, e^{i\theta_0}$
-with $R$ one-sided $(\alpha/2)$-stable (Kanter LT convention
-$\mathbb{E}[e^{-tR}] = e^{-t^{\alpha/2}}$), scale and phase calibrated to
-Belinschi's `cocott` formula:
-$$
-c_R = (\Gamma(1-\alpha/2)\,|X_r|)^{2/\alpha}, \qquad
-\theta_0 = (2/\alpha)\,\arg X_r.
-$$
-
-**Result: fails BDG self-consistency.** At $\alpha = 1.5$,
-$z = 1.66 + 0.001\,i$ (a representative bulk point of an unstructured
-$c \equiv 1$ test):
-
-| | target (BDG $X_r$) | empirical from ansatz |
-|---|---|---|
-| $\mathbb{E}[G^{\alpha/2}]$ | $-1.35 - 1.97\,i$ | $0.11 - 0.018\,i$ |
-| $\mathbb{E}[-\mathrm{Im}\,G]$ | $\pi \rho_{\text{base}} = 1.27$ | $0.012$ |
-
-Magnitudes off by $\sim 20$; phases misaligned. The mismatch is not a
-small numerical error -- the one-ray hypothesis is too restrictive to
-capture the actual angular dispersion of $\mu^z_r$ on $\mathbb{C}^-$.
-Belinschi's `cocott` formula calibrates the LT/CF along a single complex
-line, which is structurally consistent with many distributions on
-$\mathbb{C}^-$; the one-ray choice is the simplest but not the right
-one.
-
-**The ansatz code was removed** (`RMT/localisation.py` Part 2 placeholder
-preserved). The empirical $D_q$ harvest in
-`ht_mlp_jacobian.py:mlp_jacobian_Dq_spectrum` and notebook section 5
-stands as the operational deliverable from path (5).
-
-**Implications for the rest of path-list (sec. 9F):**
-
-- Paths (1) and (5) remain valid and partially / fully implemented.
-- Path (2) is closed for the one-ray sub-case. A richer ansatz (e.g.,
-  two-parameter family with both radial scale and angular spread, or
-  ansatz directly on $G$ rather than on $\Sigma$) could be attempted.
-- Path (3) (population dynamics) and path (4) (additional self-
-  consistency equations) remain open paths that have not been attempted
-  yet.
-
-## 9H. Analytical $D_q$ in terms of $G$, numerically realised via BAG cavity population dynamics
-
-This section commits to the analytical expression for $D_q$ as a
-functional of $\mu^z$ (the BAG/Belinschi cavity-resolvent distribution),
-and verifies it numerically by realising $\mu^z$ via the cavity RDE.
-
-### 9H.1 The spectral identity
-
-For unit-normalised eigenvectors $\psi_k$ of the bipartite
-Hermitisation $H$ with eigenvalues $\lambda_k$, the wide-$N$
-self-averaging Lehmann identity is
-
-$$
-|\psi_\lambda(i)|^2 \;\stackrel{d}{=}\; \frac{-\mathrm{Im}\,G_{ii}(\lambda + i 0^+)}{N\, \pi\, \rho(\lambda)},
-\qquad (12)
-$$
-
-with $G(z) = (H - z)^{-1}$ and $-\mathrm{Im}\,G_{ii} \ge 0$ for $z \in \mathbb{C}^+$.
-The site-average of $-\mathrm{Im}\,G_{ii}$ recovers the spectral density:
-$\rho(\lambda) = -\mathbb{E}_i\,\mathrm{Im}\,G_{ii}(\lambda + i 0^+)/\pi$.
-
-### 9H.2 IPR moment in terms of $\mathrm{Im}\,G$
-
-The inverse participation ratio
-$I_q(\lambda) := \sum_i |\psi_\lambda(i)|^{2q}$ is, by (12) and wide-$N$
-self-averaging,
-
-$$
-I_q(\lambda)
-\;=\; \frac{1}{(N\pi\rho(\lambda))^q}\, \sum_i \big(-\mathrm{Im}\,G_{ii}\big)^q
-\;\;\xrightarrow{N \to \infty}\;\;
-\frac{N^{1-q}}{(\pi\rho(\lambda))^q}\, M_q(\lambda),
-$$
-
-where the **cavity-ensemble moment** is
-
-$$
-\boxed{\quad M_q(\lambda) \;:=\; \mathbb{E}_{\mu^z}\!\big[(-\mathrm{Im}\,G)^q\big],
-\qquad z = \lambda + i 0^+. \quad} \qquad (13)
-$$
-
-### 9H.3 The multifractal exponent $D_q$
-
-By the standard definition $I_q \sim N^{-(q-1) D_q}$:
-
-$$
-\boxed{\quad
-D_q(\lambda) \;=\; -\frac{\log I_q(\lambda)}{(q-1)\,\log N}
-\;=\; 1 \;-\; \frac{1}{(q-1)\,\log N}\, \log\!\bigg[\frac{M_q(\lambda)}{(\pi\rho(\lambda))^q}\bigg].
-\quad} \qquad (14)
-$$
-
-The formula depends on $\mu^z$ only through the **single scalar functional**
-$M_q/(\pi\rho)^q$ -- a ratio of two cavity-ensemble moments. The $N$
-appearing in (14) is the **physical** matrix size, not a pool size, so
-this gives a finite-$N$ prediction directly comparable to empirical SVD.
-
-### 9H.4 BAG/Belinschi 2-D stable input for $M_q$
-
-By BAG `theo-limitpoint` + Belinschi `cocott`, $\mu^z$ is the pushforward
-of the complex $\alpha/2$-stable distribution $P^{\mu^z}$ on $\mathbb{C}^-$
-under the rational map $\Sigma \mapsto -1/(z - \Sigma)$, with
-$P^{\mu^z}$ characterised by BAG's $\sigma_{\mu, \alpha/2}(t),
-\beta_{\mu, \alpha/2}(t)$ (preprint lines 1384-1408). The self-consistency
-$\mu^z = (\Sigma \mapsto -1/(z-\Sigma))_\ast P^{\mu^z}$ is what the cavity
-RDE solves.
-
-Sampling from $P^{\mu^z}$ analytically requires the full $\sigma, \beta$
-direction-functions, which BAG do not pin down from $Y_r$ alone (see
-9F). Instead we realise $\mu^z$ **distributionally** via the cavity RDE:
-maintain a finite-size pool of $G$ samples and iterate the cavity
-recursion (which IS the BAG pushforward operator $\mu \mapsto
-(\Sigma \mapsto -1/(z-\Sigma))_\ast P^{\mu}$, applied as a sample-update
-in the wide-pool limit). At convergence, the pool is a Monte-Carlo
-sample of $\mu^z$.
-
-$M_q$ from the pool is the empirical $(1/P)\sum_k (-\mathrm{Im}\,g_k)^q$.
-For $q < q_c$ (convergent regime where the limit moment is finite),
-this converges to the BAG-prediction $M_q$ as pool size grows; for
-$q > q_c$ the cavity-ensemble moment is infinite in the limit and the
-pool-average gives a pool-size-dependent estimate. The latter regime is
-where the user's earlier objection to population dynamics applies; for
-the former regime the population-dynamics estimate IS the correct BAG
-moment.
-
-### 9H.5 Numerical implementation
-
-`RMT.py:cavity_svd_resolvent` runs the cavity RDE for the bipartite
-Hermitisation. It maintains two populations: $g_1$ (row-side
-$\mu^z_r$) and $g_2$ (column-side $\mu^z_c$). For one-sided
-$|\tau|=c(y)$ structured matrices, the $\chi$-samples carry the
-column profile via $\chi_j = \sigma_w\,|\phi'((q^*)^{1/\alpha} z_j)|$
-with $z_j \sim p_\alpha$ (cf. `RMT.py:jac_cavity_svd_log_pdf`).
-
-From the converged populations:
-
-- $M_q^{(1)}(\lambda) = (1/P)\sum_k (-\mathrm{Im}\,g_{1,k})^q$ for the
-  row side (left singular vectors).
-- $M_q^{(2)}(\lambda)$ same for $g_2$ (column side / right vectors).
-- $\rho(\lambda) = -\mathbb{E}_\text{pool}\,(\mathrm{Im}\,g_1 +
-  \mathrm{Im}\,g_2)/(2\pi)$ (the bipartite resolvent gives both halves).
-
-Then $D_q$ via (14) for each side. The implementation is
-`localisation.theoretical_Dq_curve_popdyn(...)`.
-
-**Validation expectation.** At $1 < \alpha < 2$, BG prove $D_q \to 1$
-as $N \to \infty$ for the unstructured case. At finite $N$, $D_q < 1$
-with the $\log N$-rate of convergence given by (14). For the structured
-case (one-sided $c(y)$), $D_q^{(1)}, D_q^{(2)}$ should approach 1
-asymptotically with $N$, with possibly different finite-$N$ corrections
-on row vs column sides due to the column-profile-induced asymmetry of
-$\mu^z_c(y)$. Comparison to `mlp_jacobian_Dq_spectrum` at the same
-$(\alpha, \sigma_w, N)$ tests both: that the BDG matrix ensemble is the
-right model AND that the cavity-RDE-extracted $M_q$ correctly predicts
-finite-$N$ multifractality.
-
-## 9I. Towards closed-form $M_q$: self-consistency on the spectral measure $\Gamma$
-
-The premise of sec. 9F was wrong in framing: it claimed Belinschi/BAG
-"cannot determine $\mu^z$" from $Y_r$. The correct statement is that
-**BAG prove uniqueness only at the level of $X_r$** (the $\alpha/2$-th
-moment) and **do not** prove uniqueness of the full $\mu^z$. Whether
-$\mu^z$ is in fact determined by $X_r$ alone (i.e., whether the BDG
-self-consistency closes in one scalar) is an open analytical question.
-This section writes out the self-consistency equation for the full
-distributional structure -- specifically the spectral measure $\Gamma$
-of $P^{\mu^z}$ on $S^1$ -- as a starting point for the analytical
-attack.
-
-### 9I.1 The spectral-measure parameterisation
-
-By the standard structural theorem for complex $\alpha/2$-stable
-distributions on $\mathbb{C}$ (Samorodnitsky-Taqqu), $P^{\mu^z}$ is
-uniquely determined by a **spectral measure** $\Gamma$ on the unit
-circle $S^1$, related to BAG's $\sigma, \beta$ via
-
-$$
-\sigma_{\mu, \alpha/2}(\hat t)^{\alpha/2} = \frac{1}{C_{\alpha/2}} \int_{S^1} |\langle \hat t, \hat s\rangle|^{\alpha/2}\, \Gamma(d\hat s),
+C^R_i = \Gamma\!\big(1-\tfrac\alpha2\big)\cos\tfrac{\pi\alpha}{4}\cdot
+\frac1N\sum_j a_{ij}^{\alpha}\,\mathbb{E}\big|\mathrm{Re}\,G^C_j\big|^{\alpha/2},
 \qquad
-\beta_{\mu, \alpha/2}(\hat t) = \frac{\int_{S^1} |\langle\hat t, \hat s\rangle|^{\alpha/2}\,\mathrm{sign}\langle\hat t, \hat s\rangle\, \Gamma(d\hat s)}{\int_{S^1} |\langle\hat t, \hat s\rangle|^{\alpha/2}\, \Gamma(d\hat s)}.
+\beta^R_i = \frac{\sum_j a_{ij}^{\alpha}\,
+\mathbb{E}\big[\mathrm{sgn}(\mathrm{Re}\,G^C_j)|\mathrm{Re}\,G^C_j|^{\alpha/2}\big]}
+{\sum_j a_{ij}^{\alpha}\,\mathbb{E}|\mathrm{Re}\,G^C_j|^{\alpha/2}}, \tag{3}
+$$
+(using $(a_{ij}^2)^{\alpha/2} = a_{ij}^{\alpha}$), with the mirror relations on
+the column side. This coupled closure over the profile law $\Pi$ **is** the
+structured-Wishart-Levy real-part fixed point of `structured_wishart_levy.md`
+(Theorem 1); from it the density follows by the imaginary part as in Section 0.
+It is the analytic input to the localisation analysis -- not re-derived here.
+
+For a one-sided row profile $a_{ij} = a_i$ the factor $a_i^{\alpha}$ pulls out of
+(3) and the row-side closure factorises through the single average
+$\langle a^{\alpha}\rangle$; for a constant profile it reduces to the scalar TBT
+$(C, \beta)$ of `levy_mobility_edge.md`.
+
+---
+
+## 3. Imaginary-part recursion: TBT's derivation, carrying the profile
+
+This section follows the TBT EPAPS ("Computation of the mobility edge") step by
+step, inserting the entry $A_{ij} = a_{ij} x_{ij}$ and tracking where the profile
+appears. The entry $x_{ij}$ has tail $P(x) \simeq (\alpha/2N)|x|^{-1-\alpha}$;
+$a_{ij} \ge 0$ is deterministic. TBT's parameter is the entry index, so the
+substitution is $\mu \to \alpha$ together with $h_{ij} \to a_{ij} x_{ij}$.
+
+### 3.1 Linearised recursion (TBT eq:S, eq:Delta)
+
+Linearising (1) in the imaginary part about the real-part fixed point (2), with
+$\mathrm{Im}\,G^C_j = \Delta^C_j/(E - S^C_j)^2$,
+$$
+\Delta^R_i = \sum_j \frac{a_{ij}^2\, x_{ij}^2}{(E - S^C_j)^2}\,\Delta^C_j,
+\qquad
+\Delta^C_j = \sum_i \frac{a_{ij}^2\, x_{ij}^2}{(E - S^R_i)^2}\,\Delta^R_i. \tag{4}
+$$
+The bond weight $w_{ij} = a_{ij}^2 x_{ij}^2 |\mathrm{Re}\,G|^2$ is the $|G|^2$
+object of Section 0.
+
+### 3.2 Directed polymer and the $m = 1/2$ freezing (TBT eq:DPRM, eq:phi)
+
+Iterating (4), $\Delta_{i_1} = \sum_{\mathcal P}\prod_{\text{edges}} w \cdot
+\Delta_{i_R}$ -- a **bipartite directed polymer** with quenched bond disorder
+$w$. Localised = frozen (one-step RSB) phase ($\Delta$ decays under iteration);
+delocalised = ergodic phase ($\Delta$ grows); the mobility edge $E^\star$ is the
+freezing transition, $\phi(m^\star,E^\star)=0,\ \partial_m\phi=0$. As in TBT this
+is the top eigenvalue $\lambda(m,E)$ of a transfer integral operator,
+$\lambda(m^\star,E^\star)=1,\ \partial_m\lambda=0$.
+
+### 3.3 The disorder integral: where the profile enters (TBT eq:924)
+
+The transfer operator's kernel is built from the single-edge disorder integral
+(TBT EPAPS eq. above their eq:final). With $h = a x$, $x$ of index $\alpha$:
+$$
+\int_0^\infty\! dx\,P(x)\,|a x|^{2m}\,e^{-ik a^2 x^2/(E-X')}
+= a^{2m}\!\int_0^\infty\! dx\,P(x)\,|x|^{2m}\,e^{-i(k a^2) x^2/(E-X')}.
+$$
+Applying TBT's closed form (their eq:924, with $k \to k a^2$, $\mu \to \alpha$)
+and $|k a^2/(E-X')|^{\alpha/2-m} = a^{\alpha-2m}|k/(E-X')|^{\alpha/2-m}$,
+$\mathrm{sign}(k a^2(\cdot)) = \mathrm{sign}(k(\cdot))$, the two profile powers
+combine:
+$$
+\boxed{\;a^{2m}\cdot a^{\alpha-2m} = a^{\alpha}\;}
+\qquad\Longrightarrow\qquad
+\int_0^\infty\! dx\,P(x)\,|a x|^{2m}\,e^{-ik a^2 x^2/(E-X')}
+= a^{\alpha}\cdot \big[\text{TBT eq:924}\big]_{\mu\to\alpha}. \tag{5}
+$$
+**The profile enters every disorder integral as a factor $a^{\alpha}$ that is
+independent of the replica index $m$.** This is the load-bearing structured fact:
+because $a^\alpha$ does not depend on $m$, it does not break the reflection
+symmetry of the determinant about $m = 1/2$ -- so the $m = 1/2$ collapse survives
+the profile, and no separate verification of the stationary point is needed.
+(The earlier guess that the profile enters as $\langle a\rangle$ at $m=1/2$ was
+wrong; the correct, $m$-independent factor is $a^{\alpha}$.)
+
+### 3.4 Structured mobility-edge determinant (TBT eq:final -> eq:mobility)
+
+Carrying $a^\alpha$ through TBT's eq:final, the inverse-Fourier step, and the
+$2\times2$ reduction $(I_+, I_-)$ reproduces TBT's algebra with two substitutions:
+(i) the path-edge factor $a^{\alpha}$ rides on each transfer-operator application,
+i.e. on each power of $K_\alpha = \tfrac{\alpha}{2}\Gamma(\tfrac12-\tfrac\alpha2)^2$;
+(ii) the self-energy characteristic function $\hat L_{\alpha/2}^{C,\beta}$ carries
+the **profile-weighted** $(C, \beta)$ of (3). The determinant at $m = 1/2$ is
+TBT's with $K_\alpha \to K_\alpha\,\langle a^{\alpha}\rangle$:
+$$
+\boxed{\;
+\big(K_\alpha \langle a^{\alpha}\rangle\big)^2\big(s_\alpha^2 - 1\big)|\ell|^2
+- 2\,s_\alpha\,K_\alpha \langle a^{\alpha}\rangle\,\mathrm{Re}\,\ell + 1 = 0,
+\;}
+\tag{6}
+$$
+$s_\alpha = \sin(\pi\alpha/2)$, and $\ell(E) = \frac1\pi\int_0^\infty
+k^{\alpha-1}\hat L_{\alpha/2}^{C(E),\beta(E)}(k)\,e^{ikE}\,dk$ with the
+profile-weighted $(C, \beta)$. At $\Pi = \delta_{a=1}$ ($\langle a^\alpha\rangle =
+1$, $(C,\beta)$ scalar) this is *exactly* the TBT equation of
+`levy_mobility_edge.md` at $\mu = \alpha$ -- consistent with Section 4.
+
+### 3.5 What (6) still elides (the genuine remaining work)
+
+Equation (6) is the **mean-field / row-symmetric** form. Two structural details
+are folded into the single average $\langle a^\alpha\rangle$ and must be unfolded
+for the general profile:
+
+1. **Profile resolution.** $\langle a^\alpha\rangle$ is an average over the
+   path-edge profile, but the path-edge profile is correlated with the node
+   self-energy $S$ (both depend on the source node's row of $\{a_{ij}\}$).
+   For general $a_{ij}$ the transfer operator acts on functions of $(X, \text{
+   source-profile})$ and (6) becomes a small integral equation over the profile
+   coordinate, not a scalar. It collapses to (6) for a one-sided row profile
+   $a_{ij}=a_i$ (then $\langle a^\alpha\rangle = \int a^\alpha\,d\Pi$ and $(C,\beta)$
+   factor through $\langle a^\alpha\rangle$), and to TBT for $a \equiv 1$.
+2. **Row/column (left/right) asymmetry.** The bipartite two-leg composition uses
+   the row-side and column-side profile averages separately; an asymmetric
+   profile gives two edges $E^\star_{\mathrm{left}} \ne E^\star_{\mathrm{right}}$.
+   Equation (6) is the symmetric reduction; the asymmetric kernel is the
+   outstanding derivation.
+
+Both reduce, at $a\equiv 1$, to the single validated unstructured edge of
+Section 4. Item 1 is carried out for the one-sided row profile in 3.6.
+
+### 3.6 One-sided row profile: explicit reduction
+
+Take $a_{ij} = a_i = c(v_i)$, $v_i \sim U[0,1]$ (row nodes carry the profile,
+column nodes do not). Then $a_i^2$ pulls out of the row self-energy, so
+$S^R_i \mid a_i$ is $\alpha/2$-stable of scale $a_i^{\alpha} C^R$ and skew
+$\beta^R$, while the column self-energy is profile-*averaged*, scale $C^C$, skew
+$\beta^C$, with (from eq. 3)
+$$
+C^R = \Gamma(1-\tfrac\alpha2)\cos\tfrac{\pi\alpha}{4}\,
+      \mathbb{E}|\mathrm{Re}\,G^C|^{\alpha/2},
+\qquad
+C^C = \Gamma(1-\tfrac\alpha2)\cos\tfrac{\pi\alpha}{4}\!
+      \int_0^1\! dv\, c(v)^{\alpha}\,\mathbb{E}|\mathrm{Re}\,G^R_{(c(v))}|^{\alpha/2},
+$$
+a coupled scalar closure ($\mathrm{Re}\,G^C = 1/(E-S^C)$,
+$\mathrm{Re}\,G^R_{(a)} = 1/(E - S^R_{(a)})$); $\beta^{R,C}$ analogously. This is
+the one-sided real-part fixed point of `one_sided_wishart_levy.md`.
+
+**Coupled transfer operators.** With $m = 1/2$ throughout (3.3), the two legs are
+$$
+Z^R_{(a)}(X) = N\!\int\! dx\,P(x)\,dS\,L^R_{(a)}(S)\,dX'\,Z^C(X')\,
+  \delta\!\big(X - S - \tfrac{a^2 x^2}{E-X'}\big)\big|\tfrac{a x}{E-X'}\big|,
+$$
+$$
+Z^C(X) = N\!\int_0^1\!\! dv\!\int\! dx\,P(x)\,dS\,L^C(S)\,dX'\,Z^R_{(c(v))}(X')\,
+  \delta\!\big(X - S - \tfrac{c(v)^2 x^2}{E-X'}\big)\big|\tfrac{c(v) x}{E-X'}\big|,
+$$
+the $\int_0^1 dv$ averaging over the row profile of the incoming edge.
+
+**Fourier reduction.** Each disorder integral gives the $m$-independent profile
+factor of 3.3 (eq. 5): $a^{\alpha}$ on the row leg, $c(v)^{\alpha}$ on the column
+leg. Following TBT's eq:final + inverse-Fourier + $2\times2$ steps verbatim, with
+$I^{R,C}_{\pm} = \int_{\gtrless 0}\tfrac{dk}{\pi}\,e^{ikE}|k|^{(\alpha-1)/2}
+\hat Z^{R,C}(k)$, the legs become
+$$
+I^R_{\pm,(a)} = a^{\alpha} K_\alpha\,\ell^R_{\pm,(a)}\,(s_\alpha I^C_\pm + I^C_\mp),
+\qquad
+I^C_\pm = K_\alpha\,\ell^C_\pm\!\int_0^1\! dv\, c(v)^{\alpha}
+  (s_\alpha I^R_{\pm,(c(v))} + I^R_{\mp,(c(v))}),
+$$
+$K_\alpha = \tfrac\alpha2\Gamma(\tfrac{1-\alpha}{2})^2$, $s_\alpha = \sin\tfrac{\pi\alpha}{2}$,
+and the profile-resolved $\ell$:
+$$
+\ell^R_{+,(a)}(E) = \tfrac1\pi\!\int_0^\infty\! k^{\alpha-1}
+  e^{-a^{\alpha} C^R k^{\alpha/2}(1 - i\beta^R t\,)}\,e^{ikE}\,dk,
+\quad
+\ell^C_{+}(E) = \tfrac1\pi\!\int_0^\infty\! k^{\alpha-1}
+  e^{- C^C k^{\alpha/2}(1 - i\beta^C t)}\,e^{ikE}\,dk,
+$$
+$t = \tan\tfrac{\pi\alpha}{4}$, $\ell_- = \ell_+^*$. Substituting the row leg into
+the column leg, the **two edges of each interior row node** combine its path-edge
+$a^{\alpha}$ with the same node's self-energy, giving the weight $c(v)^{2\alpha}$.
+Define
+$$
+L^R_\pm(E) := \int_0^1 dv\, c(v)^{2\alpha}\,\ell^R_{\pm,(c(v))}(E).
+$$
+The result is a $2\times2$ system in $(I^C_+, I^C_-)$ whose solvability is the
+
+**one-sided structured mobility edge:**
+$$
+\boxed{\;
+K_\alpha^4\,|\ell^C|^2|L^R|^2\,(s_\alpha^2-1)^2
+- 2K_\alpha^2\Big[s_\alpha^2\,\mathrm{Re}\big(\ell^C L^R\big)
+  + \mathrm{Re}\big(\ell^C\,\overline{L^R}\big)\Big] + 1 = 0.
+\;}
+\tag{7}
 $$
 
-$\Gamma$ is invariant under $\hat s \mapsto -\hat s$ if $P^\mu$ is
-symmetric, or has a specific asymmetry encoded in $\beta$.
-
-### 9I.2 BDG self-consistency for $\Gamma$
-
-The cavity-RDE fixed point is
-
+**Constant-profile check.** At $c \equiv 1$: $C^R = C^C$, $\beta^R=\beta^C$, so
+$\ell^C = \ell^R_{(1)} =: \ell$ and $L^R = \ell$; (7) factorises *exactly* as
 $$
-\mu^z \;=\; \big(\Sigma \mapsto -1/(z - \Sigma)\big)_\ast\, P^{\mu^z}.
+\big[K_\alpha^2(s_\alpha^2-1)|\ell|^2 - 2 s_\alpha K_\alpha\,\mathrm{Re}\,\ell + 1\big]
+\cdot
+\big[K_\alpha^2(s_\alpha^2-1)|\ell|^2 + 2 s_\alpha K_\alpha\,\mathrm{Re}\,\ell + 1\big] = 0,
 $$
+the first bracket being the TBT equation of `levy_mobility_edge.md` (the
+$\lambda = +1$ freezing) and the second the spurious $\lambda = -1$ branch of the
+two-leg map. **The physical edge is the TBT-connected root** (continued from
+$c\equiv1$); for a non-constant profile (7) does not factor, and one tracks that
+branch.
 
-At the level of $\Gamma$ (equivalently $\sigma$, $\beta$), this gives a
-**functional fixed-point equation**: for every $\hat t \in S^1$,
+**Numerical recipe (solvable, like the unstructured kernel).** (i) Solve the
+coupled $(C^R,\beta^R,C^C,\beta^C)$ closure by the deterministic $k$-space
+fixed point of `levy_mobility_edge.py` generalised to the two-sided form;
+(ii) build $\ell^C$, and $L^R$ by Gauss-Legendre over $v$ with the profile
+$c(v)$ (one $\ell^R_{(c(v))}$ evaluation per node, reusing the QAWF integrator);
+(iii) root-find (7) in $E$, tracking the physical (largest-magnitude / Perron)
+branch. Reduction gate: at $c\equiv\text{const}$ and $\alpha < 1$ it must return
+the `levy_mobility_edge.py` value -- **verified**
+(`localisation.py` (Part 1): at $\alpha = 0.5$, $c\equiv1$, the
+Perron edge is $3.29$, matching the unstructured solver; the two-sided closure
+reproduces the symmetric $(C,\beta)$ to four digits).
 
+**Domain of validity ($\mu < 1$ only).** Equation (7) -- like TBT's -- is built
+from Fourier integrals $\Gamma(m-\mu/2)$, $\Gamma(1-m-\mu/2)$ whose convergence
+needs $\mu < 1$; for $\mu \ge 1$ they are analytic continuations and TBT state
+the equation "has a solution for $\mu \in (0,1)$ only". Numerically, the
+$c\equiv1$ baselines at $\alpha = 1.5, 1.8$ return spurious sub-1 Perron
+eigenvalues (false "edges" at $E \sim 1.2$) where Bordenave-Guionnet guarantee
+delocalisation -- continuation artifacts, worsening as $\alpha$ moves above 1.
+**So (7) cannot predict the operational-range ($\alpha \in (1,2)$) Jacobian
+localisation -- but that is because (7) is the wrong mechanism, not because
+there is no localisation.** Two distinct mechanisms must be separated:
+
+1. *Heavy-tail-index localisation* (TBT/BG, eq. (7)): needs $\mu = \alpha < 1$.
+   A bounded profile rescales $K_\alpha \to K_\alpha\langle c^\alpha\rangle$ but
+   cannot change $\mu = \alpha$, so it is **absent for $\alpha \in (1,2)$** --
+   correctly, per BG delocalisation.
+2. *Profile-sparsification localisation* (structural, outside (7)): at the
+   heavy-tailed fixed point the pre-activations $h$ are themselves $\alpha$-stable,
+   so $\phi'(h) = \mathrm{sech}^2 h$ is near-zero on a finite fraction of
+   saturated units -- effective row deletion / connectivity dilution, which
+   localises by an Anderson/sparse mechanism, *not* via the heavy-tail index.
+
+**The empirical Jacobian localised tail is mechanism 2** and is real, not a
+crossover artifact. Direct surrogate test
+(`.agents/temp/sv_localization_profiled.py`, $A = \mathrm{diag}(|\phi'(h)|)W$,
+left-SV IPR $N$-scaling, $\alpha = 1.5$): as the saturated fraction grows
+($s_h = 0 \to 0.5 \to 1.0$, i.e. $0 \to 5\% \to 18\%$ of $|\phi'| < 0.05$), the
+tail $N$-scaling slope departs from the delocalised $-1$ ($-0.80 \to -0.53 \to
+-0.38$ at $s = 2.9$) and the onset moves into the bulk ($s \approx 2.7 \to 2.1
+\to 1.9$); additionally the *smallest* singular values localise (left vectors on
+the $\phi'\approx0$ rows). So:
+
+> The heavy-tailed MLP Jacobian tail localises through **profile
+> sparsification** (saturated units), monotonically in the saturated fraction --
+> not through the heavy-tail-index mobility edge, which is absent for
+> $\alpha \in (1,2)$.
+
+This localisation is **still the Tarquini / directed-polymer stability
+criterion** (Anderson localisation on a tree *is* a DPRM freezing problem); it is
+not a separate "sparse-RMT" framework. What changes for $\alpha \in (1,2)$ is
+only that the criterion no longer has a closed-form solution -- it becomes an
+integral-operator eigenvalue problem (3.7), equivalently the $\eta \to 0$
+stability of $\mathrm{Im}\,G$ under the cavity RDE.
+
+**It is a true asymptotic edge, not a finite-$N$ crossover.** Evaluating the
+criterion directly by complex cavity population dynamics
+(`localisation.py` (Part 2), $N \to \infty$ cavity) at $\alpha = 1.5$:
+the $\eta$-scaling exponent $p = d\log\mathrm{Im}\,G_{\rm typ}/d\log\eta$ is
+$p \approx 0$ at all $E$ unstructured (delocalised -- matches BG, validates the
+tool), but with a saturating $\tanh$ row profile ($\sigma_h = 1.5$, 33% of units
+with $|\phi'| < 0.05$) it rises through $1/2$ at $E^\star \approx 4.0$ and reaches
+$p \to 1$ ($\mathrm{Im}\,G_{\rm typ} \propto \eta \to 0$, full localisation) in
+the tail. So the profile induces a genuine **asymptotic mobility edge**
+$s^\star \approx 4.0$ (at 33% saturation); the earlier IPR-surrogate ambiguity
+(slopes $\sim -0.4$ at finite $N$) was just finite-$N$ -- the cavity shows the
+transition is real. ReLU, $\phi' \in \{0,1\}$, is the exact-deletion limit of the
+same mechanism.
+
+### 3.7 Why (7) closes only for $\mu < 1$: scale-invariance, and the Bessel-kernel equation for $\alpha > 1$
+
+For $\alpha > 1$ the path-edge disorder integral (3.3) is **bulk-dominated**
+($\mathbb E|x| < \infty$) and must be taken against the full $\alpha$-stable
+weight density $P_\alpha$, not its tail:
 $$
-\boxed{\quad
-\int_{S^1} |\langle\hat t, \hat s\rangle|^{\alpha/2}\, \Gamma(d\hat s)
-\;=\; C_{\alpha/2}\, \int_{\mathbb{C}^-} \Big|\Big\langle\hat t,\, -\frac{1}{z - \Sigma}\Big\rangle\Big|^{\alpha/2}\, dP^{\Gamma}(\Sigma),
-\quad} \qquad (15)
+I_\alpha(\omega) = \int P_\alpha(x)\,|x|\,e^{i\omega x^2}\,dx,
+\qquad \omega = \frac{a^2 k}{E - X'},
 $$
-
-with the analogous signed-version equation for $\beta$. The RHS depends
-on $\Gamma$ through $dP^{\Gamma}$; the LHS is a directional fractional
-moment along $\hat t$. This is a self-consistency equation in $\Gamma$,
-on the function space of probability measures on $S^1$.
-
-In terms of the **scale-weighted angular density** of $\mu$ on
-$\mathbb{C}^-$,
-
+finite for $\alpha > 1$. The self-energy part ($\alpha/2$-stable, the $\ell$
+integral) is unchanged -- only this entry integral breaks. Carrying $I_\alpha$
+through TBT's $dX'$ step: with $y = E - X'$ and $y = \sqrt{q/p}\,e^t$, the inner
+integral
 $$
-\tilde h_\mu(\phi) \;:=\; \int_0^\infty r^{\alpha/2}\, f_\mu(r e^{i\phi})\, r\, dr,
-\qquad \phi \in [-\pi, 0],
+\int_0^\infty e^{i(py + q/y)}\,dy = \sqrt{q/p}\;g\!\big(2\sqrt{pq}\big),
+\qquad g(z) = \int_{-\infty}^\infty e^t e^{i z \cosh t}\,dt \ \text{(Hankel-type)},
 $$
-
-(where $f_\mu$ is the 2-D density of $\mu^z$), eq. (15) becomes
-
+is a prefactor times a function of the **product** $pq$ alone. Hence the
+eigenvalue kernel is
 $$
-\frac{1}{C_{\alpha/2}}\, \int_{-\pi}^{0} |\cos(\phi - \theta)|^{\alpha/2}\, \tilde h_\mu(\phi)\, d\phi
-\;=\; \mathrm{[RHS\ in\ terms\ of\ pushforward\ of\ } P^\Gamma\mathrm{]},
-\qquad (16)
+\mathcal K(k, k') \;\propto\; e^{-ik'E}\,\sqrt{k/k'}\;G_\alpha\!\big(\sqrt{k k'}\big),
+\qquad G_\alpha(\xi) = \int P_\alpha(x)\,x^2\,g(2|x|\xi)\,dx.
 $$
+This factorises into $f(k)\,h(k')$ -- i.e. collapses to TBT's $2\times2$
+determinant -- **iff $G_\alpha$ (equivalently $I_\alpha$) is a pure power**,
+since $\xi^c = (kk')^{c/2}$ separates but a Bessel function does not. And
+$I_\alpha$ is a pure power iff the disorder integral is **scale-free**, i.e.
+tail-dominated, i.e. $\mu < 1$. Verified numerically (`.agents/temp`, FFT stable
+density): $|I_\alpha(\omega)|$ has constant log-log slope (power law) at
+$\alpha = 0.6$, but a slope sweeping $-0.3 \to -1.0$ through a crossover at
+$\omega \sim 1$ at $\alpha = 1.5$ (the bulk scale) -- not a power law.
 
-i.e. the LHS is a convolution of $\tilde h_\mu$ with the kernel
-$|\cos|^{\alpha/2}$ on $S^1$. The cavity self-consistency closes if the
-pushforward map sends this convolution back to itself in a structured way.
-
-### 9I.3 Fourier expansion ansatz
-
-Parameterise $\tilde h_\mu(\phi)$ on $[-\pi, 0]$ in Fourier modes (real
-basis, using $\sin, \cos$):
-
+**So for $\alpha \in (1,2)$ the reduction does not close.** The mobility edge is
 $$
-\tilde h_\mu(\phi) \;=\; \frac{a_0}{2} + \sum_{n=1}^\infty \big[a_n \cos(2 n \phi + \pi n) + b_n \sin(2 n \phi + \pi n)\big],
+\boxed{\ \text{top (Perron) eigenvalue of the integral operator with kernel }
+\mathcal K(k,k') \ = \ 1\ }
 $$
+-- a 1-D Fredholm problem (Bessel kernel weighted by $P_\alpha$), solved by
+discretising $k$; no closed transcendental. The closed form (7) is special to
+the scale-invariance of the $\mu < 1$ heavy tail; removing it (bulk, $\alpha > 1$)
+costs exactly one rung of closedness, leaving an integral operator rather than a
+determinant. This is the correct tool for the profile-sparsification edge above.
 
-(half-circle Fourier basis on $[-\pi, 0]$; the exact basis choice is
-a parameterisation choice). Plugging into (15) gives a hierarchy of
-equations on the Fourier coefficients $\{a_n, b_n\}_{n \ge 0}$.
+---
 
-**The key open question:** does the BDG self-consistency hierarchy
-**truncate at finite Fourier order** at the fixed point? If yes:
-$\Gamma$ has a parametric closed form, and so does $M_q$ for any $q$
-(integer or non-integer), and hence the closed-form $D_q$ theory is
-achievable.
+## 4. Unstructured reduction, the index map, and the delocalisation baseline
 
-If no (the hierarchy stays infinite-dimensional), the BDG fixed-point
-$\mu^z$ is genuinely an infinite-dimensional object and closed-form
-$M_q$ requires either ansatz closures (path 2 of sec. 9F) or
-distributional methods (path 3).
-
-### 9I.4 The single-scalar anchor $X_r$ as a check
-
-Belinschi's `cocott` gives the constraint:
-
+Set $a_{ij} \equiv 1$. For the square case the bipartite cavity RDE is, by
+row/column symmetry, **identical** to the symmetric heavy-tailed RDE of
+Bordenave-Guionnet 2012 (`.agents/notes/bordenave-2012.md`),
+$G = -(z + \sum_k \xi_k G_k)^{-1}$ with $\{\xi_k\}$ a Poisson process of intensity
+$\propto \xi^{-1-\alpha/2}\,d\xi$. The squared-entry index $\alpha/2$ is already
+internal to this RDE for *any* heavy-tailed symmetric or bipartite matrix; there
+is **no additional Hermitisation halving**. Hence the index identification is
 $$
-\int_{-\pi}^0 e^{i (\alpha/2) \phi}\, \tilde h_\mu(\phi)\, d\phi \;\propto\; X_r(z),
+\text{bipartite SV problem at entry index } \alpha
+\;\equiv\; \text{TBT/BG symmetric problem at } \mu = \alpha,
 $$
+*not* $\mu = \alpha/2$. The Section-3 determinant must reduce to the scalar TBT
+equation of `levy_mobility_edge.md` at this identification.
 
-i.e. the **$(\alpha/2)$-th Fourier mode** of $\tilde h_\mu$ (in the
-complex-exponential basis) equals the scalar $X_r$ up to known prefactors.
-This is one complex equation = two real constraints, fixing $a_{\alpha/4}$
-(modulo basis conventions). The Fourier hierarchy of sec. 9I.3 must be
-consistent with this, providing one anchor.
+**Consequence (proven, Bordenave-Guionnet 2012):**
+- $1 < \alpha < 2$: **delocalisation**. No localised phase; eigenvectors satisfy
+  $\|v\|_p \to 0$ for all $p > 2$ off a finite exceptional set. So the
+  **unstructured SV problem has no asymptotic mobility edge in the operational
+  range** $\alpha \in (1, 2)$, and `levy_mobility_edge.py` correctly returns no
+  edge for $\mu = \alpha > 1$.
+- $\alpha < 2/3$: localisation in the spectral tail (proven). The window
+  $2/3 \le \alpha \le 1$ is open (the Bouchaud-Cizeau threshold).
 
-### 9I.5 Concrete next steps
+The direct IPR $N$-scaling (`.agents/temp/sv_localization_unstructured.py`:
+delocalised slope $-1$ out to $s \approx 2.5$, only a weak departure in the far
+heavy tail) and the density-deviation diagnostic onset $s_c$ are therefore
+**finite-$N$ crossover** signatures (BG's exceptional set / TBT's wide-crossover
+result 3), not the asymptotic edge. The $\alpha$-dependence of the apparent
+onset does **not** distinguish a true edge from crossover, because the
+heavy-tail outlier scale also shifts with $\alpha$.
 
-To attack the closed-form question:
+**Implication for the structured problem.** Since the unstructured baseline is
+delocalised for $\alpha \in (1, 2)$, any genuine asymptotic localisation in the
+operational range must be **profile-induced**. A bounded profile
+($|\phi'| \le 1$) does not change the entry tail index $\alpha$, so it cannot by
+itself move the BG regime; it can only localise through effective
+*sparsification* (a finite fraction of near-zero $\phi'$ -- saturated units) or
+strong scale disorder. Whether this suffices for a true edge, or whether all
+operational-range localisation is finite-$N$ crossover, is the load-bearing
+question the structured determinant (Section 3) must answer.
 
-1. **Expand the RHS of (15)** in Fourier modes of $\tilde h_{P^\mu}(\psi)$
-   (the angular weight of $\Sigma$, related to $\Gamma$). This requires
-   evaluating the pushforward integral $\int |1/(z - \Sigma)|^{\alpha/2}
-   \cos(\arg(-1/(z-\Sigma)) - \theta) \cdot \text{etc}\, dP^\Gamma$ in
-   polar coordinates of $\Sigma$.
-2. **Project onto Fourier modes** of $\tilde h_\mu(\phi)$.
-3. **Check truncation**: do mode $n$ equations involve only modes
-   $\le n + n_0$ for some finite $n_0$? If yes, the system closes after
-   $n_0$ modes.
-4. **If closed**: solve the truncated system, get $\tilde h_\mu$ in
-   closed form, compute $M_q = \int_0^\infty r^q d\mu^z(re^{i\phi})$
-   pointwise.
-5. **If not closed**: identify the structural reason and decide
-   between distributional realisation (population dynamics) or a
-   structural ansatz.
+**Validation gates:**
+- **Gate A (done, this section):** index map $\mu = \alpha$, anchored in BG;
+  the unstructured operational range is delocalised; `levy_mobility_edge.py`
+  consistent. No finite edge to scale-convert.
+- **Gate B (one-sided / row profile $a_{ij} = a_i$):** does a bounded row
+  profile induce a *true* edge or only crossover? Decisive test: tail-$s$ IPR
+  $N$-scaling on a row-scaled Levy matrix -- slope $\to 0$ with $N$ is a true
+  edge, slope $\to -1$ is crossover.
 
-This is non-trivial analytic work but well-defined. The key technical
-step is expanding the pushforward integral in mode-coupling form;
-nothing in the framework is obstructive a priori.
+---
 
-### 9I.6 Status and recommendation
+## 5. Numerical scheme and the finite-$N$ diagnostic
 
-- **Open analytical question**: does the BDG self-consistency on $\Gamma$
-  close in finite Fourier modes?
-- **Numerical probe (much cheaper)**: sample $\mu^z$ via cavity
-  population dynamics, compute $\sigma_\mu(\hat t)^{\alpha/2}$ for many
-  directions $\hat t \in S^1$, check whether $\sigma_\mu$ has a low-rank
-  Fourier representation. This informs whether the analytical attack
-  is likely to bear fruit.
-- **Status of "Belinschi can't give $M_q$" claim from earlier sections**:
-  RETRACTED. The correct statement is that Belinschi gives only the
-  $X_r$ anchor; the full $\Gamma$ may or may not close in finite
-  parameters at the BDG fixed point, and that's the open analytical
-  question of this section.
+Solving $D(E; \Pi) = 0$: iterate the structured real-part closure (3) to obtain
+the profile-resolved $(C, \beta)$ field [the `structured_wishart_levy.py` /
+`one_sided_wishart_levy.py` solvers]; build the profile-averaged kernel of
+$\mathcal{T}_{1/2,E}$ and its Fourier reduction (Section 3, open step 2);
+root-find in $E$. The unstructured kernel is already implemented and validated
+in `levy_mobility_edge.py`.
 
-## 9J. Density-deviation diagnostic: practical localisation onset
+Independently, the **density-deviation diagnostic** is a finite-$N$ probe of the
+*onset* of localisation: where the population-dynamics estimate of the SV density
+departs from the deterministic (BDG) theory marks the SV beyond which the
+deterministic limit ceases to describe the typical local resolvent. It returns a
+practical onset $s_c$ and the correct $\alpha$-trend, but -- per Section 0 -- it
+measures a finite-$N$ crossover, not the asymptotic edge, and does not deliver a
+closed $D_q$. Use it as a cross-check on $E^\star$, not as a substitute.
 
-A practical alternative to the full $D_q$ / $\Gamma$ derivation: detect
-localisation onset by **deviation between two estimators of the same
-first moment**.
+---
 
-### 9J.1 Principle
+## 6. Downstream gate: the heavy-tailed MLP Jacobian
 
-The spectral density $\rho(s)$ is the first moment
-$\rho = -\mathbb{E}_{\mu^z}\,\mathrm{Im}\,G/\pi$. Two ways to estimate it:
+The layerwise Jacobian $J^l = D^l W^l$, $D^l = \mathrm{diag}(\phi'(h^l))$, is the
+row-profile specialisation $a_{ij} = |\phi'(h^l_i)|$ of the structured ensemble.
+The profile law $\Pi$ is the (quantile-embedded) distribution of $|\phi'|$ at the
+heavy-tailed length-map fixed point of `heavy_tailed_mlp.md`; for $\tanh$ it
+ranges from $\approx 0$ (saturated) to $\approx 1$ (linear). The structured
+mobility edge then predicts the profile-induced shift of $s^\star$ relative to
+the unstructured baseline of Section 4 -- i.e. whether saturated-unit structure
+pushes the localisation onset into the operational bulk. The full derivation,
+solver wiring, and comparison to a direct MLP-Jacobian IPR sweep live in
+`ht_mlp_jacobian.{md,py,ipynb}`. This file states only the general result.
 
-- **Analytical**: $\rho_\text{thy}(s) = -\mathrm{Im}\,h_\alpha(Y_r(s + i 0^+))/(\pi s)$
-  via the deterministic BDG field
-  (`one_sided_wishart_levy.theoretical_one_sided_singular_value_curve`).
-- **Pool-mean**: $\rho_\text{popdyn}(s) = \mathbb{E}_\text{pool}[-\mathrm{Im}\,g]/\pi$
-  via the cavity-RDE population dynamics
-  (`RMT.cavity_svd_resolvent` / `RMT.jac_cavity_svd_log_pdf`).
+---
 
-**In the delocalised regime**: the local resolvent $\mathrm{Im}\,g_{ii}$
-across the pool has bounded variance, pool-mean converges to its limit at
-$P^{-1/2}$. Popdyn and analytical agree to within MC noise.
+## Appendix: retracted approaches (do not repeat)
 
-**In the localised regime**: $\mathrm{Im}\,g_{ii}$ across the pool is
-heavy-tailed (Aizenman-Molchanov / BG mechanism), pool-mean has slow
-convergence dominated by pool extremes. **Popdyn systematically deviates
-from analytical** at any fixed pool size, with deviation magnitude
-quantifying the heavy-tail mechanism.
-
-This is the Aizenman-Molchanov fractional-moment criterion re-expressed
-at the density level: the localisation signature lives in the *failure*
-of the wide-pool / wide-$N$ self-averaging assumption that the
-analytical theory uses.
-
-### 9J.2 Hermitisation-driven $\alpha$ mapping
-
-For an $\alpha$-stable rectangular matrix, the bipartite Hermitisation
-cavity self-energy involves *squared* heavy-tailed entries, halving the
-stability index. So the bipartite Hermitisation's effective
-Wigner-Levy stability is $\alpha_\text{Wigner-equiv} = \alpha/2$, and
-the BG regimes map:
-
-| $\alpha_\text{SV}$ | $\alpha_\text{Wigner-equiv}$ | BG regime |
-|---|---|---|
-| $> 4/3$ | $> 2/3$ | open intermediate (BG sec. 1) |
-| $< 4/3$ | $< 2/3$ | proven localised in heavy-tail spectrum |
-
-The operational regime $\alpha_\text{SV} \in (1, 2)$ for the heavy-tailed
-MLP Jacobian therefore **straddles BG's localisation transition** at
-$\alpha_\text{SV} = 4/3$.
-
-### 9J.3 Concrete diagnostic and empirical findings
-
-Implementation: `ht_mlp_jacobian.density_deviation_diagnostic`. Run at
-fixed pool size $P = 2^{n_\text{doublings}}$, multiple $\chi$ realisations
-for cross-sample noise estimation. Output: $|\rho_\text{popdyn}(s) -
-\rho_\text{thy}(s)|$ vs $s$, with the cross-$\chi$ standard deviation as
-the MC noise floor for signal-to-noise interpretation.
-
-Empirical findings at $\sigma_w = 1$, $n_\text{doublings} = 7$,
-num_chis = 8 (3 $\alpha$ values):
-
-| $\alpha_\text{SV}$ | $\alpha_\text{Wigner-equiv}$ | BG regime | max $\|\Delta_\rho\|$ | argmax $s$ |
-|---|---|---|---|---|
-| 1.2 | 0.60 | proven localised | **0.117** | 1.6 |
-| 1.5 | 0.75 | open intermediate | 0.036 | 2.4 |
-
-Max deviation is 3x larger at $\alpha = 1.2$ than at $\alpha = 1.5$,
-exactly the trend predicted by Hermitisation + BG. Strongest deviation
-is in the spectral tail/cross-over region (not the bulk), consistent
-with the standard heavy-tailed localisation picture (eigenvectors at
-large eigenvalues are localised first).
-
-### 9J.4 What the diagnostic does and doesn't deliver
-
-**Delivers:**
-- Quantitative localisation-onset $s_c$ as the SV where systematic
-  deviation exceeds MC noise.
-- $\alpha$-trend matching the Hermitisation-mapped BG regimes.
-- A pool-size sweep gives the heavy-tail exponent $\nu$ of the local
-  resolvent distribution (the multifractal-spectrum diagnostic) by
-  fitting $|\Delta_\rho(s; P)|$ vs $P$ -- still TODO.
-
-**Does not deliver:**
-- A closed-form $D_q$ value at given $s$. The diagnostic is qualitative
-  ("localisation onset detected") and quantitative-as-deviation-magnitude,
-  but doesn't predict $D_q$.
-- An analytical theory of $\Gamma$. The diagnostic establishes that the
-  BDG framework breaks down at some $s_c$, motivating but not replacing
-  sec. 9I's analytical attack.
-
-### 9J.5 Next refinements
-
-- **Pool-size scaling sweep** $(P \to 2P)$ -- exponent of $|\Delta_\rho(s; P)|$
-  as $P \to \infty$ gives the heavy-tail index. Cheap to implement on
-  top of the existing diagnostic.
-- **Higher $\alpha$-resolution sweep** to identify a sharper $\alpha_c$
-  transition in the operational range.
-- **Independent verification** against MLP-Jacobian SVD localisation at
-  finite $N$: at SVs above $s_c$, the eigenvector IPRs should show
-  $D_q < 1$ trends consistent with the diagnostic.
-
-## 9K. Pool-size scaling: heavy-tail index $\nu(s)$ from finite-pool deviation
-
-The single-pool-size diagnostic of 9J gives a binary "deviation vs no
-deviation" picture. Sweeping the pool size $P = 2^{n_d}$ gives a
-**quantitative** heavy-tail index $\nu(s)$ at each spectral position.
-
-### 9K.1 Generalised-CLT scaling
-
-For an iid sample of size $P$ from a distribution with tail
-$\Pr(|X| > u) \sim u^{-\nu}$:
-
-| $\nu$ regime | mean and variance | pool-mean deviation scaling |
-|---|---|---|
-| $\nu > 2$ | finite mean and var | CLT, $\|\hat\mu - \mu\| \sim P^{-1/2}$ |
-| $1 < \nu < 2$ | finite mean, infinite var | heavy-tail CLT, $\|\hat\mu - \mu\| \sim P^{1/\nu - 1}$ |
-| $\nu = 1$ | mean diverges marginally (log) | $\|\hat\mu - \mu\| \sim 1$ (constant in $P$) |
-| $\nu < 1$ | infinite mean | $\|\hat\mu - \mu\| \sim P^{1/\nu - 1}$ grows with $P$ |
-
-Fitting the slope $m$ of $\log|\Delta_\rho(s; P)|$ vs $\log P$ at each
-$s$, the heavy-tail index of the local resolvent distribution at SV $s$
-is
-
-$$
-\boxed{\quad \nu(s) \;=\; \frac{1}{m(s) + 1}. \quad} \qquad (17)
-$$
-
-Map:
-
-- $m = -1/2 \;\Rightarrow\; \nu = 2$: CLT (delocalised).
-- $-1/2 < m < 0 \;\Rightarrow\; 1 < \nu < 2$: heavy-tail-CLT regime,
-  partial localisation, pool-mean still converges but slowly.
-- $m = 0 \;\Rightarrow\; \nu = 1$: marginal -- pool-mean doesn't
-  converge; **localisation onset**.
-- $m > 0 \;\Rightarrow\; \nu < 1$: pool-mean diverges with $P$ ---
-  strong localisation.
-
-### 9K.2 Empirical findings at $\alpha = 1.5$, $\sigma_w = 1$
-
-At pool sizes $P \in \{16, 32, 64, 128, 256\}$, num_chis$=8$:
-
-- *Bulk* ($s \in [0.2, 1.2]$): mean slope $\approx -0.68$ (faster than
-  CLT). The faster-than-CLT scaling is the cavity-iteration convergence
-  rate (`cavity_svd_resolvent` does $P^2$ iterations per doubling), not
-  pure independent-sample statistics. **No localisation signal here**.
-
-- *Mid* ($s \in [1.5, 2.5]$): slopes scatter; transition region.
-
-- *Tail* ($s \in [2.5, 4.0]$): slope converges to $\approx 0$
-  ($\nu \to 1$). $|\Delta_\rho|$ becomes **flat in $P$** at large $s$:
-  the pool-mean fails to converge as the pool grows. This is the
-  heavy-tail signature -- **localisation onset $s_c \approx 2.0$-$2.5$
-  for these parameters**.
-
-### 9K.3 Caveat on bulk slopes (and the decoupled-iteration fix)
-
-The faster-than-CLT scaling in the bulk is *not* a delocalisation
-signature -- it's the iteration-convergence rate of `cavity_svd_resolvent`,
-which by default uses `num_steps = P^2` per doubling. As $P$ grows,
-iterations-per-element scales as $P$, so the cavity dynamics converges
-to its fixed point super-CLT. This dominates over pool-mean MC noise at
-small to moderate pool sizes. The diagnostic signature is therefore the
-*crossover* from fast convergence (bulk, $m \ll -1/2$) to flat ($m = 0$,
-tail), not the absolute slope in any region.
-
-**Fix applied:**
-`density_deviation_pool_sweep(num_steps_per_element=100)` passes
-`num_steps_fn = lambda P: 100 * P` to popdyn, so each pool element is
-updated $\sim 100$ times *regardless of pool size*. This decouples the
-mixing (iterations-per-element) from the pool-mean MC noise.
-
-With the fix, at $\alpha_\text{SV} = 1.5$ the picture is sharp:
-
-- Bulk ($s < 1$): mean slope $\approx -0.8$ (still faster than CLT --
-  pool elements share the $\chi$-profile so are not iid, but decay
-  is clear).
-- Tail ($s > 1$): slope $\equiv 0$ exactly across every SV in the
-  tail. $|\Delta_\rho|$ is flat in $P$ -- the strongest possible
-  localisation signature.
-- **Localisation onset $s_c \approx 1.0$** at $(\alpha_\text{SV}, \sigma_w)
-  = (1.5, 1.0)$.
-
-This is consistent with Tarquini-Biroli-Tarzia 2016 (TBT,
-`.agents/notes/tarquini-2015.md`) at $\mu_\text{TBT} = \alpha_\text{SV}/2
-= 0.75$: their mobility edge equation (TBT eq:mobility) predicts an
-$E^\star$ in their localised regime $\mu < 1$, and the Hermitisation
-correspondence identifies this with our $s_c$ up to a normalisation
-factor.
-
-### 9K.4 Localisation-onset $s_c$ as a function of $\alpha$
-
-Run sweep at multiple $\alpha$ to map the localisation onset across the
-operational range. Prediction from Hermitisation + BG:
-
-- $\alpha_\text{SV} \in (1, 4/3)$: strong tail localisation,
-  $s_c$ relatively small (early onset).
-- $\alpha_\text{SV} \in (4/3, 2)$: weaker localisation, $s_c$ closer to
-  spectral edge.
-- $\alpha_\text{SV} \to 2$: $s_c \to \infty$ (no localisation,
-  Marchenko-Pastur limit).
-
-This $\alpha$-sweep + $s_c$-mapping is the natural quantitative output
-of the diagnostic.
-
+- **Profile-aligned mean-LDoS index $\ell_q$.** A Jensen gap of the deterministic
+  per-position LDoS across the profile axis. It is a *density-variation* measure
+  (first-moment / $\mathrm{Im}\,G$), identically zero for unstructured and for
+  the row side of one-sided profiles, and does not detect intrinsic
+  localisation. Superseded by the transfer-operator object of Section 3.
+- **Direct closed-form $M_q = \mathbb{E}(-\mathrm{Im}\,G)^q$ via a spectral
+  measure $\Gamma$.** An attempt to compute the non-analytic IPR moment directly
+  from a self-consistency on the 2-D stable spectral measure. Stalled: the
+  direct $|G|$-moment route is the hard one that TBT's $m = 1/2$ collapse
+  sidesteps.
+- **2-D Fourier pushforward of Belinschi's single-slice CF**; **one-ray ansatz
+  for the resolvent law.** Both failed self-consistency numerically and were
+  retracted.

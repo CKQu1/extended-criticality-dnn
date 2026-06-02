@@ -1,441 +1,237 @@
-"""Localisation observables for structured heavy-tailed random matrices.
+"""Solvers and validations for RMT/localisation.md.
 
-Companion to ``RMT/localisation.md``.  Currently implements:
+Part 1 (md sec. 3.6) -- structured one-sided Levy mobility edge, the closed-form
+eq. (7): two-sided real-part closure + profile-integrated L_R + the 2x2
+Perron condition. Deterministic. Reduces to levy_mobility_edge.py at a constant
+profile (reduction gate). Valid only for mu = alpha < 1 (md sec. 3.7); for
+alpha > 1 it returns continuation artifacts -- use Part 2 there.
 
-**Profile-aligned localisation index ell_q** (sec. 2-8 of the md, all
-derived).  Jensen-gap of the deterministic per-position mean LDoS,
-detects profile-axis asymmetry of singular vectors via the
-deterministic field Y_r(x), Y_c(y) (one-sided: Y_r constant in x, all
-action on column side via slaved Y_c(y)).
+Part 2 (md sec. 3.7) -- the general Tarquini imaginary-part-stability criterion
+by complex cavity population dynamics. Valid for any alpha. The eta-scaling
+exponent  p = d log(Im G_typ) / d log eta  is 0 (delocalised) or 1 (localised);
+the mobility edge is where p crosses 1/2. This is the robust evaluation of "the
+sec. 3.7 integral operator's Perron eigenvalue = 1", and it delivers the
+profile-sparsification edge for the heavy-tailed MLP Jacobian at alpha in (1,2).
 
-**Not implemented: D_q (multifractal exponent).** Sec. 9 of the md
-sketches two formulations (via E|G|^q and E(-Im G)^q).  A 2-D-pushforward
-prototype was written here but is fundamentally limited -- Belinschi's
-1-scalar CF parameterisation does not determine the full 2-D distribution
-of Sigma needed to evaluate the pushforward.  See the "Part 2" placeholder
-in this module and sec. 9 of ``RMT/localisation.md`` for the status and
-list of paths forward.
-
-DAG: ``localisation -> {one_sided_wishart_levy, structured_wishart_levy,
-wishart_levy}``.  Acyclic.
+Run:
+  python localisation.py gate       # Part 1 reduction gate (alpha=0.5 -> 3.29)
+  python localisation.py cavity      # Part 2 unstructured vs saturating profile
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Optional
+import os
+import sys
+from contextlib import contextmanager
+from math import cos, gamma as gammafn, log, pi, sin
+from time import time
 
 import numpy as np
-from scipy import special
 
-import wishart_levy as wl
-import structured_wishart_levy as swl
-import one_sided_wishart_levy as osw
-
-# Re-export the profile spec for callers
-OneSidedProfileSpec = osw.OneSidedProfileSpec
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import levy_mobility_edge as lme  # noqa: E402
 
 
-# ===========================================================================
-# Part 1: profile-aligned localisation index ell_q
-# (Moved from one_sided_wishart_levy.py)
-# ===========================================================================
+@contextmanager
+def Timer(label, log=None):
+    tic = time()
+    yield
+    dt = time() - tic
+    print(f"[{label}] elapsed {dt:.3f}s", flush=True)
+    if log is not None:
+        log.append((label, dt))
 
 
-@dataclass
-class OneSidedLocalisationCurve:
-    alpha: float
-    gamma: float
-    q: float
-    profile_name: str
-    singular_values: np.ndarray            # shape (num_points,)
-    ell_q_col: np.ndarray                  # shape (num_points,), in [0, 1]
-    per_column_ldos: np.ndarray            # shape (num_points, profile_order)
-    column_nodes: np.ndarray               # Gauss-Legendre nodes on [0, 1]
-    column_weights: np.ndarray             # corresponding weights
-    column_profile_values: np.ndarray      # c(y_nodes)
+def _gl01(n):
+    """Gauss-Legendre nodes/weights on [0, 1]."""
+    x, w = np.polynomial.legendre.leggauss(n)
+    return 0.5 * (x + 1.0), 0.5 * w
 
 
-def _per_column_ldos_from_curve(
-    curve: osw.OneSidedTheoryCurve,
-    *,
-    c: OneSidedProfileSpec,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Reconstruct the per-column LDoS rho^{(2)}_y(s) on the curve's SV grid.
+def symmetric_stable(alpha, size, rng):
+    """Standardised symmetric alpha-stable sample (Chambers-Mallows-Stuck)."""
+    U = rng.uniform(-pi / 2.0, pi / 2.0, size)
+    W = rng.exponential(1.0, size)
+    return (np.sin(alpha * U) / np.cos(U) ** (1.0 / alpha)
+            * (np.cos((1.0 - alpha) * U) / W) ** ((1.0 - alpha) / alpha))
 
-    Uses the slaved column-field formula (eq. 8 of ``RMT/localisation.md``)
-    Y_c(y, z) = C_alpha c(y)^alpha g_alpha(Y_r(z)) / ((1 + gamma) z^alpha),
-    then independent-rule h_alpha for the readout (matches the SV-density
-    convention in one_sided_wishart_levy).
 
-    Returns (rho_per_col, y_nodes, y_weights, c_vals) where rho_per_col has
-    shape (num_points, profile_order).
+# ---------------------------------------------------------------------------
+# Part 1: structured one-sided mobility edge (eq. 7), valid mu = alpha < 1.
+# ---------------------------------------------------------------------------
+
+
+def solve_two_sided(E, alpha, c_vals, c_w, iters=200, damping=0.4, tol=1e-10):
+    """Coupled real-part closure (C_R, beta_R, C_C, beta_C); md eq. (3), sec. 3.6.
+
+    Row self-energy at profile a is alpha/2-stable, scale a^alpha C_R; column
+    self-energy is profile-averaged, scale C_C. Reuses levy_mobility_edge's
+    k-space moment integral _fourier_integral.
     """
-    alpha = curve.alpha
-    gamma = curve.gamma
-    quadrature_order = curve.quadrature_order
-    profile_order = curve.profile_order
-    output_scale = wl._output_scale(alpha, curve.entry_scale, curve.normalization)
-    C_a = wl.belinschi_constant(alpha)
-
-    cb, _ = osw._profile_callable(c)
-    y_nodes, y_w = swl._legendre01(int(profile_order))
-    c_vals = np.asarray(cb(y_nodes), dtype=float)
-    c_alpha_arr = np.abs(c_vals) ** alpha
-
-    sv = curve.singular_values
-    rho_per_col = np.zeros((sv.size, c_vals.size), dtype=float)
-    for idx in range(1, sv.size):
-        y_r = curve.y_row[idx]
-        if not np.isfinite(y_r):
-            rho_per_col[idx, :] = np.nan
-            continue
-        s_out = sv[idx]
-        s_base = s_out / output_scale
-        z = complex(s_base, curve.imag_eps)
-        z_alpha = z ** alpha
-        g_r = complex(swl._g_alpha_vec(np.array([y_r]), alpha, quadrature_order)[0])
-        Y_c_vec = (C_a * c_alpha_arr / ((1.0 + gamma) * z_alpha)) * g_r
-        rho_y = np.empty(c_vals.size, dtype=float)
-        for j, Y_c_j in enumerate(Y_c_vec):
-            h_val = osw._h_alpha_indep(complex(Y_c_j), alpha, quadrature_order)
-            rho_y[j] = max(0.0, -h_val.imag / (np.pi * s_base)) / output_scale
-        rho_per_col[idx, :] = rho_y
-    return rho_per_col, y_nodes, y_w, c_vals
+    a = alpha / 2.0
+    pre_C = gammafn(1.0 - a) ** 2 * sin(pi * a) / pi
+    cot = cos(pi * a / 2.0) / sin(pi * a / 2.0)
+    ca = c_vals ** alpha
+    CR, bR, CC, bC = 1.0, 0.0, 1.0, 0.0
+    for _ in range(iters):
+        JcC = lme._fourier_integral(E, alpha, CC, bC, a - 1.0, -1.0)
+        CR_new = max(pre_C * JcC.real, 1e-9)
+        bR_new = max(-1.0, min(1.0, cot * JcC.imag / JcC.real))
+        num = 0.0 + 0.0j
+        for cv_a, wv in zip(ca, c_w):
+            JcR = lme._fourier_integral(E, alpha, cv_a * CR_new, bR_new,
+                                        a - 1.0, -1.0)
+            num += wv * cv_a * JcR
+        CC_new = max(pre_C * num.real, 1e-9)
+        bC_new = max(-1.0, min(1.0, cot * num.imag / num.real))
+        nCR = (1 - damping) * CR + damping * CR_new
+        nbR = (1 - damping) * bR + damping * bR_new
+        nCC = (1 - damping) * CC + damping * CC_new
+        nbC = (1 - damping) * bC + damping * bC_new
+        if (abs(nCR - CR) < tol and abs(nbR - bR) < tol
+                and abs(nCC - CC) < tol and abs(nbC - bC) < tol):
+            CR, bR, CC, bC = nCR, nbR, nCC, nbC
+            break
+        CR, bR, CC, bC = nCR, nbR, nCC, nbC
+    return CR, bR, CC, bC
 
 
-def _localisation_index_from_ldos(
-    rho_per_col: np.ndarray,
-    weights: np.ndarray,
-    q: float,
-) -> np.ndarray:
-    """ell_q(s) = 1 - M_q(s) / bar_rho(s)^q via Gauss-Legendre integration.
+def L_R(E, alpha, CR, bR, c_vals, c_w):
+    """L_R = sum_v w_v c_v^{2 alpha} ell(E; alpha, c_v^alpha C_R, beta_R)."""
+    out = 0.0 + 0.0j
+    for cv, wv in zip(c_vals, c_w):
+        out += wv * cv ** (2.0 * alpha) * lme.ell_plus(E, alpha,
+                                                       cv ** alpha * CR, bR)
+    return out
 
-    rho_per_col: shape (num_points, n_y).  weights: shape (n_y,), sums to 1.
+
+def structured_perron(E, alpha, c_vals, c_w, cb=None):
+    """Perron eigenvalue of the two-leg map (eq. 7); edge at Perron = 1."""
+    if cb is None:
+        cb = solve_two_sided(E, alpha, c_vals, c_w)
+    CR, bR, CC, bC = cb
+    P = lme.ell_plus(E, alpha, CC, bC)
+    Q = L_R(E, alpha, CR, bR, c_vals, c_w)
+    Qc = np.conj(Q)
+    K2 = (alpha / 2.0 * gammafn((1.0 - alpha) / 2.0) ** 2) ** 2
+    s = sin(pi * alpha / 2.0)
+    A = K2 * P * (s * s * Q + Qc)
+    B = K2 * P * s * (Q + Qc)
+    C = K2 * np.conj(P) * s * (Q + Qc)
+    D = K2 * np.conj(P) * (s * s * Qc + Q)
+    eig = np.linalg.eigvals(np.array([[A, B], [C, D]], dtype=complex))
+    return float(np.abs(eig[np.argmax(np.abs(eig))])), cb
+
+
+def structured_edge(alpha, c_vals, c_w, Es, verbose=True):
+    """Scan E; return E where the Perron eigenvalue crosses 1 (deloc -> loc)."""
+    lams = []
+    for E in Es:
+        lam, cb = structured_perron(float(E), alpha, c_vals, c_w)
+        lams.append(lam)
+        if verbose:
+            print(f"  E={E:6.3f}  C_R={cb[0]:.3f} C_C={cb[2]:.3f}  "
+                  f"Lambda_max={lam:.4f}", flush=True)
+    lams = np.array(lams)
+    return [round(0.5 * (Es[i] + Es[i + 1]), 3) for i in range(len(lams) - 1)
+            if (lams[i] - 1) > 0 >= (lams[i + 1] - 1)]
+
+
+def reduction_gate():
+    """Constant profile, alpha=0.5: structured edge must match levy_mobility_edge."""
+    log = []
+    n = 20
+    _, w = _gl01(n)
+    c = np.ones(n)
+    with Timer("structured gate alpha=0.5", log):
+        edges = structured_edge(0.5, c, w, np.arange(2.5, 5.01, 0.25))
+    ref = lme.find_mobility_edge(0.5, E_grid=np.arange(2.5, 5.01, 0.5),
+                                 verbose=False)
+    print(f"\nstructured edge (Perron=1): {edges}")
+    print(f"levy_mobility_edge edge:    {ref}   [must match ~3.29]")
+
+
+# ---------------------------------------------------------------------------
+# Part 2: Tarquini imaginary-part stability by complex cavity population dynamics.
+# ---------------------------------------------------------------------------
+
+
+def cavity_typ_imG(E, alpha, eta, P=10000, K=100, iters=130, burn=75,
+                   a_row=None, seed=0):
+    """Typical Im G of the complex cavity RDE (LePage sum); md sec. 3.7.
+
+    a_row None -> unstructured (single pool); else a length-P quenched row
+    profile (bipartite: row pool carries the profile, column pool does not).
+    Init Im G > 0 and enforce the upper half plane (the physical branch).
     """
-    if not (0.0 < q < 1.0):
-        raise ValueError("q must satisfy 0 < q < 1 (the Jensen-concave range "
-                         "for the localisation index; see localisation.md sec. 2).")
-    bar_rho = rho_per_col @ weights
-    M_q = (rho_per_col ** q) @ weights
-    safe = bar_rho > 0.0
-    ell = np.zeros_like(bar_rho)
-    ell[safe] = 1.0 - M_q[safe] / (bar_rho[safe] ** q)
-    ell[~safe] = np.nan
-    return np.clip(ell, 0.0, 1.0)
-
-
-def localisation_index_curve(
-    alpha: float,
-    gamma: float,
-    c: OneSidedProfileSpec,
-    *,
-    q: Optional[float] = None,
-    curve: Optional[osw.OneSidedTheoryCurve] = None,
-    s_max: float = 8.0,
-    num_points: int = 161,
-    entry_scale: float = 1.0,
-    normalization: str = "stable",
-    imag_eps: float = 1e-3,
-    quadrature_order: int = 96,
-    profile_order: int = 64,
-    tol: float = 1e-12,
-) -> OneSidedLocalisationCurve:
-    """Column-side profile-aligned localisation index ell_q^{(2)}(s).
-
-    Specialisation of ``RMT/localisation.md`` to the one-sided
-    ``|tau(x, y)| = c(y)`` case (sec. 8): the row index ell_q^{(1)} is
-    identically zero, all profile-aligned localisation lives on the
-    column side via the slaved Y_c(y, z).
-
-    If ``curve`` is given the field is reused (no extra Theorem 2 solve);
-    otherwise it is computed.  Default ``q = alpha / 2`` parallels
-    Bordenave-Guionnet; restrict to ``0 < q < 1`` so that Jensen's
-    concavity applies (see localisation.md sec. 2).
-    """
-    alpha = wl._validate_alpha(alpha)
-    gamma = wl._validate_gamma(gamma)
-    if q is None:
-        q = alpha / 2.0
-    if curve is None:
-        curve = osw.theoretical_one_sided_singular_value_curve(
-            alpha, gamma, c, s_max=s_max, num_points=num_points,
-            entry_scale=entry_scale, normalization=normalization,
-            imag_eps=imag_eps, quadrature_order=quadrature_order,
-            profile_order=profile_order, tol=tol,
-        )
-    rho_per_col, y_nodes, y_w, c_vals = _per_column_ldos_from_curve(curve, c=c)
-    ell = _localisation_index_from_ldos(rho_per_col, y_w, float(q))
-    return OneSidedLocalisationCurve(
-        alpha=float(alpha), gamma=float(gamma), q=float(q),
-        profile_name=curve.profile_name,
-        singular_values=curve.singular_values,
-        ell_q_col=ell,
-        per_column_ldos=rho_per_col,
-        column_nodes=y_nodes,
-        column_weights=y_w,
-        column_profile_values=c_vals,
-    )
-
-
-def empirical_localisation_index_from_svd(
-    alpha: float,
-    gamma: float,
-    c: OneSidedProfileSpec,
-    *,
-    q: Optional[float] = None,
-    n_rows: int = 400,
-    num_matrices: int = 60,
-    entry_scale: float = 1.0,
-    normalization: str = "stable",
-    sv_bins: int = 21,
-    sv_range: Optional[tuple[float, float]] = None,
-    seed: Optional[int] = None,
-    n_col_bins: Optional[int] = None,
-) -> dict:
-    """Empirical ell_q^{(2)}(s) from SVD right singular vectors.
-
-    For each sampled matrix, computes |v_k(j)|^2 (squared right-SV component
-    at column j) and accumulates into a 2-D histogram binned by (SV, column
-    position).  The Jensen gap (eq. 3 of localisation.md, sec. 2) is then
-    evaluated bin-by-bin on the smoothed per-column LDoS.
-
-    ``n_col_bins`` defaults to ceil(sqrt(n_cols)) -- coarser than per-column
-    so the per-bin mass is large enough to estimate the q-moment reliably.
-    """
-    alpha = wl._validate_alpha(alpha)
-    gamma = wl._validate_gamma(gamma)
-    if q is None:
-        q = alpha / 2.0
-    if not (0.0 < q < 1.0):
-        raise ValueError("q must satisfy 0 < q < 1.")
     rng = np.random.default_rng(seed)
-    n_cols = max(1, int(round(gamma * n_rows)))
-    if n_col_bins is None:
-        n_col_bins = max(8, int(np.ceil(np.sqrt(n_cols))))
-
-    if sv_range is None:
-        M0, _y, _c = osw.sample_one_sided_levy_matrix(
-            n_rows, alpha, gamma, c, entry_scale=entry_scale,
-            normalization=normalization, random_state=rng,
-        )
-        s0 = np.linalg.svd(M0, compute_uv=False)
-        sv_range = (0.0, float(np.percentile(s0, 99.0)))
-
-    sv_edges = np.linspace(sv_range[0], sv_range[1], int(sv_bins) + 1)
-    sv_centres = 0.5 * (sv_edges[1:] + sv_edges[:-1])
-    col_edges = np.linspace(0.0, 1.0, int(n_col_bins) + 1)
-    col_centres = 0.5 * (col_edges[1:] + col_edges[:-1])
-
-    hist = np.zeros((sv_bins, n_col_bins), dtype=float)
-    sv_count = np.zeros(sv_bins, dtype=float)
-    j_grid = (np.arange(n_cols) + 0.5) / n_cols
-    j_bin = np.clip(np.digitize(j_grid, col_edges) - 1, 0, n_col_bins - 1)
-
-    for _ in range(num_matrices):
-        M, _, _ = osw.sample_one_sided_levy_matrix(
-            n_rows, alpha, gamma, c, entry_scale=entry_scale,
-            normalization=normalization, random_state=rng,
-        )
-        _, s, vh = np.linalg.svd(M, full_matrices=False)
-        amp_sq = np.abs(vh) ** 2
-        s_bin = np.digitize(s, sv_edges) - 1
-        valid = (s_bin >= 0) & (s_bin < sv_bins)
-        for k in np.where(valid)[0]:
-            sb = s_bin[k]
-            np.add.at(hist[sb], j_bin, amp_sq[k])
-            sv_count[sb] += 1.0
-
-    safe = sv_count > 0
-    ldos = np.zeros_like(hist)
-    ldos[safe] = hist[safe] / sv_count[safe, None] / (1.0 / n_col_bins)
-
-    weights = np.full(n_col_bins, 1.0 / n_col_bins)
-    bar_rho = ldos @ weights
-    M_q = (ldos ** q) @ weights
-    ell = np.zeros(sv_bins, dtype=float)
-    pos = bar_rho > 0.0
-    ell[pos] = 1.0 - M_q[pos] / (bar_rho[pos] ** q)
-    ell = np.clip(ell, 0.0, 1.0)
-    ell[~pos] = np.nan
-    return {
-        "sv_centres": sv_centres,
-        "sv_edges": sv_edges,
-        "column_bin_centres": col_centres,
-        "per_column_ldos": ldos,
-        "ell_q_col": ell,
-        "sv_counts": sv_count,
-        "q": float(q),
-        "n_rows": int(n_rows),
-        "n_cols": int(n_cols),
-        "n_col_bins": int(n_col_bins),
-        "num_matrices": int(num_matrices),
-    }
+    tw = -2.0 / alpha
+    z = E + 1j * eta
+    if a_row is None:
+        G = np.full(P, 0.5j, dtype=complex)
+        logs = []
+        for it in range(iters):
+            amp = np.cumsum(rng.exponential(1.0, (P, K)), axis=1) ** tw
+            Gnb = G[rng.integers(0, P, (P, K))]
+            G = 1.0 / (z - (amp * Gnb).sum(axis=1))
+            G.imag[:] = np.abs(G.imag)
+            if it >= burn:
+                logs.append(np.mean(np.log(np.clip(G.imag, 1e-300, None))))
+        return float(np.exp(np.mean(logs)))
+    a2 = a_row ** 2
+    Gr = np.full(P, 0.5j, dtype=complex)
+    Gc = np.full(P, 0.5j, dtype=complex)
+    logs = []
+    for it in range(iters):
+        amp = np.cumsum(rng.exponential(1.0, (P, K)), axis=1) ** tw
+        Gnb = Gc[rng.integers(0, P, (P, K))]
+        Gr = 1.0 / (z - a2 * (amp * Gnb).sum(axis=1))
+        Gr.imag[:] = np.abs(Gr.imag)
+        amp = np.cumsum(rng.exponential(1.0, (P, K)), axis=1) ** tw
+        nb = rng.integers(0, P, (P, K))
+        Gc = 1.0 / (z - (amp * a2[nb] * Gr[nb]).sum(axis=1))
+        Gc.imag[:] = np.abs(Gc.imag)
+        if it >= burn:
+            logs.append(np.mean(np.log(np.clip(Gr.imag, 1e-300, None))))
+    return float(np.exp(np.mean(logs)))
 
 
-# ===========================================================================
-# Part 2: D_q (multifractal exponent) -- NOT IMPLEMENTED
-# ===========================================================================
-#
-# The 2-D-pushforward scheme sketched in sec. 9F of RMT/localisation.md
-# was prototyped here but is fundamentally limited: Belinschi's `cocott`
-# formula parameterises P^{mu^z_r} through a single complex scalar X_r,
-# which determines the LT/CF only along a one-parameter slice of the 2-D
-# Fourier domain, not the full 2-D distribution.  Recovering the density
-# of Sigma on C^- via 2-D inverse FFT therefore requires the full 2-D
-# CF, which BAG/Belinschi do not establish from Y_r alone (BAG line 405:
-# "we cannot prove uniqueness of the solution to this equation" for the
-# full mu^z_r).  Numerically the symptom is that the inverse FFT of the
-# 1-slice CF puts non-trivial mass on Im Sigma > 0, contradicting the
-# C^- support property.
-#
-# Paths forward, deferred until a path is selected:
-#   (1) Closed-form analytic moments only: E[G^q] = g_{alpha, 2q}(Y_r);
-#       gives complex moments at any q, NOT the IPR moments.
-#   (2) Rotationally-symmetric ansatz on mu^z_r (Cizeau-Bouchaud style)
-#       and proceed -- non-rigorous.
-#   (3) Population dynamics on the cavity RDE.  Valid for convergent
-#       (q < q_c) moments; pool extremes don't extrapolate to physical
-#       N above q_c (the user's stated objection).
-#   (4) Additional self-consistency equations beyond X_r: e.g., for
-#       int |x|^{alpha/2} dmu^z, int x dmu^z, etc.  New derivation
-#       work; not in the literature I have notes for.
-#   (5) Empirical-only D_q from MLP-Jacobian SVDs via RMT.MLP_agg.
-#
-# See RMT/localisation.md sec. 9 for the full status discussion.
+def eta_exponent(E, alpha, a_row=None, eta_hi=1e-2, eta_lo=1e-3, **kw):
+    """p = d log(Im G_typ)/d log eta : 0 delocalised, 1 localised."""
+    thi = cavity_typ_imG(E, alpha, eta_hi, a_row=a_row, seed=0, **kw)
+    tlo = cavity_typ_imG(E, alpha, eta_lo, a_row=a_row, seed=1, **kw)
+    return log(thi / tlo) / log(eta_hi / eta_lo), thi, tlo
 
 
-# ===========================================================================
-# D_q via the cavity-RDE population dynamics (sec. 9H of localisation.md)
-# ===========================================================================
-#
-# Formula (eq. 14 of localisation.md):
-#     D_q(lambda) = 1 - log[M_q / (pi rho)^q] / ((q - 1) log N)
-#     M_q = E_{mu^z}[(-Im G)^q]
-# with mu^z the BAG/Belinschi cavity-resolvent distribution.  mu^z is
-# realised numerically via the cavity RDE (RMT.cavity_svd_resolvent),
-# which maintains pool samples representing mu^z_r (row side, left SVs)
-# and mu^z_c (column side, right SVs).
-
-
-def theoretical_Dq_curve_popdyn(
-    alpha: float,
-    sigma_w: float,
-    q_grid: np.ndarray,
-    sv_grid: np.ndarray,
-    *,
-    phi: object = None,
-    sigma_b: float = 0.0,
-    q_star: Optional[float] = None,
-    N_reference: int = 256,
-    num_doublings: int = 7,
-    num_chis: int = 1,
-    seed: Optional[int] = None,
-) -> dict:
-    """Theoretical D_q on the row (left) and column (right) sides, with
-    the cavity-ensemble moment M_q obtained from population dynamics on
-    the BAG cavity RDE.
-
-    Sec. 9H of RMT/localisation.md.  Implements eq. (14):
-        D_q = 1 - log[M_q / (pi rho)^q] / ((q - 1) log N_reference)
-    with M_q = E_{mu^z}[(-Im G)^q] read off from the converged cavity
-    pool produced by RMT.cavity_svd_resolvent.
-
-    Parameters
-    ----------
-    sigma_w, alpha, phi, sigma_b
-        Heavy-tailed MLP parameters; phi defaults to torch.tanh.  Used to
-        build the chi-profile chi_j = sigma_w |phi'((q*)^{1/a} z_j)|,
-        z_j ~ p_alpha, matching the structured-Wishart-Levy column
-        profile c(v) = F^{-1}_{|phi'(S* Z)|}(v) of ht_mlp_jacobian.md.
-    q_grid : array of q values for D_q.
-    sv_grid : array of singular values lambda for D_q(lambda).
-    N_reference : the physical N for the finite-N D_q formula.
-    num_doublings, num_chis : passed to RMT.cavity_svd_resolvent.
-    """
-    # late imports to keep DAG light
-    import sys as _sys
-    from pathlib import Path
-    here = Path(__file__).resolve().parent.parent
-    if str(here) not in _sys.path:
-        _sys.path.insert(0, str(here))
-    import RMT  # type: ignore
-    import torch as _torch
-
-    if phi is None:
-        phi = _torch.tanh
-
-    alpha = wl._validate_alpha(alpha)
-    q_grid = np.asarray(q_grid, dtype=float)
-    sv_grid = np.asarray(sv_grid, dtype=float)
-
-    if q_star is None:
-        q_star = RMT.q_star_MC(alpha, sigma_w, sigma_b=sigma_b, phi=phi,
-                               seed=seed)[-1]
-
-    if seed is not None:
-        _torch.manual_seed(int(seed))
-    sing_vals_t = _torch.tensor(sv_grid)
-    pop_size = 1
-    g1 = g2 = None
-    phi_prime = _torch.func.vmap(_torch.func.vmap(_torch.func.grad(phi)))
-    for i in range(int(num_doublings)):
-        pop_size *= 2
-        if alpha != 2.0:
-            stable_samples = RMT.stable_dist_sample(
-                alpha, scale=2.0 ** (-1.0 / alpha), size=(num_chis, pop_size),
-            )
+def cavity_localization(alpha=1.5, sigmas=(0.0, 1.5),
+                        Es=(0.5, 1.5, 2.5, 3.5, 4.5, 5.5), P=10000, K=100,
+                        seed=7):
+    """Unstructured (delocalised baseline) vs saturating tanh row profile."""
+    rng = np.random.default_rng(seed)
+    for sig in sigmas:
+        if sig == 0.0:
+            a_row, sat = None, 0.0
         else:
-            stable_samples = _torch.randn(num_chis, pop_size)
-        chi_samples = sigma_w * phi_prime(q_star ** (1.0 / alpha) * stable_samples)
-        g1, g2 = RMT.cavity_svd_resolvent(
-            sing_vals_t, alpha, chi_samples,
-            num_steps=pop_size ** 2,
-            g1=None if i == 0 else g1.repeat(1, 1, 2),
-            g2=None if i == 0 else g2.repeat(1, 1, 2),
-            progress=False,
-        )
+            h = sig * symmetric_stable(alpha, P, rng)
+            a_row = 1.0 / np.cosh(h) ** 2
+            sat = float((a_row < 0.05).mean())
+        print(f"\nalpha={alpha}  sigma_h={sig}  saturated-frac={sat:.2f}")
+        with Timer(f"cavity sigma_h={sig}"):
+            ps = []
+            for E in Es:
+                p, thi, tlo = eta_exponent(E, alpha, a_row=a_row, P=P, K=K)
+                ps.append(p)
+                print(f"  E={E:4.1f}  ImG_typ={thi:.2e}/{tlo:.2e}  p={p:+.3f}"
+                      f"  {'LOCALISED' if p > 0.5 else ''}", flush=True)
+        edges = [round(0.5 * (Es[i] + Es[i + 1]), 2)
+                 for i in range(len(ps) - 1)
+                 if (ps[i] - 0.5) < 0 <= (ps[i + 1] - 0.5)]
+        print(f"  -> sigma_h={sig}: mobility edge (p=1/2) at {edges}")
 
-    # g1, g2: shape (len(sv), num_chis, pop_size), complex.
-    # rho(lambda) from the bipartite resolvent (cf. RMT.resolvent_pdf):
-    #   rho = (Im g1.sum + Im g2.sum) / (pi * (pop_size_r + pop_size_c))
-    g1_np = g1.cpu().numpy()
-    g2_np = g2.cpu().numpy()
-    # Cavity resolvent for SV problem has Im g > 0 (from -1/(lambda + ...) form
-    # in cavity_svd_resolvent); the spectral density per RMT.resolvent_pdf uses
-    # Im directly (no negation).
-    im_g1 = np.maximum(0.0, g1_np.imag).reshape(g1_np.shape[0], -1)
-    im_g2 = np.maximum(0.0, g2_np.imag).reshape(g2_np.shape[0], -1)
-    rho = (im_g1.mean(axis=-1) + im_g2.mean(axis=-1)) / np.pi  # shape (len(sv),)
 
-    log_N = float(np.log(max(int(N_reference), 2)))
-
-    def _Dq_from_pool(im_g_pool: np.ndarray) -> np.ndarray:
-        """Compute D_q at each sv, q from one side's pool."""
-        # im_g_pool: shape (len(sv), pool_total)
-        Dq = np.full((im_g_pool.shape[0], q_grid.size), np.nan, dtype=float)
-        for j, q in enumerate(q_grid):
-            if abs(float(q) - 1.0) < 1e-12:
-                Dq[:, j] = 1.0
-                continue
-            M_q = np.mean(im_g_pool ** float(q), axis=-1)
-            denom = (np.pi * np.maximum(rho, 1e-15)) ** float(q)
-            ratio = M_q / np.maximum(denom, 1e-300)
-            ok = (ratio > 0) & np.isfinite(ratio)
-            Dq[ok, j] = 1.0 - np.log(ratio[ok]) / ((float(q) - 1.0) * log_N)
-        return Dq
-
-    Dq_left = _Dq_from_pool(im_g1)      # row side -> left SVs
-    Dq_right = _Dq_from_pool(im_g2)     # column side -> right SVs
-
-    return {
-        "sv_grid": sv_grid,
-        "q_grid": q_grid,
-        "rho": rho,
-        "Dq_left": Dq_left,         # shape (len(sv), len(q))
-        "Dq_right": Dq_right,
-        "N_reference": int(N_reference),
-        "pool_size": int(pop_size),
-        "num_chis": int(num_chis),
-        "q_star": float(q_star),
-    }
-
+if __name__ == "__main__":
+    mode = sys.argv[1] if len(sys.argv) > 1 else "gate"
+    if mode == "cavity":
+        cavity_localization()
+    else:
+        reduction_gate()
