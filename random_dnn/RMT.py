@@ -9,7 +9,6 @@ import torch
 
 # from torch.autograd.functional import jacobian
 from torch.func import vmap, grad
-from torchlevy import stable_dist
 
 from collections import defaultdict
 from functools import partial
@@ -19,20 +18,30 @@ from time import time
 # Helper functions
 
 
-def stable_dist_sample(*args, **kwargs):
-    """Wrapper for `stable_dist.sample` that avoids nans.
+def stable_dist_sample(alpha, beta=0, size=1, loc=0.0, scale=1.0, dtype=torch.float32):
+    """Symmetric alpha-stable sampler via the Chambers-Mallows-Stuck method.
 
-    torchlevy has an issue with occasional nans, while scipy is slow at generating stable samples.
+    Drop-in replacement for the former `torchlevy.stable_dist.sample`. Uses the
+    Weron arrangement
+        z = sin(a U) / cos(U)^(1/a) * (cos((1-a) U) / W)^((1-a)/a),
+    with U ~ Unif(-pi/2, pi/2), W ~ Exp(1). This is the same algorithm scipy's
+    `levy_stable.rvs` uses (verified statistically identical), but vectorized on
+    the default torch device and NaN-free -- the Weron form has no cos/tan
+    singularity, so the previous NaN-retry loop is unnecessary. Only the
+    symmetric case (beta=0) is used in this project.
     """
-    out = stable_dist.sample(*args, **kwargs)
-    nan_mask = out.isnan()
-    nan_count = nan_mask.sum().item()
-    while nan_count > 0:
-        kwargs["size"] = nan_count
-        out[nan_mask] = stable_dist.sample(*args, **kwargs)
-        nan_mask = out.isnan()
-        nan_count = nan_mask.sum().item()
-    return out
+    assert beta == 0, "stable_dist_sample only supports the symmetric case beta=0"
+    if alpha == 2:  # symmetric 2-stable is Gaussian with variance 2 (CF exp(-t^2))
+        return torch.randn(size, dtype=dtype) * 2 ** 0.5 * scale + loc
+    eps = torch.finfo(dtype).eps
+    U = (torch.rand(size, dtype=dtype).clamp_min(eps) - 0.5) * torch.pi
+    W = -torch.log(torch.rand(size, dtype=dtype).clamp_min(eps))
+    z = (
+        torch.sin(alpha * U)
+        / torch.cos(U) ** (1.0 / alpha)
+        * (torch.cos((1.0 - alpha) * U) / W) ** ((1.0 - alpha) / alpha)
+    )
+    return z * scale + loc
 
 
 # Empirical MLP functions with randomly drawn weights
@@ -288,9 +297,8 @@ def q_star_MC(
 ):
     """Monte-Carlo version of the fixed point pseudolength.
 
-    A MC approach was needed because evaluating pdfs is slow on scipy
-    and inaccurate on torchlevy, especially for alpha close to 1.
-    This issue does not exist for torchlevy when generating random samples.
+    A MC approach was needed because evaluating stable pdfs is slow (especially for alpha close to 1); drawing stable random
+    samples does not have this issue.
 
     Takes about 10 MB of memory and 0.2 seconds for 1 million samples on cpu,
     with a numerical error of about 0.5%.

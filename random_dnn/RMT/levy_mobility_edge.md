@@ -5,7 +5,14 @@ following Tarquini-Biroli-Tarzia (`.agents/notes/tarquini-2015.md`, arXiv
 1507.00296, PRL 116, 010601). This is the unstructured warm-up for the
 Hermitisation-mapped heavy-tailed Jacobian SV problem of `RMT/localisation.md`:
 if we cannot reproduce TBT's own mobility edge in their clean symmetric-Levy
-setting, we cannot trust the mapped prediction `s_c(alpha_SV) = E*(alpha_SV/2)`.
+setting, we cannot trust the mapped prediction for the Jacobian. The map is
+`mu = alpha_SV` (NOT `alpha_SV/2`: the squared-entry index is already internal
+to the cavity RDE, so there is no extra Hermitisation halving --
+`localisation.md` sec. 4). Hence for the operational range `alpha_SV in (1,2)`
+we have `mu > 1`, where this solver correctly returns NO edge
+(Bordenave-Guionnet delocalisation); the Jacobian's localised tail there is
+profile-induced, outside the unstructured TBT equation. The solver is the
+quantitative reference only for `mu = alpha_SV < 1`.
 
 ## Setup
 
@@ -131,9 +138,21 @@ data rules out.
 ## Relevance to the project
 
 Via the bipartite Hermitisation (`RMT/hermitisation.md`,
-`RMT/localisation.md` sec. 9J), the rectangular SV problem at stability
-alpha_SV maps to a Wigner-Levy problem at mu = alpha_SV / 2. The empirical
-localisation onset s_c(alpha_SV) from the density-deviation diagnostic should
-equal E*(alpha_SV/2) from this solver (modulo the Hermitisation mass split and
-SciPy-Belinschi scale). The structured (column-profile c(y)) generalisation of
-step 1's self-consistency is the open follow-on.
+`RMT/localisation.md` sec. 4), the rectangular SV problem at entry stability
+alpha_SV maps to a Wigner-Levy problem at mu = alpha_SV -- NOT mu = alpha_SV / 2.
+The squared-entry index alpha_SV/2 is already internal to the cavity RDE for any
+symmetric or bipartite heavy-tailed matrix (Bordenave-Guionnet 2012), so there
+is no second Hermitisation halving. Consequently:
+
+- For the operational range alpha_SV in (1, 2), mu = alpha_SV > 1, and this
+  solver returns no edge -- Bordenave-Guionnet delocalisation. There is no
+  E*(alpha_SV/2) to convert to s_c; the unstructured SV problem has no
+  asymptotic mobility edge in this range.
+- The localised tail seen empirically in the heavy-tailed MLP Jacobian for
+  alpha_SV in (1, 2) is therefore profile-induced (saturating column/row
+  profile), a structural mechanism outside this unstructured equation -- see
+  `RMT/localisation.md` sec. 3.6-3.9.
+- This solver is the quantitative reference only for mu = alpha_SV < 1.
+
+The structured (column-profile c(y)) generalisation of step 1's self-consistency
+is the open follow-on.

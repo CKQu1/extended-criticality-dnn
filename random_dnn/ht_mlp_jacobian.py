@@ -80,7 +80,7 @@ class JacobianProfile:
     alpha: float
     sigma_w: float
     q_star: float
-    S_star: float
+    pre_scale: float
     profile_samples: np.ndarray   # sorted ascending |phi'(S* Z)| samples
     profile_alpha_moment: float   # E|phi'(S* Z)|^a
 
@@ -103,15 +103,15 @@ def jacobian_profile(
     if q_star is None:
         q_star = RMT.q_star_MC(alpha, sigma_w, sigma_b=sigma_b, phi=phi,
                                seed=seed)[-1]
-    S_star = q_star ** (1.0 / alpha)
+    pre_scale = q_star ** (1.0 / alpha)
     z = _belinschi_stable_samples(alpha, n_samples, seed=seed)
     phi_prime = torch.func.vmap(torch.func.grad(phi))
-    samples = phi_prime(torch.tensor(S_star * z)).abs().cpu().numpy()
+    samples = phi_prime(torch.tensor(pre_scale * z)).abs().cpu().numpy()
     samples = np.sort(samples)
     moment = float(np.mean(samples ** alpha))
     return JacobianProfile(
         alpha=float(alpha), sigma_w=float(sigma_w), q_star=float(q_star),
-        S_star=float(S_star), profile_samples=samples,
+        pre_scale=float(pre_scale), profile_samples=samples,
         profile_alpha_moment=moment,
     )
 
@@ -251,9 +251,9 @@ def _scipy_stable_matrix(
     """Draw a matrix of i.i.d. SciPy unit-scale symmetric alpha-stable entries.
 
     SciPy convention (char fn exp(-|t|^a)) matches what `RMT.py:MLP` actually
-    samples (torchlevy default = SciPy convention, since `q_star_MC` /
-    `MFT_map` explicitly pass `scale=2**(-1/alpha)` to *convert* to
-    Belinschi).  The Belinschi-vs-SciPy factor of 2**(-1/alpha) is absorbed
+    samples (`RMT.stable_dist_sample` is unit-scale SciPy convention, since
+    `q_star_MC` / `MFT_map` explicitly pass `scale=2**(-1/alpha)` to *convert*
+    to Belinschi).  The Belinschi-vs-SciPy factor of 2**(-1/alpha) is absorbed
     into the matrix prefactor (sigma_w * (2N)**(-1/alpha) = sigma_w *
     N**(-1/alpha) * 2**(-1/alpha)) by the MLP code.
     """
@@ -289,14 +289,14 @@ def synthetic_jacobian_sv_spectrum(
     if q_star is None:
         q_star = RMT.q_star_MC(alpha, sigma_w, sigma_b=sigma_b, phi=phi,
                                seed=seed)[-1]
-    S_star = q_star ** (1.0 / alpha)
+    pre_scale = q_star ** (1.0 / alpha)
     rng = np.random.default_rng(seed)
     phi_prime = torch.func.vmap(torch.func.grad(phi))
     w_scale = sigma_w * (2.0 * N) ** (-1.0 / alpha)
     all_sv = []
     for _ in range(num_matrices):
         sub_seed = int(rng.integers(0, 2**31 - 1))
-        h = S_star * _belinschi_stable_samples(alpha, N, seed=sub_seed)
+        h = pre_scale * _belinschi_stable_samples(alpha, N, seed=sub_seed)
         d = phi_prime(torch.tensor(h)).cpu().numpy()
         W = w_scale * _scipy_stable_matrix(alpha, (N, N), seed=sub_seed + 1)
         J = d[:, None] * W                      # D W
@@ -311,7 +311,7 @@ def synthetic_jacobian_sv_spectrum(
         "density": density,
         "edges": edges,
         "q_star": float(q_star),
-        "S_star": float(S_star),
+        "pre_scale": float(pre_scale),
         "N": int(N),
         "num_matrices": int(num_matrices),
     }
@@ -537,7 +537,7 @@ def synthetic_jacobian_Dq_spectrum(
     if q_star is None:
         q_star = RMT.q_star_MC(alpha, sigma_w, sigma_b=sigma_b, phi=phi,
                                seed=seed)[-1]
-    S_star = q_star ** (1.0 / alpha)
+    pre_scale = q_star ** (1.0 / alpha)
     rng = np.random.default_rng(seed)
     log_N = float(np.log(N))
     phi_prime = torch.func.vmap(torch.func.grad(phi))
@@ -545,7 +545,7 @@ def synthetic_jacobian_Dq_spectrum(
 
     if sv_range is None:
         sub_seed0 = int(rng.integers(0, 2**31 - 1))
-        h0 = S_star * _belinschi_stable_samples(alpha, N, seed=sub_seed0)
+        h0 = pre_scale * _belinschi_stable_samples(alpha, N, seed=sub_seed0)
         d0 = phi_prime(torch.tensor(h0)).cpu().numpy()
         W0 = w_scale * _scipy_stable_matrix(alpha, (N, N), seed=sub_seed0 + 1)
         s0 = np.linalg.svd(d0[:, None] * W0, compute_uv=False)
@@ -559,7 +559,7 @@ def synthetic_jacobian_Dq_spectrum(
 
     for _ in range(num_matrices):
         sub_seed = int(rng.integers(0, 2**31 - 1))
-        h = S_star * _belinschi_stable_samples(alpha, N, seed=sub_seed)
+        h = pre_scale * _belinschi_stable_samples(alpha, N, seed=sub_seed)
         d = phi_prime(torch.tensor(h)).cpu().numpy()
         W = w_scale * _scipy_stable_matrix(alpha, (N, N), seed=sub_seed + 1)
         J = d[:, None] * W
@@ -602,7 +602,7 @@ def synthetic_jacobian_Dq_spectrum(
         "Dq_right_mean": Dq_right_mean,
         "bin_count": bin_count,
         "q_star": float(q_star),
-        "S_star": float(S_star),
+        "pre_scale": float(pre_scale),
         "N": int(N),
         "num_matrices": int(num_matrices),
     }
@@ -645,7 +645,7 @@ def density_deviation_diagnostic(
       - delta_abs:      |rho_popdyn - rho_thy| (signed deviation).
       - delta_signal:   |rho_popdyn - rho_thy| / max(rho_popdyn_std, eps_floor)
                         -- signal-to-noise of the deviation (S/N > 3 ~ real).
-      - q_star, S_star: heavy-tailed length-map fixed point.
+      - q_star, pre_scale: heavy-tailed length-map fixed point.
     """
     profile = jacobian_profile(alpha, sigma_w, phi=phi, sigma_b=sigma_b,
                                seed=seed)
@@ -682,7 +682,7 @@ def density_deviation_diagnostic(
         "delta_abs": delta_abs,
         "delta_signal": delta_signal,
         "q_star": profile.q_star,
-        "S_star": profile.S_star,
+        "pre_scale": profile.pre_scale,
         "alpha": float(alpha),
         "sigma_w": float(sigma_w),
         "num_doublings": int(num_doublings),
@@ -976,6 +976,171 @@ def verify_Dq_formula(
 
 
 # ---------------------------------------------------------------------------
+# Singular-vector localisation mobility edge (Tarquini imaginary-part-stability
+# cavity, RMT/localisation.py Part 2) driven by the real MFT fixed-point row
+# profile a_i = sigma_W * |phi'(S* Z_i)| (PHYSICAL: the global entry scale
+# sigma_W is in the Jacobian multiplier).  See ht_mlp_jacobian.md sec. 6.
+# ---------------------------------------------------------------------------
+
+import localisation as loc  # noqa: E402  -- RMT/localisation.py cavity criterion
+
+
+def jacobian_localization_edge(
+    alpha: float,
+    sigma_W: float,
+    *,
+    phi: Callable = torch.tanh,
+    sigma_b: float = 0.0,
+    Es_norm=(0.5, 1.5, 2.5, 3.5, 4.5, 5.5),
+    P: int = 10000,
+    K: int = 100,
+    q_star: Optional[float] = None,
+    profile: Optional[JacobianProfile] = None,
+    seed: int = 0,
+):
+    """Physical SV-localisation mobility edge s_c of J^l = D^l W^l at q*.
+
+    Drives the Tarquini eta-scaling criterion (`localisation.py` Part 2) with the
+    *physical* fixed-point row profile a_i = sigma_W * |phi'(S* Z_i)| -- the
+    Jacobian entry is J_ij = |phi'(h_i)| * sigma_W N^{-1/alpha} xi_ij, so the
+    global scale sigma_W belongs in the multiplier.  Singular values of J scale
+    linearly in sigma_W (verified), hence so does the edge: the physical
+    s_c = sigma_W * (entry-scale-1 cavity edge).  We carry sigma_W explicitly by
+    scaling the profile, the energy grid, and eta all by sigma_W -- the
+    eta-scaling exponent p is scale-invariant, so this reproduces the normalised
+    p(E) at physical energies E = sigma_W * E_norm.
+
+    The bipartite Hermitisation spectrum is +/- s, so the cavity energy E is the
+    singular value s; the mobility edge is s_c = E where p = d log Im G_typ /
+    d log eta crosses 1/2 (delocalised -> localised).
+
+    Returns a dict: s_c (None if no crossing), saturated_frac, q_star, pre_scale,
+    Es (physical), p_of_E.
+    """
+    log: list = []
+    with Timer(f"jac-loc-edge alpha={alpha} sigma_W={sigma_W}", log):
+        if profile is None:
+            profile = jacobian_profile(alpha, sigma_W, phi=phi, sigma_b=sigma_b,
+                                       q_star=q_star, n_samples=P, seed=seed)
+        # PHYSICAL profile multiplier: sigma_W * |phi'(S* Z)|.
+        a_row = sigma_W * profile.profile_samples.astype(float)
+        sat = float((profile.profile_samples < 0.05).mean())
+        Es = tuple(sigma_W * e for e in Es_norm)        # physical energy grid
+        eta_hi, eta_lo = sigma_W * 1e-2, sigma_W * 1e-3  # physical regulators
+        ps = []
+        for E in Es:
+            p, _thi, _tlo = loc.eta_exponent(float(E), float(alpha), a_row=a_row,
+                                             eta_hi=eta_hi, eta_lo=eta_lo, P=P, K=K)
+            ps.append(p)
+    ps = np.asarray(ps)
+    s_c = None
+    for i in range(len(ps) - 1):
+        if ps[i] < 0.5 <= ps[i + 1]:  # first deloc -> loc crossing
+            t = (0.5 - ps[i]) / (ps[i + 1] - ps[i])
+            s_c = float(Es[i] + t * (Es[i + 1] - Es[i]))
+            break
+    return {
+        "alpha": float(alpha), "sigma_W": float(sigma_W),
+        "q_star": profile.q_star, "pre_scale": profile.pre_scale,
+        "saturated_frac": sat, "Es": [float(e) for e in Es],
+        "p_of_E": ps.tolist(), "s_c": s_c, "timings": log,
+    }
+
+
+def jacobian_localization_phase(
+    alpha_vals=(1.3, 1.5, 1.7, 1.9),
+    sigma_W_vals=(1.0, 1.5, 2.0, 3.0, 4.0),
+    *,
+    phi: Callable = torch.tanh,
+    sigma_b: float = 0.0,
+    Es_norm=(0.5, 1.5, 2.5, 3.5, 4.5, 5.5),
+    P: int = 8000,
+    K: int = 100,
+    seed: int = 0,
+):
+    """Physical s_c(alpha, sigma_W) localisation boundary in the paper's plane.
+
+    For each grid point: build the fixed-point profile, run the physical cavity
+    edge finder.  Returns a list of `jacobian_localization_edge` dicts and prints
+    a compact (alpha, sigma_W) -> (saturated frac, physical s_c) table.
+    """
+    rows = []
+    log: list = []
+    with Timer("jac-loc phase sweep", log):
+        for a in alpha_vals:
+            for sw in sigma_W_vals:
+                res = jacobian_localization_edge(
+                    a, sw, phi=phi, sigma_b=sigma_b, Es_norm=Es_norm,
+                    P=P, K=K, seed=seed)
+                rows.append(res)
+                edge = "deloc" if res["s_c"] is None else f"{res['s_c']:.2f}"
+                print(f"  alpha={a:.2f} sigma_W={sw:.2f}  q*={res['q_star']:.3g}"
+                      f"  sat={res['saturated_frac']:.2f}  s_c={edge}",
+                      flush=True)
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Edge-truncated mean-square singular gain chi_1^{<s_c}: the finite effective
+# edge-of-chaos gain of the extended (delocalised) modes.  See ht_mlp_jacobian.md
+# sec. 6.  The full chi_1 = <s^2> diverges for the heavy-tailed Jacobian (SV
+# density tail s^{-(1+alpha)}), the divergence carried by the localised tail
+# s > s_c; truncating at the mobility edge regularises it.
+# ---------------------------------------------------------------------------
+
+
+def truncated_chi1(
+    alpha: float,
+    sigma_W: float,
+    s_c: float,
+    *,
+    phi: Callable = torch.tanh,
+    sigma_b: float = 0.0,
+    q_star: Optional[float] = None,
+    N: int = 400,
+    num_matrices: int = 40,
+    seed: int = 0,
+):
+    """Edge-truncated mean-square singular gain chi_1^{<s_c} of J^l = D^l W^l.
+
+    chi_1 = <s^2> = (1/N) sum_k s_k^2 is the per-layer propagation gain.  For the
+    heavy-tailed Jacobian the SV density tail is f(s) ~ B s^{-(1+alpha)}, so
+    <s^2> diverges (integrand ~ s^{1-alpha}, not integrable for alpha < 2); the
+    divergence is carried by the localised tail s > s_c (md sec. 6).  The finite
+    gain of the extended (signal-propagating) modes is the edge-truncated
+
+        chi_1^{<s_c} = (1/N) sum_{k : s_k < s_c} s_k^2,
+
+    evaluated by empirical SVD of synthetic Jacobians at the fixed-point profile
+    h_j ~ (q*)^{1/alpha} Z, J = diag(|phi'(h)|) W.  Returns a dict: chi1_trunc
+    (N-stable), chi1_full (finite-N, diverges with N), frac_below.
+    """
+    if q_star is None:
+        q_star = RMT.q_star_MC(alpha, sigma_W, sigma_b=sigma_b, phi=phi,
+                               seed=seed)[-1]
+    pre_scale = q_star ** (1.0 / alpha)  # preactivation stable scale (q*)^{1/alpha}
+    phi_prime = torch.func.vmap(torch.func.grad(phi))
+    log: list = []
+    trunc, full, frac = [], [], []
+    with Timer(f"chi1<s_c alpha={alpha} sigma_W={sigma_W}", log):
+        for m in range(num_matrices):
+            z = _belinschi_stable_samples(alpha, N, seed=seed * 1000 + m)
+            d = phi_prime(torch.tensor(pre_scale * z)).abs().cpu().numpy()
+            W = sigma_W * (2 * N) ** (-1.0 / alpha) * _scipy_stable_matrix(
+                alpha, (N, N), seed=seed * 1000 + m + 500)
+            s = np.linalg.svd(d[:, None] * W, compute_uv=False)
+            s2 = s * s
+            trunc.append(float(np.mean(s2 * (s < s_c))))
+            full.append(float(np.mean(s2)))
+            frac.append(float(np.mean(s < s_c)))
+    return {
+        "alpha": float(alpha), "sigma_W": float(sigma_W), "s_c": float(s_c),
+        "chi1_trunc": float(np.mean(trunc)), "chi1_full": float(np.mean(full)),
+        "frac_below": float(np.mean(frac)), "N": int(N), "timings": log,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Convention check (advisor flag): structured-curve sampling vs MLP-style
 # Belinschi sampling on a constant profile (no phi' -- isolates the conv).
 # ---------------------------------------------------------------------------
@@ -1140,7 +1305,7 @@ def run_validation(
         "alpha": float(alpha),
         "sigma_W": float(sigma_W),
         "q_star": profile.q_star,
-        "S_star": profile.S_star,
+        "pre_scale": profile.pre_scale,
         "profile_alpha_moment": profile.profile_alpha_moment,
         "tail_constant_B": float(B),
         "convention_max_abs_diff": float(conv["max_abs_diff"]),

@@ -7,11 +7,22 @@ profile (reduction gate). Valid only for mu = alpha < 1 (md sec. 3.7); for
 alpha > 1 it returns continuation artifacts -- use Part 2 there.
 
 Part 2 (md sec. 3.7) -- the general Tarquini imaginary-part-stability criterion
-by complex cavity population dynamics. Valid for any alpha. The eta-scaling
-exponent  p = d log(Im G_typ) / d log eta  is 0 (delocalised) or 1 (localised);
-the mobility edge is where p crosses 1/2. This is the robust evaluation of "the
-sec. 3.7 integral operator's Perron eigenvalue = 1", and it delivers the
-profile-sparsification edge for the heavy-tailed MLP Jacobian at alpha in (1,2).
+by complex cavity population dynamics. The eta-scaling exponent
+  p = d log(Im G_typ) / d log eta  is 0 (delocalised) or 1 (localised);
+the mobility edge is where p crosses 1/2.
+
+CAVEAT (2026-06): p is the TYPICAL (q->0) member of the moment family and is an
+UNRELIABLE witness for the alpha>1 profile-induced edge, which is a directed-
+polymer FREEZING transition -- freezing decouples the typical member from the
+resonance-dominated (q>=1/2) sector where the localisation lives. Empirically,
+for the actual Jacobian profile (alpha=1.5, sigma_w=3) p drifts to 0
+(delocalised) at s=6.5 and never plateaus, while exact diagonalisation of the
+Hermitisation gives D_1=0.18 and exact p~0.93 (localised) on the same matrix
+(.agents/temp/exact_resolvent.py, d1_eta_ladder.py). So this routine does NOT
+reliably deliver the profile-sparsification edge for alpha in (1,2); use the
+resonance moments M_{q>=1/2} or the deterministic min_m Lambda(m,E) kernel
+(localisation.md sec. 3.8-3.9). It IS valid for alpha < 1
+(annealed = quenched) and as the delocalisation baseline (p~0).
 
 Run:
   python localisation.py gate       # Part 1 reduction gate (alpha=0.5 -> 3.29)

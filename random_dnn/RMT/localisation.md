@@ -348,19 +348,110 @@ only that the criterion no longer has a closed-form solution -- it becomes an
 integral-operator eigenvalue problem (3.7), equivalently the $\eta \to 0$
 stability of $\mathrm{Im}\,G$ under the cavity RDE.
 
-**It is a true asymptotic edge, not a finite-$N$ crossover.** Evaluating the
+**The conclusion (a true asymptotic edge) survives, but every locator used here
+does not.** *A true profile-induced edge does exist -- confirmed by the $N$-ladder
+two paragraphs down (the structured tail $D_2$ stops delocalising between
+$s \approx 5$ and $6.5$). But the typical-$p$ value $s_c \approx 4.0$ read off
+below is an $\eta$-/finite-size artifact and not the locator; see the 2026-06
+control and ladder.* Evaluating the
 criterion directly by complex cavity population dynamics
 (`localisation.py` (Part 2), $N \to \infty$ cavity) at $\alpha = 1.5$:
 the $\eta$-scaling exponent $p = d\log\mathrm{Im}\,G_{\rm typ}/d\log\eta$ is
 $p \approx 0$ at all $E$ unstructured (delocalised -- matches BG, validates the
 tool), but with a saturating $\tanh$ row profile ($\sigma_h = 1.5$, 33% of units
-with $|\phi'| < 0.05$) it rises through $1/2$ at $E^\star \approx 4.0$ and reaches
+with $|\phi'| < 0.05$) it rises through $1/2$ at $s_c \approx 4.0$ and reaches
 $p \to 1$ ($\mathrm{Im}\,G_{\rm typ} \propto \eta \to 0$, full localisation) in
 the tail. So the profile induces a genuine **asymptotic mobility edge**
-$s^\star \approx 4.0$ (at 33% saturation); the earlier IPR-surrogate ambiguity
+$s_c \approx 4.0$ (entry-scale-1 units, at 33% saturation); the earlier IPR-surrogate ambiguity
 (slopes $\sim -0.4$ at finite $N$) was just finite-$N$ -- the cavity shows the
 transition is real. ReLU, $\phi' \in \{0,1\}$, is the exact-deletion limit of the
 same mechanism.
+
+**Caveat (2026-06): the typical $p$ is an unreliable witness for this
+profile-induced edge.** The localisation here is the DPRM *freezing* problem
+(above), and the order parameter $p = d\log\mathrm{Im}\,G_{\rm typ}/d\log\eta$
+is the *typical* ($q \to 0$) member of the moment family -- the member that
+freezing decouples from the resonance-dominated ($q \ge 1/2$) sector where the
+localisation actually lives (sec. 3.9). For the
+actual Jacobian profile ($\sigma_w = 3$, $\alpha = 1.5$) a deep-$\eta$ ladder
+(`.agents/temp/d1_eta_ladder.py`) shows the structured population $p$ does **not**
+plateau -- it *drifts toward $0$* (delocalised) at $s = 6.5$, never reaching
+$p \to 1$. At $s = 6.5$ exact diagonalisation of the Hermitisation at $N = 3000$
+(`.agents/temp/exact_resolvent.py`) gives, on the *same* matrix, eigenvector
+$D_1 = 0.18$ and an exact typical-site $\mathrm{Im}\,G$ scaling $p \approx 0.93$
+(localised-looking), vs $D_1 = 0.82$, $p \approx 0.25$ in the bulk. *This was
+earlier read as confirming the asymptotic edge "by exact diagonalisation". The
+unstructured control below shows that reading is unsupported* -- a single-$N$
+$D_q$ in the tail is not a localisation signature.
+
+**Control (2026-06): no single-$N$ witness locates an asymptotic edge in the
+tail, because the BG-delocalised unstructured tail mimics all of them.** Running
+the frozen tangent $\varphi^\star(s) = \min_{m\le\alpha/2}\log\lambda(m)/m$
+(`.agents/temp/struct_vs_unstruct_edge.py`) on the *unstructured* Levy bond
+(profile off, $a_i=1$) at $\alpha=1.5$ reports $\varphi^\star < 0$ ("localised")
+for $s \gtrsim 4.5$ -- but BG guarantee $\alpha=1.5$ is delocalised everywhere
+outside a finite exceptional set (tail localisation needs $\alpha < 2/3$). So the
+frozen tangent *fails its own control*: it manufactures an edge where none
+exists, and the structured $\varphi^\star=0$ at $s\approx7.2$ is the same artifact
+shifted out by the profile, not an asymptotic locator. The same verdict reached
+via exact diagonalisation, method-independently
+(`.agents/temp/unstruct_exact_diag.py`, $N=1500\to3000$, 4 matrices each):
+the *unstructured* singular-vector $D_2$ is already low in the tail at finite $N$
+($D_2 = 0.58$ at $s{=}5$, $0.37$ at $s{=}6.5$, $0.12$ at $s{=}10$) -- yet its
+$N$-trend is **positive in every bin** ($\mathrm dD_2/\mathrm d\log N \approx
++0.034$ at $s{=}5$ on 562 modes, up to $+0.065$), i.e. those states are slowly
+*delocalising* with $N$, as BG require. Hence "low $D_q$ at one $N$" -- the basis
+of the $D_1=0.18$ confirmation above and in 3.8-3.9 -- never distinguished
+localisation from a delocalising tail.
+
+What *is* robust and method-independent is the **level** contrast: the profile
+suppresses $D_2$ by a large factor at every fixed $s$ (structured vs unstructured:
+$0.51$ vs $0.79$ at $s{=}3$; $0.19$ vs $0.59$ at $s{=}5$; $0.09$ vs $0.37$ at
+$s{=}6.5$). The profile-sparsification mechanism (3.6, saturated rows) drives
+states toward localisation monotonically -- that is not in doubt. What the
+single-$N$ snapshots **cannot** settle is whether the structured tail localises
+*asymptotically* ($D_2 \to 0$) or is itself a slow finite-$N$ crossover: the
+$1500\to3000$ lever (log-ratio $0.69$, 12-53 deep-tail modes) cannot separate
+slope $0$ from the $+0.04$ baseline. Only the $N$-trend, on a real ladder with
+filled bins, is a valid asymptotic discriminator (`.agents/temp/n_ladder_d2.py`,
+$N=1000\dots6000$). So the order parameter is neither the typical $p$ nor the
+frozen $\varphi^\star$ nor a single-$N$ $D_q$ -- it is the *$N$-scaling* of $D_2$
+relative to the unstructured BG baseline; the surrogate $s_c\approx4.0$ and the
+tangent $s_c\approx7.2$ are both discarded as locators.
+
+**Resolved (2026-06) by the $N$-ladder, the valid discriminator: the profile DOES
+induce a true edge -- the structured tail fails to delocalise.** Running that
+discriminator (`.agents/temp/n_ladder_d2.py`, $N=1000,1500,2000,3000,4500,6000$,
+up to 16 matrices per $N$ to fill tail bins; $D_2$ = mean singular-vector
+correlation dimension per $s$-bin) gives, on the **identical $N$-window** (raw
+per-$N$ means, no slope/SE modelling needed for the contrast):
+| $s$ | unstructured $D_2$: $N{=}1000\to6000$ | structured $D_2$: $N{=}1000\to6000$ |
+|----|----|----|
+| 3.0 | $0.78 \to 0.82$ (climbs) | $0.48 \to 0.56$ (climbs) |
+| 4.0 | $0.68 \to 0.74$ (climbs) | $0.27 \to 0.37$ (climbs) |
+| 5.0 | $0.54 \to 0.63$ (climbs) | $0.17 \to 0.19$ (slow) |
+| 6.5 | $0.35 \to 0.41$ (climbs) | $0.09 \to 0.09$ (**flat**) |
+| 8.0 | $0.21 \to 0.28$ (climbs) | $0.05 \to 0.05$ (**flat**) |
+
+The unstructured baseline climbs toward $D_2 = 1$ at *every* $s$ (BG
+delocalisation, slow). The structured trend **crosses from climbing (bulk,
+$s \lesssim 4$: low $D_2$ level but still delocalising, a finite-$N$ multifractal)
+to flat (tail, $s \gtrsim 6.5$: $D_2$ stops drifting up)** between $s \approx 5$
+and $s \approx 6.5$. A flat $D_2$ in the same $N$-window where the baseline
+visibly climbs is the Gate-B signature (sec. 4) of a **genuine profile-induced
+asymptotic edge** -- the tail states *fail to delocalise*, a real departure from
+the BG baseline. Two honest limits: (i) the frozen tail $D_2 \approx 0.05$-$0.10$
+is *not* drifting to $0$, so the claim is "does not delocalise", not "fully
+localised" -- whether the frozen value is $0$ (Anderson) or a nonzero
+critical/multifractal value (consistent with the DPRM *freezing* picture, 3.6) is
+unresolved; (ii) the cleanest control -- matched-$D_2$-*level* slopes -- is
+unavailable because the unstructured tail never reaches $D_2 \approx 0.1$ in
+range, so this is a matched-$s$ contrast. The floor worry is dispatched in our
+favour: a *delocalising* state with room above climbs (unstructured $s{=}8$,
+$D_2{=}0.21 \to 0.28$); flatness near the floor is the freezing signature, not an
+artifact. So a true edge exists; the gold point $s = 6.5$ sits *at or just past*
+it (its tail $D_2$ does not delocalise) -- which is why the typical $p$ ($\to 0$),
+the tangent ($\varphi^\star > 0$), and the single-$N$ $D_q$ all misread it.
 
 ### 3.7 Why (7) closes only for $\mu < 1$: scale-invariance, and the Bessel-kernel equation for $\alpha > 1$
 
@@ -405,6 +496,464 @@ the scale-invariance of the $\mu < 1$ heavy tail; removing it (bulk, $\alpha > 1
 costs exactly one rung of closedness, leaving an integral operator rather than a
 determinant. This is the correct tool for the profile-sparsification edge above.
 
+### 3.8 Explicit $m$-resolved kernel (TBT EPAPS) and the $D_q$ slices
+
+Section 3.7 gives the $m = 1/2$ (edge) kernel; the TBT EPAPS transfer operator
+makes it explicit and $m$-resolved. The cascade (3.1) is $\Delta_i = \sum_j
+[h_{ij}^2/(E - S_j)^2]\,\Delta_j$ (squared entry $\times$ squared neighbour
+resolvent -- the directed-polymer edge weight). Its $m$-th-moment transfer
+operator, in the frequency $k$ conjugate to the self-energy, acts as
+$$
+\hat Z(k) = N\,\hat L_{\alpha/2}^{C,\beta}(k)\int dX'\;|E - X'|^{-2m}\,
+   I_\alpha^{(m)}\!\Big(\tfrac{k}{E-X'}\Big)\,Z(X'),
+\qquad
+I_\alpha^{(m)}(\omega) = \int P_\alpha(h)\,|h|^{2m}e^{-i\omega h^2}\,dh,
+$$
+the bond integral $I_\alpha^{(m)}$ (3.3) being the per-edge factor and
+$|E-X'|^{-2m}$ the resolvent-resonance site factor. Closing with $Z(X') =
+(2\pi)^{-1}\int\hat Z(k')e^{ik'X'}dk'$ and $y = E - X'$ gives the explicit 1-D
+Fredholm kernel
+$$
+\boxed{\;
+\mathcal K_m^E(k,k') = \frac{N}{2\pi}\,\hat L_{\alpha/2}^{C,\beta}(k)\,e^{ik'E}
+   \int_{-\infty}^{\infty}|y|^{-2m}\,I_\alpha^{(m)}\!\Big(\tfrac{k}{y}\Big)\,
+   e^{-ik'y}\,dy\;}
+$$
+with $\lambda(m,E)\,\hat Z(k) = \int\mathcal K_m^E(k,k')\hat Z(k')\,dk'$; the
+$k/y$ scaling against $e^{-ik'y}$ is the origin of the $\sqrt{kk'}$ Bessel
+structure of 3.7. One object, two slices:
+
+- **Mobility edge:** $\lambda(\tfrac12, E^\star) = 1$. For $\alpha < 1$ the
+  scale-free power-law eigenfunction diagonalises $\mathcal K$ and collapses it to
+  the scalar $\ell$ of `levy_mobility_edge.md`; that collapse is what fails the
+  $\mu = 1$ resonance-integrability test (3.7).
+- **Multifractal spectrum:** the $m = q$ slice is $D_q$ -- $\lambda(q,E)$ is the
+  deterministic counterpart of the $\eta$-scaling of $\langle(\mathrm{Im}\,G)^q
+  \rangle$, so $\zeta_q = -\partial_{\log\eta}\log M_q$ is read off $\lambda(q,E)$
+  and $D_q = 1 - \zeta_q/(q-1)$. This reaches the resonance-dominated $q > 1/2$
+  regime the stochastic moments (3.9) cannot, and is the **freezing-correct**
+  route for $\alpha > 1$.
+
+*Build status (2026-06).* $I_\alpha^{(m)}(\omega)$ is implemented from the entry
+CF (clean for $\alpha > 1$, the Jacobian regime; the $\alpha < 1$ scale-free cusp
+needs graded quadrature). Open: the eigenvalue assembly -- the singular
+$y$-integral (principal value at $y = 0$), the $\hat Z \leftrightarrow Z$ Fourier
+closure, the $N$-normalisation pinned by the $\alpha < 1$ reduction to scalar
+$\ell$, and the non-Hermitian top-eigenvalue solve. Until built and validated
+against $E^\star(0.5) = 3.29$ and the $p = 1/2$ edge, the population dynamics
+(Section 5) is the working edge -- with the 3.9 caveat.
+
+*Build plan (M0-M4) and the M0 finding.* The kernel above is a **1-component
+complex Fredholm** problem, and the boxed $\mathcal K_m^E$ follows *algebraically*
+from the transfer-operator equation (substitute $Z(X') = (2\pi)^{-1}\int\hat
+Z(k')e^{ik'X'}dk'$, then $y = E - X'$) -- no gap there. The TBT $2\times2$
+determinant is **not** a separate two-component system: it rearranges to
+$K_\mu^2(s^2-1)|\ell|^2 - 2sK_\mu\,\mathrm{Re}\,\ell + 1 = |sK_\mu\ell - 1|^2 -
+|K_\mu\ell|^2$, so the edge $=0$ is the modulus condition $|sK_\mu\ell - 1| =
+|K_\mu\ell|$ on the *single complex scalar* $\ell$ ($s = \sin(\pi\mu/2)$) -- and
+$\ell$ is exactly the scale-free eigen-amplitude (power-law eigenfunction) of the
+1-component kernel. So the $\alpha>1$ generalisation is the *same* complex
+operator, the "$2\times2$" being only the real/imaginary structure of that
+condition. The one unverified input is therefore the transfer-operator equation's
+factors ($|E-X'|^{-2m}$, $I_\alpha^{(m)}$, $\hat L$), the normalisation $N$, and
+the edge-coefficient convention ($s, K_\mu$; the box's "$\lambda=1$" is schematic,
+the true condition carries the stable coefficients) -- **all pinned numerically by
+M1**, so the reduction is a check, not a derivation blocker. Milestones, each
+gating the next: **M0** (done) the structure above; **M1** the reduction gate --
+assemble at $\alpha=0.5$, reproduce $E^\star(0.5)=3.29$ (validates the $y$-integral,
+assembly, $N$, and coefficients at once); **M2** unstructured $\alpha=1.5 \to$ no
+edge ($\min_m\lambda<1$, BG); **M3** profile $\to$ profile-induced edge, validated
+against the exact-diag $N$-ladder (3.6: structured tail $D_2$ goes flat vs the
+climbing BG baseline -- not the cavity $p$, the tangent $\varphi^\star$, or any
+single-$N$ $D_q$, all of which misplace it); **M4** $D_q$ slices $+$ the
+analytical SV density $\to$ a finite-size-free $c^\star$. Remaining risk now sits
+in the **singular $y$-integral numerics** ($y\to0$ regularised by $I(k/y)\to0$,
+plus the conditionally-convergent oscillatory tail) and the edge-coefficient
+convention -- both settled at M1.
+
+*M1 result (2026-06: PASSED).* The full chain is implemented and validated against
+Tarquini's edge. Building blocks (in `.agents/temp/`): the bond integral
+$I_\alpha^{(m)}(\omega)$ via the $u=h^2$ transform with a multi-term stable tail
+(`bond_integral.py`; gates: $I(0)=\mathbb{E}|X|^{2m}$ to $10^{-4}$, scale-free slope
+$(\alpha-1)/2$); $J_m(k,k')$ as a real half-line FFT (`jm_fft.py`; converges in
+$dy,Y$); the kernel assembled on $k,k'>0$ with $(C,\beta)$ and $\hat L$ from
+`levy_mobility_edge.py` (`kernel_assemble.py`/`kernel_loop.py`). Validated against
+the **transfer-Perron oracle** `localisation.structured_perron` (which crosses $1$
+at $E^\star=3.29$): the kernel's normalised physical eigenvalue crosses $1$ at
+$E^\star\approx3.30$ (**$<1\%$**), tracking Perron to $\sim2\%$ (refined grid) /
+$\sim7\%$ (coarse), grid-limited.
+
+Two corrections to the M0 expectation, both forced by the numerics (do not repeat
+the naive versions):
+1. **Eigenvalue selection.** The discretised kernel has a *spurious* magnitude-largest
+   branch; the physical mode is the **rank-1 scale-free power-law eigenfunction**
+   ($\hat Z(k)\sim \hat L(k)\,k^{(\alpha-1)/2}$, effective slope $\approx-0.7$ at
+   $\alpha=0.5$). Any $\alpha>1$ run must select by eigenfunction character, not by
+   $|\lambda|$.
+2. **The eigenvalue tracks the *Perron*, not $\ell$.** The tempting analytic
+   simplification $\lambda=\text{const}\cdot\ell$ is **refuted** ($\lambda/\ell$
+   varies $\sim20\%$ across $E$); the operator eigenvalue is the full (nonlinear)
+   transfer Perron -- the $2\times2$ combination *of* $\ell$ -- and the
+   normalisation is empirical, not the closed form a scale-free contraction would
+   suggest. The M0 phrase "$\ell$ is the scale-free eigen-amplitude" is structurally
+   right (the eigen*function* is the power law; $\ell$ is the scalar Perron is built
+   from) but the eigen*value* is Perron, not $\ell$ itself.
+
+So the machinery reduces correctly to Tarquini in the scale-free limit; the
+$\alpha>1$ programme (M2-M4) is unblocked, with no quantitative oracle there -- it
+is corroborated instead by the rigorous phase limits (BG delocalisation; Gaussian;
+flat-Levy edge) and the validated analytical density. (Earlier this list also
+named single-$N$ exact diagonalisation at the gold point $s=6.5$ -- $D_1=0.18$,
+typical $p\approx0.93$ -- as corroboration; the 3.6 control retracts that: the
+unstructured BG-delocalised tail has equally low single-$N$ $D_q$, so a single-$N$
+$D_q$ is not an asymptotic-localisation witness. Only the $D_2$ $N$-trend relative
+to the unstructured baseline is, 3.6.)
+
+*M3 gate (2026-06): the $m=q$ slice yields the asymptotic binary $D_q$, not the
+finite-$N$ multifractal value -- the route does not reproduce the empirical-style
+$c^\star$.* Probed without the full kernel, via the cavity tangent (which gives
+$\log\lambda(m,E)$ cleanly for $m<\alpha/2=0.75$, unlike the resonance moment
+$M_q$; `.agents/temp/kernel_gate_lambda.py`) plus the exact-diag target
+(`.agents/temp/kernel_gate_target.py`). Findings at the gold cell $(1.5,3.0)$:
+(i) exact-diag (single-$N$ generalised dimensions, recipe of `cstar_grid.py`)
+gives $D_1(s{=}6.5)=0.184$ at $N=3000$ -- reproducing the doc gold standard 0.18
+-- and the target $D_2(s{=}6.5)=0.105$; it *grows* with $N$ ($D_2=0.062\to0.105$
+over $N=1500\to3000$). (ii) The cavity $\log\lambda(m,E)$ is **linear in $m$ with
+no kink at the freezing replica $m^\star=\tfrac12$** at every $s$, and
+$\varphi^\star=\min_m\log\lambda/m$ crosses zero at $s\approx7.2$ (for this
+$\sigma_w=3$ cell); the gold point $s=6.5$ sits *below* it ($\varphi^\star=+0.78$).
+*This crossing was read as a "sharp asymptotic edge"; the 3.6 control + ladder
+retract it as a locator -- the same tangent on the unstructured bond crosses at
+$s\approx4.5$, where BG guarantee delocalisation, so $\varphi^\star$ manufactures
+an edge wherever it sits and its location is not trustworthy. Note the tangent
+$\varphi^\star=+0.78$ here reads the gold point as delocalised, but the valid
+$N$-ladder discriminator (3.6) shows its tail $D_2$ does **not** delocalise --
+i.e. the gold point is at/just past the true profile-induced edge, and the tangent
+mislocates in the opposite direction to the typical $p$. The asymptotic edge is
+real; only the cheap witnesses fail to place it.* Linear $\log\lambda(m)$
+gives trivial $D_q$ under any bridge ($M_m\sim\eta^m\lambda(m)^L$; the candidate
+$D_m = 1 - [\log\lambda(m)/\varphi_{\rm typ}-m]/(m-1)$ returns $D_m\equiv1$ for
+$\log\lambda=\varphi_{\rm typ}m$). The single-$N$ $D_2=0.105$ is a finite-$N$
+value -- *but the $N$-trend does **not** point to $D_q\to1$ at the gold point.*
+The 2-matrix "grows $0.062\to0.105$ over $N=1500\to3000$" reported here was the
+same 2-point artifact the 3.6 control exposes: the full ladder ($N=1000\dots6000$,
+3.6) shows structured $s{=}6.5$ $D_2$ **flat** at $\approx0.09$
+($0.094,0.082,0.092,0.107,0.114,0.094$) while the unstructured baseline climbs --
+i.e. the gold point sits at/just past the profile-induced edge and does **not**
+delocalise. So Section 0's binary $D_q\in\{0,1\}$ is the asymptotic *idealisation*;
+the actual frozen tail $D_2\approx0.05$-$0.10$ may be exactly $0$ (Anderson) or a
+nonzero critical value (DPRM freezing), which the ladder cannot yet separate (3.6).
+A remaining kernel question -- whether $\log\lambda(m)$ stays linear out to $m=2$
+or develops freezing convexity above the $m<0.75$ window -- needs the structured
+kernel to read $\log\lambda(2)$; the in-window linearity through $m^\star=\tfrac12$
+makes strong convexity unlikely, but the ladder's non-trivial frozen $D_2$ now
+leaves room for mild convexity (a nonzero critical $D_2$), so this is no longer
+settled against. **Consequence:** the kernel
+route furnishes the asymptotic localisation *edge* (a sharp/binary $c^\star$), not
+the smooth finite-$N$ multifractal $c^\star$; the latter is intrinsically
+finite-$N$ and obtained only by diagonalisation (the empirical $c^\star$, or the
+analytic-density $\times$ empirical-$D_1$ route, mean $|{\rm diff}|=0.08$).
+
+### 3.9 $D_q$ from the cavity moments (stochastic readout, $q \le 1$)
+
+The population dynamics also gives $D_q$ from its own moments, no kernel. With the
+spectral resonance $\mathrm{Im}\,G_{ii} = \sum_\beta |\psi_\beta(i)|^2\,
+\eta/((E-E_\beta)^2+\eta^2)$, averaging the $q$-th moment gives the moment-IPR
+relation
+$$
+\boxed{\;\langle I_q\rangle = \frac{\eta^{q-1}}{\rho\,b_q}\,M_q(\eta)\;},
+\qquad M_q(\eta) := \langle(\mathrm{Im}\,G)^q\rangle,\;\;
+b_q = \sqrt\pi\,\frac{\Gamma(q-\tfrac12)}{\Gamma(q)}\ (q>\tfrac12),
+$$
+and with the tree dictionary $\eta \sim 1/N$ ($P_q \sim L^{-D_q(q-1)}$),
+$$
+\boxed{\;D_q(E) = 1 + \frac{1}{q-1}\,\frac{d\log M_q(\eta)}{d\log\eta}\;}
+$$
+(deloc: $M_q \to$ const, $D_q = 1$; loc: $M_q \sim \eta^{1-q}$, $D_q = 0$; the
+$q \to 1$ member is $D_1 = 1 - p$). Implementation: accumulate $M_q(\eta) =
+\mathrm{mean}((\mathrm{Im}\,G_r)^q)$ over the pool at two-or-more $\eta$ (the same
+loop that forms $p$) and difference in $\log\eta$.
+
+**Caveat (load-bearing for $\alpha > 1$): this uses the typical / low-$q$ members
+and is the wrong slice in the frozen phase.** At the actual Jacobian profile
+($\alpha = 1.5, \sigma_w = 3$) the population $p$ ($= 1 - D_1$) drifts to $0$
+(delocalised) at $s = 6.5$ and never plateaus, while exact diagonalisation of the
+Hermitisation at $N = 3000$ gives, on the *same* matrix, eigenvector $D_1 = 0.18$
+and exact typical-site $\mathrm{Im}\,G$ scaling $p \approx 0.93$ (localised) -- vs
+$D_1 = 0.82$, $p \approx 0.25$ in the bulk (`.agents/temp/d1_eta_ladder.py`,
+`.agents/temp/exact_resolvent.py`). The earlier reading was that the stochastic
+$D_{q\le1}$ *underestimates* the localisation and the single-$N$ exact-diag
+$p\approx0.93$ is the truth. *Both halves are now corrected by the 3.6 control +
+ladder, in different directions.* The single-$N$ $p\approx0.93$ / $D_1=0.18$ at
+$s{=}6.5$ is **not** by itself an asymptotic localisation signature -- the
+unstructured BG-delocalised tail carries equally low single-$N$ $D_q$. *However*
+the $N$-ladder (3.6) shows the structured tail $D_2$ **does not delocalise**
+(flat $\approx0.09$ at $s{=}6.5$ while the baseline climbs), so the gold point
+*is* asymptotically non-delocalised, and the population $p\to0$ there **does**
+underestimate -- it is the typical / low-$q$ witness reading the frozen tail as
+delocalised, exactly the wrong slice. So the stochastic $p$ underestimates and the
+single-$N$ exact-diag overstates *confidence* (its value is right but it cannot,
+alone, distinguish a frozen tail from a delocalising one). What is genuinely
+unreliable for $\alpha>1$ is *every single-$N$ / single-$\eta$ witness in the
+tail* (typical $p$, frozen $\varphi^\star$, single-$N$ $D_q$); the only valid
+asymptotic discriminator is the $D_2$ $N$-scaling against the unstructured
+baseline (3.6). The typical-$p$/$D_{q\le1}$ readout remains correct for
+$\alpha < 1$ (annealed = quenched) and as the delocalisation baseline
+($p \approx 0$).
+
+### 3.10 Finite-$N$ crossover line for $\alpha \in (1,2)$: the Thouless matching
+
+For $\alpha \in (1, 2)$ Sections 3.7/4 leave an apparent paradox: the wide-$N$
+spectrum is fully delocalised (no heavy-tail-index edge), yet finite-$N$
+spectra -- exact diagonalisation, IPR $N$-scaling, and the cavity-vs-empirical
+density deviation -- all show a localised-looking tail with an onset $s_c$
+that *drifts* with the resolution ($N$, or the population size of the cavity).
+TBT's result 3 names this regime (a wide finite-$N$ crossover) but derives no
+crossover line for $\mu > 1$ (their EPAPS treats $\mu \in (1,2)$ only by Dyson
+Brownian motion + numerics). This section derives the line $s_c(N)$ from the
+delocalised fixed point itself. It is the quantitative content of the
+"protocol-defined onset" of Section 5.
+
+**Primary objects.** Both live on the delocalised side and are computable from
+the cavity (population dynamics, or the 3.8 kernel):
+
+1. $I_{\rm typ}(E) = \lim_{\eta\to0^+}\exp\langle\log \mathrm{Im}\,G\rangle$ --
+   the stationary typical hybridisation width of the $N \to \infty$
+   delocalised solution. Bordenave-Guionnet guarantee $I_{\rm typ} > 0$ for
+   all $E$ at $\alpha \in (1,2)$ (`bordenave-2012.md`); in the spectral tail
+   it is positive but decays steeply in $E$.
+2. $\varphi^\star(E) = \min_m \tfrac1m\log\lambda(m, E)$ -- the frozen
+   (1RSB-selected) Lyapunov exponent of the linearised $\mathrm{Im}$ recursion
+   (4) about the real-part fixed point: the per-generation growth rate of an
+   infinitesimal $\mathrm{Im}$ seed. $\lambda(m,E)$ is the 3.8 kernel's
+   eigenvalue; $\varphi^\star$ is also directly measurable in population
+   dynamics by seeding $\mathrm{Im}\,g = \epsilon$ and tracking
+   $\langle\log\mathrm{Im}\rangle$ per sweep before saturation. For
+   $\alpha > 1$: $\varphi^\star(E) > 0$ at every $E$ (that *is* the
+   no-asymptotic-edge statement), with $\varphi^\star \to 0^+$ as
+   $E \to \infty$.
+
+**Criterion (Thouless matching).** At size $N$ the spectrum near $E$ is
+discrete with mean level spacing $\Delta_N(E) = 1/(N\rho(E))$. The
+infinite-size delocalised solution assigns states at $E$ a hybridisation
+width $\Gamma(E) \sim I_{\rm typ}(E)$. Level mixing -- GOE statistics,
+$\mathrm{IPR} \sim 1/N$, cavity density $=$ empirical density -- requires the
+dimensionless Thouless ratio $g = \Gamma/\Delta_N = N\rho(E)\,I_{\rm typ}(E)
+\gg 1$; for $g \ll 1$ each eigenstate at $E$ is an isolated resonance and the
+sample is operationally localised there, even though $N \to \infty$
+delocalises it. The crossover line is therefore
+$$
+\boxed{\;N\,\rho(s_c)\,I_{\rm typ}(s_c) = O(1).\;}
+\tag{8}
+$$
+Every factor is known: $\rho$ analytically (`structured_wishart_levy.md`
+Thm 1(iv), tail $f_{\rm SV}(s) \simeq B\,\langle\!\langle a^\alpha
+\rangle\!\rangle\, s^{-1-\alpha}$ by Thm 1(v)); $I_{\rm typ}$ from
+`localisation.py:cavity_typ_imG`. Since $\rho$ enters only through
+$\log\rho$, the line is governed by the steep factor $I_{\rm typ}$.
+
+**Near-marginal asymptotics of $I_{\rm typ}$ (hypothesis H1).** The
+stationary $\mathrm{Im}$ law in the weakly delocalised regime is the
+travelling-wave / front-selection fixed point of the linearised recursion
+(the same DPRM structure as 3.2, now on the moving side of freezing): linear
+growth at rate $\varphi^\star$ balanced by the saturation nonlinearity, with
+the $m^\star = \tfrac12$ tail marginal. On the Bethe lattice this selection
+gives (Mirlin-Fyodorov-type argument; transplanted here, not proven for the
+fully-connected Levy case)
+$$
+\log\frac{1}{I_{\rm typ}(E)} \;=\; \frac{A}{\varphi^\star(E)^{\kappa}}
+\,(1 + o(1)), \qquad \kappa = \tfrac12 \ \text{(H1)},
+$$
+$\kappa$ kept free as the fallback. This is what makes the crossover *wide*
+and the drift *logarithmically slow*: $I_{\rm typ}$ is exponentially small in
+$1/\sqrt{\varphi^\star}$ long before any would-be edge.
+
+**Tail scaling of $\varphi^\star$ (hypothesis H2).** In the far tail the
+growth of $\mathrm{Im}$ at a site is carried by resonant partners: a
+neighbour $j$ contributes when its bond weight $a^2x^2|\mathrm{Re}\,G_j|^2
+\gtrsim 1$, and the per-site density of such partners at energy $s$ is the
+same annealed tail functional $\propto \langle a^\alpha\rangle\,s^{-\alpha}$
+that sets the density tail (3.3, Thm 1(v)). Hence
+$$
+\varphi^\star(s) \;\simeq\; c\,\langle a^\alpha\rangle\, s^{-\alpha}
+\;=\; c\,(s/S)^{-\alpha},
+\qquad
+S := \langle a^\alpha\rangle^{1/\alpha} \ \ \text{(H2)},
+$$
+$S$ the row-Levy scale (for the Jacobian, $S = \sigma_w\langle
+\phi'(q^{\star 1/\alpha}z)^\alpha\rangle^{1/\alpha}$ in physical units).
+Measurable from the seeded-growth diagnostic; the exponent $\alpha$ and the
+$S$-scaling are the falsifiable content.
+
+**Resulting drift law.** Substituting H1 + H2 into (8) and keeping the
+leading (exponential-in-$1/\sqrt{\varphi^\star}$) factor against the
+power-law $\rho$:
+$$
+\log N \;=\; \frac{A}{c^{1/2}}\,\Big(\frac{s_c}{S}\Big)^{\alpha/2}
++ O(\log s_c)
+\qquad\Longrightarrow\qquad
+\boxed{\;s_c(N) \;=\; S\,\Big(\frac{c^{1/2}}{A}\,\log N\Big)^{2/\alpha}
+\,(1 + o(1)).\;}
+\tag{9}
+$$
+Two structural predictions, independent of the constants:
+1. **Scale collapse:** all profile and $\sigma_w$ dependence enters through
+   $S$ -- the crossover line in units of the row-Levy scale,
+   $s_c/S = E^\star_N$, is a function of $(\alpha, N)$ only. (This is the
+   $E^\star(\alpha)$ flatness observed in the Jacobian edge campaign:
+   $s_c/S$ constant in $\sigma_w$ to 8-10% per $\alpha$ row.)
+2. **Drift law:** $s_c^{\alpha/2}$ is *linear in $\log N$* -- a slow power of
+   the logarithm, $s_c \sim (\log N)^{2/\alpha}$ (e.g. $(\log N)^{4/3}$ at
+   $\alpha = 1.5$), never saturating: the apparent edge marches to infinity,
+   consistent with asymptotic delocalisation.
+
+**Population-dynamics counterpart.** The cavity pool (size $P$, no $\eta$
+floor) sustains the weakly delocalised fixed point only while the resonant
+sector is sampled: the $m^\star = \tfrac12$ tail of the $\mathrm{Im}$ law
+puts mass $\sim (I_{\rm typ}/O(1))^{1/2}$ above the saturation scale, so the
+pool loses the fixed point when $P\,I_{\rm typ}^{1/2} \lesssim 1$, i.e.
+$\log P \approx \tfrac12\log(1/I_{\rm typ}(s_c)) + O(1)$ -- the same
+functional form as (8) with $\log N \to 2\log P$. With $P = 2^{\rm nd}$
+(doubling schedule),
+$$
+\Big(\frac{s_c({\rm nd})}{S}\Big)^{\alpha/2}
+\;\approx\; \frac{2\log 2\; c^{1/2}}{A}\,{\rm nd} + {\rm const}:
+$$
+**$s_c^{\alpha/2}$ linear in nd.** The cavity-vs-empirical density-deviation
+edge is exactly this loss-of-resolution point, which is why it drifts with nd
+rather than converging -- the drift is the signal, not a numerical failure.
+
+**Campaign check ($\alpha = 1.5$, $\sigma_w = 1$, universal log grid).**
+$s_c = 2.57, 2.64, 3.11, 3.61, 3.60(\pm 0.05)$ at
+${\rm nd} = 7, 8, 9, 10, 11$ gives
+$s_c^{3/4} = 2.03, 2.07, 2.34, 2.62, 2.61$: increments
+$0.04, 0.27, 0.27, 0.00$ -- linear in nd at ${\rm nd} = 8$-$10$
+(nd $= 7$ sits on the pre-asymptotic floor), then *saturation* at
+${\rm nd} = 11$, falsifying the naive pool-limited extrapolation
+($s_c^{3/4} \approx 2.88$, $s_c \approx 4.1$). Two follow-ups kill *both*
+resolution-ceiling readings of the plateau: (a) re-running the deviation
+edge against empirical references at $N_{\rm emp} = 1250/2500/5000$ (SV
+counts from the IPR runs) gives $s_c = 3.615/3.627/3.604$ ($\pm 0.05$) --
+flat, where an $N_{\rm emp}$-limited edge would move by $\approx +0.5$ per
+factor 4 in $N$ given the measured $I_{\rm typ}$ slope (below); (b) the
+pool side doubled (nd $10 \to 11$) with no shift, where a pool-limited edge
+would move by $\approx +0.5$ likewise. The plateau is therefore neither
+pool- nor reference-resolution: beyond $s \approx 3.60$ the empirical
+density carries an $N$-independent excess of states over the converged
+cavity -- an $O(1)$ localised fraction, i.e. an **asymptotic localisation
+edge** $s_\infty \approx 3.60$ at this cell. The IPR exponent crossing
+($\tau_{\rm eff}$ of the $625/1250$ vs $2500/5000$ pairs) at $s \approx
+2.4$, and $\tau_{\rm eff} \approx 0$-$0.2$ flat in $N$ for $s > 3.9$, are
+consistent finite-$N$ shadows of the same edge.
+
+**Validation outcome (`.agents/temp/phi_star_test.py`, 2026-06).**
+$\varphi^\star(s)$ (seeded-Im front velocity, $P = 2\times10^4$) and
+$I_{\rm typ}(s)$ ($P = 10^4$, $\eta = 10^{-5}, 10^{-6}$) measured on the
+structured bipartite cavity at $(1.5, 1)$, unit-scale LePage convention
+($s_{\rm phys} = (C_\alpha/2)^{1/\alpha} s_{\rm script} \approx 0.341\,
+s_{\rm script}$ by Levy-intensity matching, $C_\alpha = 2\sin(\pi\alpha/2)
+\Gamma(\alpha)/\pi$). The measured $\log\lambda(m)$ is linear in $m$ at
+every $s$ -- the stationary-front signature: the renormalised population
+self-selects the frozen velocity, so the slope *is* $\varphi^\star$
+directly (Brunet-Derrida finite-pool bias is downward). Results:
+1. **H2 fails in the far tail.** The local slope of $\log\varphi^\star$ vs
+   $\log s$ steepens from $-0.75$ ($s_{\rm script} = 4$-$5$) through $-1.5$
+   ($6$-$8$) to $-10$ ($10$-$12$): $\varphi^\star$ is not a power law but
+   plunges to zero at finite $s^\star \approx 12.5$-$13$ script $\approx
+   4.5$-$4.7$ physical ($\theta \approx 0.36$ pinned in (4); a lower bound,
+   given the pool bias). The structured
+   Jacobian profile has a **true linear-stability edge**: $\lambda(m) \le 1$
+   for all $m$ beyond $s^\star$. Mechanism candidate: H2's resonance
+   counting lets the profile enter only through $\langle a^\alpha\rangle$,
+   but $\log\chi = 2\log\phi'$ inherits the $\alpha$-stable tail of the
+   preactivation, $P(|\log\chi| > u) \sim u^{-\alpha}$ -- infinite variance
+   for $\alpha < 2$ -- so the DPRM log-gain displacements are heavy-tailed
+   and the frozen velocity vanishes at finite $s$: the
+   profile-sparsification mechanism of 3.9 / `ht_mlp_jacobian.md` sec. 6,
+   operating already at $\sigma_w = 1$.
+2. **H1's form holds, exponent open.** $I_{\rm typ}$ falls $2\times10^{-1}
+   \to 8\times10^{-7}$ over $s_{\rm script} = 2 \to 10$ and the $P = 10^4$
+   pool loses the fixed point at $s_{\rm script} = 12$ (the (8) mechanism
+   in vivo); $\log(1/I_{\rm typ})$ diverges as $\varphi^\star \to 0$ with
+   $R^2 = 0.97$ at $\kappa = \tfrac12$ but free-$\kappa$ fit $\approx 1.0$
+   -- too few near-edge points to pin $\kappa$.
+3. **Consequence for (9).** The drift law describes only the intermediate
+   regime where the $s^{-\alpha}$ form transiently holds (the nd $= 8$-$10$
+   linearity); the apparent edge does not march to infinity but converges
+   to $s_\infty$. Prediction 2 above is thereby superseded *for profiles
+   with log-singular sparsification*; it stands for bounded-$\log a$
+   profiles (incl. unstructured).
+4. **Unit factor (resolved 2026-06): the gap is physical.** The
+   script $\to$ physical (campaign) factor $\theta$ ($s_{\rm phys} =
+   \theta\,s_{\rm script}$) is pinned by two independent routes
+   (`.agents/temp/unit_factor_amplitude.py`,
+   `.agents/temp/unit_factor_density.py`), which agree. (a) *Bond-amplitude
+   scale ratio.* Both conventions' per-step bond sum is a one-sided
+   $\alpha/2$-stable differing only in scale (LePage $\Gamma_k^{-2/\alpha}$ vs
+   the campaign $(\,(2P)^{-1/\alpha} z_{\rm CMS})^2$); by the exact resolvent
+   scaling $w \to \theta^2 w \Leftrightarrow z \to \theta z,\ G \to G/\theta$,
+   the singular-value factor is $\theta = (\text{scale ratio})^{1/\alpha}$.
+   Tail-robust estimators (median, geometric mean, and $p$-moments at
+   $p \le 0.3$, all below $\gamma = \alpha/2 = 0.75$, where fractional moments
+   destabilise) give $\theta = 0.350$ in the large-pool stable limit -- matching
+   the analytic $(C_\alpha/2)^{1/\alpha} = 0.341$ -- rising to $\theta = 0.367$
+   at the as-used $K = 100$ LePage truncation. (b) *Scaling survives the fixed
+   point.* The $s \leftrightarrow z$ mapping carries no stray factor by the
+   analytic $G \to -G$ algebra alone: numba's $-1/(z + \sum wG)$ equals the
+   script's $1/(s - \sum wG)$ at the same $s$. The density test then confirms
+   the bond-scale ratio propagates *through the nonlinear cavity fixed point* as
+   a pure $s$-axis rescaling -- the LePage- and CMS-convention SV densities (both
+   conventions run through one reimplemented bipartite resolvent, the amplitude
+   law the only difference) collapse under a single factor $\theta = 0.357$
+   across the full bulk-plus-tail, ruling out an $s$-dependent factor. (Neither
+   route executes the production numba/phi_star binaries; the tie to those
+   pipelines is the $G \to -G$ equivalence plus the campaign-units cross-check
+   next.) The density $\theta$ and the amplitude $\theta$ agree at $0.35$-$0.36$.
+   (c) *Campaign-units cross-check* (`.agents/temp/unit_factor_xcheck.py`). The
+   reimplemented CMS-convention density reproduces the campaign's ground truth --
+   the empirical $N = 2500$ SVD density at $(1.5, 1.0)$
+   (`fig/jac_emp_log_density/...`) -- in bulk height and falloff onset, with
+   median singular value $0.576$ vs the empirical $0.599$ ($\approx 4\%$); the
+   only departure is the converged cavity's sharp delocalised-pool collapse at
+   $s \approx 3.9$, exactly where the finite-$N$ empirical instead carries its
+   localised tail (the deviation edge itself). So the CMS convention *is* physical
+   units (factor $\approx 1$), and the script $\to$ physical factor equals the
+   LePage $\to$ CMS factor pinned in (a),(b). (The cavity's collapse tail and the
+   empirical fat tail differ, so a full-curve shape fit misconverges here; the
+   bulk-centred median and the falloff onset are the robust statistics.) The gap-closing value
+   $\theta = 0.282$ (which alone would map the $\varphi^\star$-zero onto the
+   $3.60$ plateau) is excluded by $> 20\%$. **Verdict:** converting
+   $s^\star_{\rm script} \approx 12.5$-$13$ by $\theta \approx 0.36$ puts the
+   linearised-stability edge at $s^\star \approx 4.5$-$4.7$ physical, robustly
+   above the thermodynamic deviation edge $s_\infty \approx 3.60$ -- the
+   linearised $\varphi^\star$-edge sits $\sim 25\%$ above the thermodynamic
+   localisation onset, as a linear-stability bound should. The $3.60$-vs-$4.3$
+   tension is physics, not units.
+
+**Status of the hypotheses.** Exact inputs: the linearised recursion (4),
+the Thouless matching (8) (up to the $O(1)$), the population counterpart's
+$\log$ structure. Transplanted/heuristic inputs, each independently
+measurable: H1 ($\kappa = \tfrac12$ front selection -- check by measuring
+$I_{\rm typ}(s)$ and $\varphi^\star(s)$ on the same grid and regressing
+$\log(1/I_{\rm typ})$ on $\varphi^{\star-\kappa}$) and H2 (tail exponent
+$\alpha$ and $S$-collapse of $\varphi^\star$ -- check by the seeded-growth
+diagnostic across $(\alpha, \sigma_w)$). Gates: (i) $s_c^{\alpha/2}$ linear
+in nd in the intermediate (power-law-$\varphi^\star$) regime (passed,
+${\rm nd} = 8$-$10$), converging to $s_\infty$ rather than drifting forever
+(${\rm nd} = 11$); (ii) the $S$-collapse (passed, the $E^\star(\alpha)$
+flatness); (iii) H1/H2 regressions (run: H2 fails in the far tail --
+finite-$s$ edge; H1 form passes, $\kappa$ unpinned; see validation outcome
+above); (iv) IPR drift slope vs $(\log N)^{2/\alpha}$ (superseded: above a
+true edge $\tau_{\rm eff}$ should stay flat in $N$, which it does for
+$s > 3.9$); (v) $N_{\rm emp}$-dependence of the deviation plateau (run:
+flat at $1250/2500/5000$ -- the edge is asymptotic, not a reference
+ceiling); (vi) the script $\to$ physical unit factor (run:
+$\theta = 0.35$-$0.36$ from the bond-amplitude scale ratio and the
+end-to-end density alignment, in agreement and matching the analytic
+$0.341$; the $3.60$-vs-$4.5$ gap between the thermodynamic and
+linearised-stability edges is physical, not a convention artifact --
+validation outcome (4)).
+
 ---
 
 ## 4. Unstructured reduction, the index map, and the delocalisation baseline
@@ -448,16 +997,26 @@ itself move the BG regime; it can only localise through effective
 *sparsification* (a finite fraction of near-zero $\phi'$ -- saturated units) or
 strong scale disorder. Whether this suffices for a true edge, or whether all
 operational-range localisation is finite-$N$ crossover, is the load-bearing
-question the structured determinant (Section 3) must answer.
+question the structured determinant (Section 3) must answer. *Answered (2026-06)
+by Gate B below: it suffices -- a true profile-induced edge exists.*
 
 **Validation gates:**
 - **Gate A (done, this section):** index map $\mu = \alpha$, anchored in BG;
   the unstructured operational range is delocalised; `levy_mobility_edge.py`
   consistent. No finite edge to scale-convert.
-- **Gate B (one-sided / row profile $a_{ij} = a_i$):** does a bounded row
-  profile induce a *true* edge or only crossover? Decisive test: tail-$s$ IPR
-  $N$-scaling on a row-scaled Levy matrix -- slope $\to 0$ with $N$ is a true
-  edge, slope $\to -1$ is crossover.
+- **Gate B (done, 2026-06; row profile $a_i = \sigma_w|\phi'|$):** *a bounded row
+  profile induces a true edge.* The decisive test -- tail-$s$ singular-vector
+  $D_2$ $N$-scaling (IPR $\sim N^{-D_2}$; slope $\mathrm dD_2/\mathrm d\log N \to 0$
+  = true edge, the BG-delocalised baseline keeps $\to +$ toward $D_2=1$) -- run as
+  an $N=1000\dots6000$ ladder at $(\alpha,\sigma_w)=(1.5,3.0)$
+  (`.agents/temp/n_ladder_d2.py`, 3.6). Outcome: the unstructured baseline $D_2$
+  climbs at every $s$; the structured tail $D_2$ goes **flat** ($s{=}6.5$:
+  $0.09\to0.09$; $s{=}8$: $0.05\to0.05$ over the same $N$-window where the baseline
+  climbs $0.35\to0.41$, $0.21\to0.28$), crossing from delocalising to frozen
+  between $s\approx5$ and $6.5$. So the saturated-unit profile *does* push a
+  genuine asymptotic localisation onset into the operational tail -- not a mere
+  finite-$N$ crossover. Open: whether the frozen tail $D_2$ is $0$ (Anderson) or a
+  nonzero critical value (3.6).
 
 ---
 
@@ -487,11 +1046,14 @@ row-profile specialisation $a_{ij} = |\phi'(h^l_i)|$ of the structured ensemble.
 The profile law $\Pi$ is the (quantile-embedded) distribution of $|\phi'|$ at the
 heavy-tailed length-map fixed point of `heavy_tailed_mlp.md`; for $\tanh$ it
 ranges from $\approx 0$ (saturated) to $\approx 1$ (linear). The structured
-mobility edge then predicts the profile-induced shift of $s^\star$ relative to
+mobility edge then predicts the profile-induced shift of $s_c$ relative to
 the unstructured baseline of Section 4 -- i.e. whether saturated-unit structure
-pushes the localisation onset into the operational bulk. The full derivation,
-solver wiring, and comparison to a direct MLP-Jacobian IPR sweep live in
-`ht_mlp_jacobian.{md,py,ipynb}`. This file states only the general result.
+pushes the localisation onset into the operational bulk. (Physical singular-value
+units carry the global entry scale: $s_c^{\rm phys} = \sigma_w\,s_c$, since the
+Jacobian entry is $\sigma_w$-scaled and localisation is invariant under global
+rescaling.) The full derivation, solver wiring, and comparison to a direct
+MLP-Jacobian IPR sweep live in `ht_mlp_jacobian.{md,py,ipynb}`. This file states
+only the general result.
 
 ---
 
