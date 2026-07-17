@@ -7,7 +7,7 @@ from os.path import join
 from tqdm import tqdm
 
 sys.path.append(os.getcwd())
-from path_names import root_data
+from constants import root_data
 from UTILS.utils_dnn import load_transition_lines
 
 def SEM(N, L, N_thetas, alpha100, g100):

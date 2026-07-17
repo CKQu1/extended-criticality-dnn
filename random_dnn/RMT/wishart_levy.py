@@ -1,5 +1,7 @@
 """Heavy-tailed Wishart / singular-value density following Belinschi et al. (2008).
 
+Profile-free reference ensemble used by the structured RMT modules.
+
 This module implements the limiting singular-value density of rectangular
 heavy-tailed random matrices through the covariance-matrix characterization of
 Belinschi, Dembo, and Guionnet.  If X is an N x M matrix with iid entries in the

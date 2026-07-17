@@ -71,7 +71,8 @@ identity** -- the readout is a single $h_\alpha$ evaluation at a scalar
 $Y_r$, with no sum-rule to preserve. The independent-rule $h_\alpha$
 (its own Gauss-Laguerre integral
 $h_\alpha(y) = \int_0^\infty e^{-t} e^{-t^{\alpha/2} y}\, dt$, as used in
-`wishart_levy.py`) gives a more accurate $\Im h_\alpha$ at the cost of
+`wishart_levy.py`) gives a more accurate $\Im h_\alpha$
+at the cost of
 breaking the structured collapse identity -- which is irrelevant here.
 
 This module therefore solves the field (1) with the shared-rule
@@ -92,7 +93,8 @@ use independent-rule $h_\alpha$ where it matters."
   threading the previous solution as the Newton seed (the
   $|z| \to \infty$ asymptote $Y_r \sim C_\alpha g_\alpha(0) / [(1 +
   \gamma) z^\alpha]$ anchors the high-$|z|$ end). Same continuation
-  strategy as `structured_wishart_levy.py` and `wishart_levy.py`.
+  strategy as `structured_wishart_levy.py` and
+  `wishart_levy.py`.
 - *Seed priority.* `wishart_levy.solve_y_pair` (Corollary 1 anchor at
   this $z$), then the carried previous-step solution, then the
   asymptote. Newton-Raphson via `scipy.optimize.root(method='hybr')` on

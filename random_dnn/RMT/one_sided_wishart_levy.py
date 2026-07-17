@@ -9,7 +9,8 @@ density readout
     rho_nu(t)  = -(1/(pi t)) Im h_alpha(Y_r(sqrt t)),
 
 uses *independent-rule* ``h_alpha`` (its own Gauss-Laguerre integral, as in
-``wishart_levy.py``). The structured solver uses the *shared-rule* ``h_alpha``
+``wishart_levy.py``). The structured solver uses the
+*shared-rule* ``h_alpha``
 because the Theorem 1 collapse over the vector field ``Y_r(x)`` requires the
 discrete identity ``h = 1 - (alpha/2) y g(y)`` to hold to machine precision
 under quadrature; that constraint disappears at the scalar level. The

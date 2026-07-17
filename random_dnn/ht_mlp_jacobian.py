@@ -11,6 +11,8 @@ CLI:
                               N 256 int num_matrices 80 int depth 60 int seed 0 int
     python ht_mlp_jacobian.py convention_check alpha 1.5 float sigma_W 1.0 float \\
                               N 256 int num_matrices 80 int seed 0 int
+    python ht_mlp_jacobian.py theoretical_truncated_chi1 \\
+                              alpha 1.5 float sigma_W 3.0 float s_c 11.0 float
 """
 from __future__ import annotations
 
@@ -395,7 +397,7 @@ def mlp_jacobian_sv_spectrum(
 #   (Pthy-Dq) synthetic_jacobian_Dq_spectrum -- "theory" curve from the
 #            BDG-predicted matrix ensemble: sample h ~ S* p_alpha directly,
 #            build J = D W, SVD.  No analytical closed form is available
-#            for D_q from Y_r alone (RMT/localisation.md sec. 9); the
+#            for D_q from Y_r alone; the
 #            synthetic-ensemble curve is the cleanest matrix-level theory
 #            comparison.  Agreement with (P3b-Dq) means the BDG matrix
 #            ensemble correctly models the MLP Jacobian.
@@ -424,8 +426,8 @@ def mlp_jacobian_Dq_spectrum(
     per-vector D_q = -log(sum_i |v(i)|^{2q}) / ((q-1) log N), and bins by
     singular value.  Pool across realisations and post-burn-in layers.
 
-    Phenomenology only.  Compares against future theoretical D_q curves
-    (model-dependent; see RMT/localisation.md sec. 9F).
+    Phenomenology only: the direct-diagonalisation reference the cavity
+    growth-rate criterion (RMT/localisation.py) is validated against.
     """
     q_grid = np.asarray(q_grid, dtype=float)
     rng = np.random.default_rng(seed)
@@ -529,9 +531,8 @@ def synthetic_jacobian_Dq_spectrum(
     is the right matrix model for the MLP Jacobian; deviations identify
     structure the BDG framework doesn't capture.
 
-    No closed-form analytic prediction is provided (see
-    RMT/localisation.md sec. 9F-G for the obstruction); the synthetic
-    SVDs play the role of "theory" here.
+    No closed-form analytic prediction is provided; the synthetic SVDs
+    play the role of "theory" here.
     """
     q_grid = np.asarray(q_grid, dtype=float)
     if q_star is None:
@@ -616,7 +617,8 @@ def synthetic_jacobian_Dq_spectrum(
 # size, on a fine SV grid.  Systematic deviation -- beyond MC noise --
 # signals heavy-tail fluctuations of the local resolvent (the Aizenman-
 # Molchanov / BG localisation signature, recast at the spectral-density
-# level).  See RMT/localisation.md sec. 9J.
+# level).  A finite-pool onset diagnostic, not a mobility-edge estimator
+# (the edge is RMT/localisation.py).
 # ---------------------------------------------------------------------------
 
 
@@ -813,8 +815,9 @@ def density_deviation_pool_sweep(
 
 
 # ---------------------------------------------------------------------------
-# Verify the analytical D_q formula (eq. 14 of RMT/localisation.md) against
-# direct SVD-IPR on the same matrix realisations.
+# Verify the cavity moment-IPR relation
+#   D_q = 1 - log[M_q / (pi rho)^q] / ((q-1) log N)
+# against direct SVD-IPR on the same matrix realisations.
 #
 # Formula:   D_q = 1 - log[M_q / (pi rho)^q] / ((q-1) log N)
 #            M_q = (1/N) sum_i (-Im G_ii(lambda + i eta))^q
@@ -844,7 +847,7 @@ def verify_Dq_formula(
     sv_bins: int = 21,
     sv_range: Optional[tuple[float, float]] = None,
 ) -> dict:
-    """Verify eq. (14) of localisation.md against direct SVD IPR.
+    """Verify the cavity moment-IPR relation against direct SVD IPR.
 
     For each MLP realisation:
     - Run forward with compute_uv=True to get s, u, v at post-burn-in layers.
@@ -976,108 +979,165 @@ def verify_Dq_formula(
 
 
 # ---------------------------------------------------------------------------
-# Singular-vector localisation mobility edge (Tarquini imaginary-part-stability
-# cavity, RMT/localisation.py Part 2) driven by the real MFT fixed-point row
-# profile a_i = sigma_W * |phi'(S* Z_i)| (PHYSICAL: the global entry scale
-# sigma_W is in the Jacobian multiplier).  See ht_mlp_jacobian.md sec. 6.
+# Singular-vector localisation of the Jacobian.
+#
+# The mobility edge s^*(alpha, sigma_W) is produced by the cavity
+# growth-rate criterion of RMT/localisation.py (population dynamics on the
+# linearised Im channel; sweep driver .agents/scripts/phi_star_sweep.py).
+# This module keeps only the density-side quantities: the analytic SV
+# density and the edge-truncated gain chi_1^{<s} at externally supplied
+# cutoffs (production join: .agents/scripts/chi1_mc_recut.py).
 # ---------------------------------------------------------------------------
 
-import localisation as loc  # noqa: E402  -- RMT/localisation.py cavity criterion
+
+def _integrate_piecewise_linear_cutoff(x: np.ndarray, y: np.ndarray, cutoff: float) -> float:
+    """Integrate y(x) to an exact cutoff with linear interpolation at the edge."""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    cutoff = float(cutoff)
+    if cutoff <= x[0]:
+        return 0.0
+    if cutoff > x[-1] + 1e-12:
+        raise ValueError("cutoff exceeds the sampled grid; increase s_max.")
+    idx = int(np.searchsorted(x, cutoff, side="right"))
+    x_use = x[:idx].copy()
+    y_use = y[:idx].copy()
+    if x_use[-1] < cutoff:
+        y_cut = float(np.interp(cutoff, x, y))
+        x_use = np.append(x_use, cutoff)
+        y_use = np.append(y_use, y_cut)
+    return float(np.trapz(y_use, x_use))
 
 
-def jacobian_localization_edge(
+def _tail_mass_above(s_grid: np.ndarray, rho: np.ndarray, cutoff: float,
+                     B: float, alpha: float) -> float:
+    """Density mass above `cutoff`: trapz on the sampled grid, closed beyond
+    s_grid[-1] by the analytic tail B s^{-1-alpha} (eq. 7 of the md).
+
+    The complement-from-above route avoids integrating through the small-s
+    quasi-atom of saturated cells (see the mass_below comment in
+    `theoretical_truncated_chi1`).
+    """
+    idx = int(np.searchsorted(s_grid, float(cutoff), side="right"))
+    x_above = np.concatenate(([float(cutoff)], s_grid[idx:]))
+    y_above = np.concatenate(([float(np.interp(cutoff, s_grid, rho))],
+                              rho[idx:]))
+    return float(np.trapz(y_above, x_above)) \
+        + B / alpha * float(s_grid[-1]) ** (-alpha)
+
+
+def theoretical_truncated_chi1(
     alpha: float,
     sigma_W: float,
     *,
+    s_c: Optional[float] = None,
     phi: Callable = torch.tanh,
     sigma_b: float = 0.0,
-    Es_norm=(0.5, 1.5, 2.5, 3.5, 4.5, 5.5),
-    P: int = 10000,
-    K: int = 100,
     q_star: Optional[float] = None,
     profile: Optional[JacobianProfile] = None,
+    n_profile_samples: int = 50_000,
+    profile_order: int = 32,
+    s_max: Optional[float] = None,
+    s_pad: float = 0.10,
+    num_points: int = 321,
+    imag_eps: float = 1e-3,
     seed: int = 0,
+    return_curve: bool = False,
 ):
-    """Physical SV-localisation mobility edge s_c of J^l = D^l W^l at q*.
+    """Fully analytical chi_1^{<s_c} from the analytic SV density.
 
-    Drives the Tarquini eta-scaling criterion (`localisation.py` Part 2) with the
-    *physical* fixed-point row profile a_i = sigma_W * |phi'(S* Z_i)| -- the
-    Jacobian entry is J_ij = |phi'(h_i)| * sigma_W N^{-1/alpha} xi_ij, so the
-    global scale sigma_W belongs in the multiplier.  Singular values of J scale
-    linearly in sigma_W (verified), hence so does the edge: the physical
-    s_c = sigma_W * (entry-scale-1 cavity edge).  We carry sigma_W explicitly by
-    scaling the profile, the energy grid, and eta all by sigma_W -- the
-    eta-scaling exponent p is scale-invariant, so this reproduces the normalised
-    p(E) at physical energies E = sigma_W * E_norm.
-
-    The bipartite Hermitisation spectrum is +/- s, so the cavity energy E is the
-    singular value s; the mobility edge is s_c = E where p = d log Im G_typ /
-    d log eta crosses 1/2 (delocalised -> localised).
-
-    Returns a dict: s_c (None if no crossing), saturated_frac, q_star, pre_scale,
-    Es (physical), p_of_E.
+    The mobility edge s_c is an external input (production source: the
+    cavity growth-rate map of RMT/localisation.py, joined at all rung/BD
+    cutoffs by .agents/scripts/chi1_mc_recut.py).  With s_c = None
+    (delocalised cell) the cutoff quantities are undefined and come back
+    NaN; the density-side outputs (survival_at_1, ...) are still computed.
     """
-    log: list = []
-    with Timer(f"jac-loc-edge alpha={alpha} sigma_W={sigma_W}", log):
+    timings: list = []
+    with Timer(f"thy chi1<s_c alpha={alpha} sigma_W={sigma_W}", timings):
         if profile is None:
-            profile = jacobian_profile(alpha, sigma_W, phi=phi, sigma_b=sigma_b,
-                                       q_star=q_star, n_samples=P, seed=seed)
-        # PHYSICAL profile multiplier: sigma_W * |phi'(S* Z)|.
-        a_row = sigma_W * profile.profile_samples.astype(float)
-        sat = float((profile.profile_samples < 0.05).mean())
-        Es = tuple(sigma_W * e for e in Es_norm)        # physical energy grid
-        eta_hi, eta_lo = sigma_W * 1e-2, sigma_W * 1e-3  # physical regulators
-        ps = []
-        for E in Es:
-            p, _thi, _tlo = loc.eta_exponent(float(E), float(alpha), a_row=a_row,
-                                             eta_hi=eta_hi, eta_lo=eta_lo, P=P, K=K)
-            ps.append(p)
-    ps = np.asarray(ps)
-    s_c = None
-    for i in range(len(ps) - 1):
-        if ps[i] < 0.5 <= ps[i + 1]:  # first deloc -> loc crossing
-            t = (0.5 - ps[i]) / (ps[i + 1] - ps[i])
-            s_c = float(Es[i] + t * (Es[i + 1] - Es[i]))
-            break
-    return {
-        "alpha": float(alpha), "sigma_W": float(sigma_W),
-        "q_star": profile.q_star, "pre_scale": profile.pre_scale,
-        "saturated_frac": sat, "Es": [float(e) for e in Es],
-        "p_of_E": ps.tolist(), "s_c": s_c, "timings": log,
+            with Timer("thy chi profile build", timings):
+                profile = jacobian_profile(
+                    alpha, sigma_W, phi=phi, sigma_b=sigma_b,
+                    q_star=q_star, n_samples=n_profile_samples, seed=seed,
+                )
+        if s_max is None:
+            s_c_term = 0.0 if s_c is None else (1.0 + s_pad) * float(s_c)
+            s_max = max(s_c_term, 8.0)
+        with Timer("thy chi density", timings):
+            curve, _ = theoretical_jacobian_sv_curve(
+                alpha, sigma_W, phi=phi, sigma_b=sigma_b,
+                s_max=float(s_max), num_points=int(num_points),
+                imag_eps=imag_eps, profile_order=profile_order,
+                profile=profile,
+            )
+        # The osw density solver can overflow at isolated near-zero s points;
+        # the integrand s^2 rho vanishes there anyway, so zero non-finite /
+        # negative samples rather than let one nan poison the integral.
+        rho = np.asarray(curve.singular_density, dtype=float)
+        finite = np.isfinite(rho) & (rho > 0.0)
+        num_nonfinite_density = int(rho.size - int(finite.sum()))
+        rho = np.where(finite, rho, 0.0)
+        s_grid = np.asarray(curve.singular_values, dtype=float)
+        B = theoretical_tail_constant(profile)
+        # Survival at s = 1: the fraction of amplifying modes, S(1) =
+        # int_1^inf f_SV.  Complement-from-above like mass_below, so it is
+        # immune to the small-s quasi-atom.  survival_at_1_tail = B/alpha is
+        # the pure asymptotic-tail estimate, valid only where the bulk lies
+        # below 1 (small sigma_W); elsewhere it undercounts.
+        survival_at_1 = _tail_mass_above(s_grid, rho, 1.0, B, alpha)
+        survival_at_1_tail = B / alpha
+        if s_c is None:
+            out = {
+                "alpha": float(alpha),
+                "sigma_W": float(sigma_W),
+                "q_star": profile.q_star,
+                "pre_scale": profile.pre_scale,
+                "profile_alpha_moment": profile.profile_alpha_moment,
+                "saturated_frac": float((profile.profile_samples < 0.05).mean()),
+                "s_c": None,
+                "s_max": float(s_max),
+                "chi1_trunc": float("nan"),
+                "mass_below": float("nan"),
+                "survival_at_1": float(survival_at_1),
+                "survival_at_1_tail": float(survival_at_1_tail),
+                "num_nonfinite_density": num_nonfinite_density,
+                "timings": timings,
+            }
+            if return_curve:
+                out["curve"] = curve
+            return out
+        chi_integrand = s_grid ** 2 * rho
+        chi1_trunc = _integrate_piecewise_linear_cutoff(
+            s_grid, chi_integrand, float(s_c)
+        )
+        # Mass below the edge via the complement.  At saturated cells the
+        # small-s density is a quasi-atom (near-zero rows) smoothed by
+        # imag_eps, so integrating through it is grid-unstable; the tail side
+        # is smooth, and above s_max the analytic tail B s^{-1-alpha}
+        # (eq. 7 of ht_mlp_jacobian.md) closes the integral exactly.  The
+        # s^2 weight makes chi1_trunc immune to the spike, so it stays a
+        # direct integral.
+        mass_above = _tail_mass_above(s_grid, rho, float(s_c), B, alpha)
+        mass_below = 1.0 - mass_above
+    out = {
+        "alpha": float(alpha),
+        "sigma_W": float(sigma_W),
+        "q_star": profile.q_star,
+        "pre_scale": profile.pre_scale,
+        "profile_alpha_moment": profile.profile_alpha_moment,
+        "saturated_frac": float((profile.profile_samples < 0.05).mean()),
+        "s_c": float(s_c),
+        "s_max": float(s_max),
+        "chi1_trunc": float(chi1_trunc),
+        "mass_below": float(mass_below),
+        "survival_at_1": float(survival_at_1),
+        "survival_at_1_tail": float(survival_at_1_tail),
+        "num_nonfinite_density": num_nonfinite_density,
+        "timings": timings,
     }
-
-
-def jacobian_localization_phase(
-    alpha_vals=(1.3, 1.5, 1.7, 1.9),
-    sigma_W_vals=(1.0, 1.5, 2.0, 3.0, 4.0),
-    *,
-    phi: Callable = torch.tanh,
-    sigma_b: float = 0.0,
-    Es_norm=(0.5, 1.5, 2.5, 3.5, 4.5, 5.5),
-    P: int = 8000,
-    K: int = 100,
-    seed: int = 0,
-):
-    """Physical s_c(alpha, sigma_W) localisation boundary in the paper's plane.
-
-    For each grid point: build the fixed-point profile, run the physical cavity
-    edge finder.  Returns a list of `jacobian_localization_edge` dicts and prints
-    a compact (alpha, sigma_W) -> (saturated frac, physical s_c) table.
-    """
-    rows = []
-    log: list = []
-    with Timer("jac-loc phase sweep", log):
-        for a in alpha_vals:
-            for sw in sigma_W_vals:
-                res = jacobian_localization_edge(
-                    a, sw, phi=phi, sigma_b=sigma_b, Es_norm=Es_norm,
-                    P=P, K=K, seed=seed)
-                rows.append(res)
-                edge = "deloc" if res["s_c"] is None else f"{res['s_c']:.2f}"
-                print(f"  alpha={a:.2f} sigma_W={sw:.2f}  q*={res['q_star']:.3g}"
-                      f"  sat={res['saturated_frac']:.2f}  s_c={edge}",
-                      flush=True)
-    return rows
+    if return_curve:
+        out["curve"] = curve
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1101,7 +1161,7 @@ def truncated_chi1(
     num_matrices: int = 40,
     seed: int = 0,
 ):
-    """Edge-truncated mean-square singular gain chi_1^{<s_c} of J^l = D^l W^l.
+    """Empirical edge-truncated mean-square singular gain chi_1^{<s_c}.
 
     chi_1 = <s^2> = (1/N) sum_k s_k^2 is the per-layer propagation gain.  For the
     heavy-tailed Jacobian the SV density tail is f(s) ~ B s^{-(1+alpha)}, so
@@ -1357,6 +1417,8 @@ if __name__ == "__main__":
         "synthetic_jacobian_sv_spectrum": synthetic_jacobian_sv_spectrum,
         "mlp_jacobian_sv_spectrum": mlp_jacobian_sv_spectrum,
         "jacobian_profile": jacobian_profile,
+        "theoretical_truncated_chi1": theoretical_truncated_chi1,
+        "truncated_chi1": truncated_chi1,
     }[func_name]
     args = [sys.argv[i : i + 3] for i in range(2, len(sys.argv), 3)]
     arg_dict = {arg[0]: eval(arg[2])(arg[1]) for arg in args}

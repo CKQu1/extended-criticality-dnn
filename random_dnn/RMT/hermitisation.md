@@ -4,10 +4,8 @@ The non-Hermitian singular-value problem for a rectangular matrix $A$ is
 turned into a Hermitian eigenvalue problem by **Hermitisation**. The
 Hermitisation supports a tree-closed cavity recursion, whose bipartite block
 structure yields a coupled fixed point for the two resolvent populations.
-The singular-value density is read off either from the real-axis self-energy
-distribution (Cizeau-Bouchaud) or from the standard complex-$z$ resolvent
-inversion (Belinschi-Dembo-Guionnet); the two routes are equivalent and the
-choice is numerical.
+The singular-value density is read off by the standard complex-$z$ Stieltjes
+inversion of the resolvent.
 
 ## Hermitisation: eigenvalue <-> singular-value bridge -- eq. (10)
 
@@ -49,17 +47,7 @@ $$\begin{aligned} G_i^{(1)}(z) &= -\left(z + \sum_{j=1}^N |A_{ij}|^2 G_j^{(2)}(z
 
 ## Density readout
 
-Two equivalent routes from the cavity solution $\{G_i^{(1)}(z), G_j^{(2)}(z)\}$ to the singular-value density $\rho(s)$:
-
-**Real-axis self-energy (Cizeau-Bouchaud 1994) -- eq. (16).** Specialise to real $s$ and write $G_i(s) = -(s + \Sigma_i(s))^{-1}$. The self-energies $\Sigma_i(s)$ determine the poles of $G_i$ at $s = -\Sigma_i$, i.e. eigenvalues of $H$. In the large-$N$ limit the $\{\Sigma_i(s)\}$ are i.i.d. draws from a distribution $p_{\Sigma(s)}$, so $\rho_H(s) = p_{\Sigma(s)}(-s)$. In the bipartite structure the type-1 and type-2 self-energies are
-
-$$\Sigma_i^{(1)}(s) = \sum_{j=1}^N |A_{ij}|^2\,G_j^{(2)}(s), \qquad \Sigma_j^{(2)}(s) = \sum_{i=1}^M |A_{ij}|^2\,G_i^{(1)}(s),$$
-
-and equal numbers of eigenvalues arise from poles of each type. The singular value density of $A$ is therefore
-
-$$\rho(s) = \frac{1}{2}\!\left(p_{\Sigma^{(1)}(s)}(-s) + p_{\Sigma^{(2)}(s)}(-s)\right). \qquad\text{(16)}$$
-
-**Complex-$z$ Stieltjes inversion (Belinschi-Dembo-Guionnet).** Equivalently, set $z = s + i\varepsilon$ and use
+**Complex-$z$ Stieltjes inversion.** Set $z = s + i\varepsilon$ and use
 
 $$\rho_H(s) = -\frac{1}{\pi}\lim_{\varepsilon\downarrow 0}\,\mathrm{Im}\,G(s + i\varepsilon),$$
 
@@ -67,4 +55,4 @@ solving (12)-(13) with complex $G_i^{(1)}, G_j^{(2)}$ and reading off
 
 $$\rho(s) = \frac{1}{\pi\,(N+M)}\!\left(\sum_i \mathrm{Im}\,G_i^{(1)}(s+i\varepsilon) + \sum_j \mathrm{Im}\,G_j^{(2)}(s+i\varepsilon)\right).$$
 
-This is the route used by `RMT.py:cavity_svd_resolvent` (with the regulariser $\varepsilon$ injected in `jac_cavity_svd_log_pdf`) and by the analytical theory in `RMT/structured_wishart_levy.py`. It produces the same $\rho(s)$ as (16) by the standard equivalence of the two formulations.
+This is the route used by `RMT.py:cavity_svd_resolvent` (with the regulariser $\varepsilon$ injected in `jac_cavity_svd_log_pdf`) and by the analytical theory in `RMT/structured_wishart_levy.py`. (An equivalent real-axis self-energy readout exists in the literature but is not used anywhere in this repo.)
